@@ -75,9 +75,9 @@ export default function ProjectCard({ project }: ProjectCardProps) {
             <Progress value={project.progress} className="h-2.5" />
           </div>
 
-          {project.nextMilestone && (
+          {project.next_milestone && (
             <p className="text-xs text-slate-500">
-              🚀 {project.nextMilestone}
+              🚀 {project.next_milestone}
             </p>
           )}
         </CardContent>
