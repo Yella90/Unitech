@@ -1,15 +1,24 @@
 // app/(public)/projects/[slug]/page.tsx
 import { supabase } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import Newsletter from "@/components/public/sections/Newsletter";
-import ProjectCard from "@/components/public/projects/ProjectCard";
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import Newsletter from '@/components/public/sections/Newsletter';
+import ProjectCard from '@/components/projects/ProjectCard';
 import ProjectGallery from '@/components/public/projects/ProjectGallery';
-import { FaCheckCircle, FaClock, FaCode, FaDatabase, FaServer, FaCog, FaGlobe, FaArrowRight } from "react-icons/fa";
-import Link from "next/link";
+import { 
+  FaCheckCircle, 
+  FaClock, 
+  FaCode, 
+  FaDatabase, 
+  FaServer, 
+  FaCog, 
+  FaGlobe, 
+  FaArrowRight 
+} from 'react-icons/fa';
+import Link from 'next/link';
 
 interface PageProps {
   params: Promise<{
@@ -42,7 +51,6 @@ const techIconMap: Record<string, React.ReactNode> = {
 export default async function ProjectDetailPage({ params }: PageProps) {
   const { slug } = await params;
 
-  // ✅ Récupérer le projet depuis Supabase
   const { data: project, error } = await supabase
     .from('projects')
     .select('*')
@@ -53,7 +61,6 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // ✅ Récupérer les étapes du projet
   const { data: stages } = await supabase
     .from('project_stages')
     .select('*')
@@ -64,7 +71,6 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     project.stages = stages;
   }
 
-  // ✅ Récupérer les projets similaires
   const { data: relatedProjects } = await supabase
     .from('projects')
     .select('*')
@@ -172,7 +178,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           <h2 className="text-2xl font-bold text-[#1E3A8A]">📈 Avancement détaillé</h2>
           <div className="mt-4 space-y-3">
             {project.stages.map((stage: any) => (
-              <div key={stage.name} className="flex items-center gap-4">
+              <div key={stage.id} className="flex items-center gap-4">
                 <span className="w-40 text-sm font-medium text-slate-700">
                   {stage.name}
                 </span>
@@ -203,9 +209,12 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           </div>
         </div>
       )}
+
+      {/* ✅ Galerie d'images */}
       {project.gallery && project.gallery.length > 0 && (
         <ProjectGallery images={project.gallery} projectName={project.name} />
       )}
+
       <Separator className="my-12" />
 
       {/* Projets similaires */}

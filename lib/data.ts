@@ -1,5 +1,20 @@
 // lib/data.ts
-import { Project } from '@/types';
+import { Project, ProjectStage } from '@/types';
+
+// ✅ Fonctions pour générer des données
+const generateId = () => Math.random().toString(36).substring(2, 15);
+const now = new Date().toISOString();
+
+// ✅ Helper pour créer des stages
+const createStage = (name: string, progress: number, status: 'completed' | 'in-progress' | 'pending'): ProjectStage => ({
+  id: generateId(),
+  project_id: '',
+  name,
+  progress,
+  status,
+  created_at: now,
+  updated_at: now,
+});
 
 export const projects: Project[] = [
   {
@@ -11,32 +26,32 @@ export const projects: Project[] = [
     color: 'blue',
     progress: 68,
     status: 'in-progress',
-    nextMilestone: 'Beta interne - Septembre 2026',
+    next_milestone: 'Beta interne - Septembre 2026',
     problem: 'Les établissements scolaires peinent à gérer efficacement leurs données. Les inscriptions sont manuelles, les notes se perdent, les paiements sont difficiles à suivre.',
-    solution: 'UNITECH Éducation est un SaaS complet qui digitalise toute la gestion scolaire. De l\'inscription des élèves à la génération des bulletins, en passant par la gestion des notes, des paiements et des statistiques en temps réel.',
+    solution: 'UNITECH Éducation est un SaaS complet qui digitalise toute la gestion scolaire. De l\'inscription des élèves à la génération des bulletins.',
     benefits: [
       'Réduction de 60% du temps administratif',
       'Décisions basées sur des données réelles',
       'Réduction des pertes financières',
       'Accès depuis n\'importe quel appareil'
     ],
-    techStack: {
+    tech_stack: {
       frontend: ['React.js', 'Tailwind CSS', 'Chart.js'],
       backend: ['Node.js', 'Express.js'],
       database: ['PostgreSQL'],
       others: ['Orange Money API']
     },
+    created_at: now,
+    updated_at: now,
     stages: [
-      { name: 'Étude de marché', progress: 100, status: 'completed' },
-      { name: 'Maquettage UI', progress: 100, status: 'completed' },
-      { name: 'Développement Core', progress: 80, status: 'in-progress' },
-      { name: 'Intégration API', progress: 60, status: 'in-progress' },
-      { name: 'Phase de test', progress: 40, status: 'pending' },
-      { name: 'Déploiement Beta', progress: 20, status: 'pending' },
-      { name: 'Lancement officiel', progress: 10, status: 'pending' }
+      createStage('Étude de marché', 100, 'completed'),
+      createStage('Maquettage UI', 100, 'completed'),
+      createStage('Développement Core', 80, 'in-progress'),
+      createStage('Intégration API', 60, 'in-progress'),
+      createStage('Phase de test', 40, 'pending'),
+      createStage('Déploiement Beta', 20, 'pending'),
+      createStage('Lancement officiel', 10, 'pending'),
     ],
-    createdAt: '2026-01-01',
-    updatedAt: '2026-08-04'
   },
   {
     id: '2',
@@ -47,32 +62,31 @@ export const projects: Project[] = [
     color: 'orange',
     progress: 42,
     status: 'planning',
-    nextMilestone: 'Prototype fonctionnel - Novembre 2026',
-    problem: 'Les petits commerçants locaux gèrent leurs activités de manière manuelle. Pas de suivi des stocks, pas de fichier clients, des calculs de bénéfices approximatifs.',
-    solution: 'UNITECH Commerce propose un système de gestion complet : suivi des stocks en temps réel, historique des ventes, gestion des clients, facturation automatisée et tableaux de bord.',
+    next_milestone: 'Prototype fonctionnel - Novembre 2026',
+    problem: 'Les petits commerçants locaux gèrent leurs activités de manière manuelle. Pas de suivi des stocks, pas de fichier clients.',
+    solution: 'UNITECH Commerce propose un système de gestion complet : suivi des stocks en temps réel, historique des ventes.',
     benefits: [
       'Réduction des pertes de stock',
       'Augmentation du chiffre d\'affaires',
       'Gain de temps quotidien',
-      'Vision claire de l\'activité',
       'Utilisable sur smartphone'
     ],
-    techStack: {
-      frontend: ['React Native', 'React.js', 'Tailwind CSS'],
+    tech_stack: {
+      frontend: ['React Native', 'React.js'],
       backend: ['Node.js', 'Express.js'],
       database: ['PostgreSQL'],
       others: ['Mobile Money API', 'QR Code']
     },
+    created_at: now,
+    updated_at: now,
     stages: [
-      { name: 'Étude de marché', progress: 100, status: 'completed' },
-      { name: 'Maquettage UI', progress: 70, status: 'in-progress' },
-      { name: 'Développement Backend', progress: 35, status: 'pending' },
-      { name: 'Développement Mobile', progress: 15, status: 'pending' },
-      { name: 'Phase de test', progress: 10, status: 'pending' },
-      { name: 'Lancement officiel', progress: 5, status: 'pending' }
+      createStage('Étude de marché', 100, 'completed'),
+      createStage('Maquettage UI', 70, 'in-progress'),
+      createStage('Développement Backend', 35, 'pending'),
+      createStage('Développement Mobile', 15, 'pending'),
+      createStage('Phase de test', 10, 'pending'),
+      createStage('Lancement officiel', 5, 'pending'),
     ],
-    createdAt: '2026-02-15',
-    updatedAt: '2026-08-04'
   },
   {
     id: '3',
@@ -83,34 +97,33 @@ export const projects: Project[] = [
     color: 'green',
     progress: 55,
     status: 'in-progress',
-    nextMilestone: 'Test terrain - Octobre 2026',
-    problem: 'Les propriétaires de bâtiments avec locataires n\'ont pas de visibilité sur la consommation individuelle. La gestion des panneaux solaires est complexe, et la facturation est manuelle.',
-    solution: 'Un système complet avec des capteurs intelligents par logement, une IA qui optimise la distribution d\'énergie, et une plateforme de facturation automatique.',
+    next_milestone: 'Test terrain - Octobre 2026',
+    problem: 'Les propriétaires de bâtiments avec locataires n\'ont pas de visibilité sur la consommation individuelle.',
+    solution: 'Un système complet avec des capteurs intelligents, une IA qui optimise la distribution d\'énergie.',
     benefits: [
       'Visibilité totale sur la consommation',
       'Facturation juste et automatisée',
       'Optimisation de l\'énergie solaire',
-      'Réduction du gaspillage',
       'Économies d\'énergie jusqu\'à 30%'
     ],
-    techStack: {
+    tech_stack: {
       frontend: ['React.js', 'Chart.js', 'WebSockets'],
       backend: ['Node.js', 'Python', 'TensorFlow'],
       database: ['PostgreSQL', 'InfluxDB'],
       others: ['MQTT', 'ESP32', 'LoRa']
     },
+    created_at: now,
+    updated_at: now,
     stages: [
-      { name: 'Étude de faisabilité', progress: 100, status: 'completed' },
-      { name: 'Sélection des capteurs', progress: 100, status: 'completed' },
-      { name: 'Prototype hardware', progress: 75, status: 'in-progress' },
-      { name: 'Développement IA', progress: 55, status: 'in-progress' },
-      { name: 'Dashboard', progress: 40, status: 'pending' },
-      { name: 'Test terrain', progress: 25, status: 'pending' },
-      { name: 'Déploiement réel', progress: 10, status: 'pending' }
+      createStage('Étude de faisabilité', 100, 'completed'),
+      createStage('Sélection des capteurs', 100, 'completed'),
+      createStage('Prototype hardware', 75, 'in-progress'),
+      createStage('Développement IA', 55, 'in-progress'),
+      createStage('Dashboard', 40, 'pending'),
+      createStage('Test terrain', 25, 'pending'),
+      createStage('Déploiement réel', 10, 'pending'),
     ],
-    createdAt: '2026-03-10',
-    updatedAt: '2026-08-04'
-  }
+  },
 ];
 
 export function getProjectBySlug(slug: string): Project | undefined {
