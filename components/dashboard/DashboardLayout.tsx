@@ -32,7 +32,8 @@ import {
   FaSpinner,
   FaTabletAlt,
   FaSync,
-  FaHistory
+  FaHistory,
+  FaRobot
 } from "react-icons/fa";
 import { toast } from "sonner";
 
@@ -63,7 +64,7 @@ const navItems = [
   { href: "/admin/subscribers", label: "Newsletter", icon: FaEnvelope },
   { href: "/admin/analytics", label: "Analytics", icon: FaChartLine },
   { href: "/admin/logs", label: "Logs", icon: FaClock },
-
+{ href: "/admin/dona", label: "DONA", icon: FaRobot },
   { href: "/admin/settings", label: "Paramètres", icon: FaCog },
 ];
 
