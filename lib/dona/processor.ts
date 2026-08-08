@@ -16,6 +16,7 @@ type AnalysisResult = {
   confidence: number;
   matched_keywords: string[];
   summary: string;
+  score: number;
 };
 
 type EmailData = {
@@ -35,6 +36,7 @@ type ContactData = {
 
 export class Dona {
   private keywordConfigs: KeywordConfig[] = [];
+  private stopWords: string[] = ['je', 'tu', 'il', 'elle', 'on', 'nous', 'vous', 'ils', 'elles', 'le', 'la', 'les', 'un', 'une', 'des', 'et', 'ou', 'mais', 'donc', 'car', 'ni', 'or', 'pour', 'par', 'avec', 'sans', 'chez', 'de', 'du', 'au', 'aux', 'en', 'dans', 'sur', 'sous', 'entre', 'vers', 'depuis', 'pendant', 'pour', 'sans', 'ne', 'pas', 'plus', 'moins', 'très', 'trop', 'assez', 'peu', 'beaucoup', 'votre', 'mon', 'ton', 'son', 'notre', 'vos', 'mes', 'tes', 'ses', 'nos', 'à', 'dans', 'par', 'pour', 'avec', 'sur', 'sous', 'entre', 'vers', 'depuis'];
 
   async loadConfig() {
     const { data, error } = await supabase
@@ -62,55 +64,195 @@ export class Dona {
       await this.loadConfig();
     }
 
-    const text = `${input.subject || ''} ${input.body}`.toLowerCase();
-    const results: AnalysisResult[] = [];
+    // 1. Nettoyer et normaliser le texte
+    const text = this.normalizeText(`${input.subject || ''} ${input.body}`);
+    const words = this.extractWords(text);
+    
+    console.log(`🔍 Analyse de ${words.length} mots`);
 
+    const results: (AnalysisResult & { score: number })[] = [];
+
+    // 2. Analyser chaque catégorie
     for (const config of this.keywordConfigs) {
-      const matched = config.keywords.filter(kw => text.includes(kw.toLowerCase()));
-      
-      if (matched.length > 0) {
-        const confidence = Math.min(
-          Math.round((matched.length / config.keywords.length) * 100),
-          100
-        );
-
-        results.push({
-          category: config.category as any,
-          priority: config.priority === 0 ? 'low' : config.priority === 1 ? 'medium' : 'high',
-          assigned_agent: this.getAgentForCategory(config.category),
-          confidence,
-          matched_keywords: matched,
-          summary: `Analyse par DONA: ${matched.length} mots-clés trouvés`,
-        });
+      const analysis = this.analyzeCategory(words, config);
+      if (analysis) {
+        results.push(analysis);
       }
     }
 
+    // 3. Si aucun résultat
     if (results.length === 0) {
-      return {
-        category: 'information',
-        priority: 'medium',
-        assigned_agent: 'HUMAN',
-        confidence: 30,
-        matched_keywords: [],
-        summary: 'Aucun mot-clé spécifique détecté. À traiter manuellement.',
-      };
+      return this.getDefaultResult('Aucun mot-clé spécifique détecté');
     }
 
-    results.sort((a, b) => b.confidence - a.confidence);
+    // 4. Trier par score (le plus haut d'abord)
+    results.sort((a, b) => b.score - a.score);
 
+    // 5. Prendre le meilleur résultat
+    const best = results[0];
+
+    // 6. Vérifier le spam (priorité haute)
     const spamConfig = this.keywordConfigs.find(c => c.category === 'spam');
-    if (spamConfig && text.includes('spam')) {
-      return {
-        category: 'spam',
-        priority: 'low',
-        assigned_agent: 'NONE',
-        confidence: 95,
-        matched_keywords: ['spam'],
-        summary: 'Email identifié comme spam',
-      };
+    if (spamConfig) {
+      const spamScore = this.calculateCategoryScore(words, spamConfig.keywords);
+      if (spamScore > 0.3) {
+        return {
+          category: 'spam',
+          priority: 'low',
+          assigned_agent: 'NONE',
+          confidence: Math.round(spamScore * 100),
+          matched_keywords: this.getMatchedKeywords(words, spamConfig.keywords),
+          summary: 'Email identifié comme spam',
+          score: spamScore,
+        };
+      }
     }
 
-    return results[0];
+    // 7. Retourner le meilleur résultat
+    return {
+      ...best,
+      confidence: Math.min(Math.round(best.score * 100), 100),
+    };
+  }
+
+  private analyzeCategory(words: string[], config: KeywordConfig): (AnalysisResult & { score: number }) | null {
+    const score = this.calculateCategoryScore(words, config.keywords);
+    
+    // Seuil minimum pour considérer la catégorie
+    if (score < 0.05) return null;
+
+    // Niveau de priorité
+    let priority: 'high' | 'medium' | 'low' = 'medium';
+    if (config.priority === 0) priority = 'low';
+    else if (config.priority === 1) priority = 'medium';
+    else priority = 'high';
+
+    return {
+      category: config.category as any,
+      priority,
+      assigned_agent: this.getAgentForCategory(config.category),
+      confidence: Math.round(score * 100),
+      matched_keywords: this.getMatchedKeywords(words, config.keywords),
+      summary: `Analyse par DONA: ${this.getMatchedKeywords(words, config.keywords).length} mots-clés trouvés (score: ${Math.round(score * 100)}%)`,
+      score,
+    };
+  }
+
+  private calculateCategoryScore(words: string[], keywords: string[]): number {
+    let matches = 0;
+    let totalWeight = 0;
+
+    // Compter les correspondances
+    for (const keyword of keywords) {
+      const keywordLower = keyword.toLowerCase();
+      let found = false;
+
+      for (const word of words) {
+        // 1. Correspondance exacte
+        if (word === keywordLower) {
+          found = true;
+          matches++;
+          break;
+        }
+        // 2. Correspondance partielle (le mot contient le mot-clé)
+        if (word.includes(keywordLower) && keywordLower.length > 3) {
+          found = true;
+          matches += 0.5;
+          break;
+        }
+        // 3. Correspondance par racine (4 premières lettres)
+        if (keywordLower.length >= 4) {
+          const wordRoot = word.slice(0, 4);
+          const keywordRoot = keywordLower.slice(0, 4);
+          if (wordRoot === keywordRoot) {
+            found = true;
+            matches += 0.3;
+            break;
+          }
+        }
+        // 4. Distance de Levenshtein (similarité)
+        if (keywordLower.length >= 3 && word.length >= 3) {
+          const distance = this.levenshteinDistance(word, keywordLower);
+          const maxLen = Math.max(word.length, keywordLower.length);
+          const similarity = 1 - (distance / maxLen);
+          if (similarity > 0.7) {
+            found = true;
+            matches += similarity * 0.3;
+            break;
+          }
+        }
+      }
+
+      totalWeight += 1;
+    }
+
+    // Score normalisé entre 0 et 1
+    const score = totalWeight > 0 ? matches / totalWeight : 0;
+    return Math.min(score, 1);
+  }
+
+  private getMatchedKeywords(words: string[], keywords: string[]): string[] {
+    const matched: string[] = [];
+
+    for (const keyword of keywords) {
+      const keywordLower = keyword.toLowerCase();
+      for (const word of words) {
+        if (word === keywordLower || word.includes(keywordLower) && keywordLower.length > 3) {
+          if (!matched.includes(keyword)) {
+            matched.push(keyword);
+          }
+          break;
+        }
+      }
+    }
+
+    return matched.slice(0, 10);
+  }
+
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Supprimer les accents
+      .replace(/[^a-z0-9\s]/g, ' ')    // Garder seulement lettres, chiffres et espaces
+      .replace(/\s+/g, ' ')            // Supprimer les espaces multiples
+      .trim();
+  }
+
+  private extractWords(text: string): string[] {
+    const words = text.split(' ');
+    
+    // Filtrer les mots vides
+    return words
+      .filter(word => word.length > 0 && !this.stopWords.includes(word))
+      .map(word => word.trim());
+  }
+
+  private levenshteinDistance(a: string, b: string): number {
+    const matrix: number[][] = [];
+    
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b[i-1] === a[j-1]) {
+          matrix[i][j] = matrix[i-1][j-1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i-1][j-1] + 1,
+            matrix[i][j-1] + 1,
+            matrix[i-1][j] + 1
+          );
+        }
+      }
+    }
+    
+    return matrix[b.length][a.length];
   }
 
   private getAgentForCategory(category: string): string {
@@ -124,6 +266,18 @@ export class Dona {
       other: 'HUMAN',
     };
     return agentMap[category] || 'HUMAN';
+  }
+
+  private getDefaultResult(reason: string): AnalysisResult {
+    return {
+      category: 'information',
+      priority: 'medium',
+      assigned_agent: 'HUMAN',
+      confidence: 10,
+      matched_keywords: [],
+      summary: reason,
+      score: 0,
+    };
   }
 
   // ✅ Traiter un email entrant
@@ -177,7 +331,7 @@ export class Dona {
     return { action: 'stored', email_id: data.id, analysis };
   }
 
-  // ✅ Traiter un contact - CORRIGÉ
+  // ✅ Traiter un contact
   async processContact(contactData: ContactData) {
     console.log(`📧 DONA analyse un contact de ${contactData.name}`);
 
@@ -190,32 +344,14 @@ export class Dona {
 
     console.log(`📊 Catégorie: ${analysis.category} (confiance: ${analysis.confidence}%)`);
 
-    // ✅ Mettre à jour le contact (colonnes existantes uniquement)
     const updateData: any = {
-      status: 'processed',
+      status: 'read',
+      category: analysis.category,
+      assigned_agent: analysis.assigned_agent,
+      priority: analysis.priority,
+      processed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-
-    // ✅ Ajouter les nouvelles colonnes si elles existent
-    // Sinon, on les ignore silencieusement
-    try {
-      // Vérifier si les colonnes existent
-      const { data: columns } = await supabase
-        .from('contacts')
-        .select('category, assigned_agent, priority, processed_at')
-        .limit(1);
-
-      if (columns && columns.length >= 0) {
-        // Les colonnes existent, on les met à jour
-        updateData.category = analysis.category;
-        updateData.assigned_agent = analysis.assigned_agent;
-        updateData.priority = analysis.priority;
-        updateData.processed_at = new Date().toISOString();
-      }
-    } catch (error) {
-      // Les colonnes n'existent pas, on continue sans elles
-      console.log('⚠️ Colonnes supplémentaires non disponibles');
-    }
 
     const { error } = await supabase
       .from('contacts')
@@ -227,7 +363,7 @@ export class Dona {
       return { action: 'error', error };
     }
 
-    console.log(`✅ Contact ${contactData.id} mis à jour: ${analysis.category}`);
+    console.log(`✅ Contact ${contactData.id} classé: ${analysis.category} (confiance: ${analysis.confidence}%)`);
 
     return { action: 'updated', analysis };
   }
