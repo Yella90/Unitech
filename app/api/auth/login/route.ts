@@ -8,6 +8,7 @@ export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
     const adminClient = supabaseAdmin ?? supabase;
+   
 
     // 1. Vérifier les identifiants
     const { data: user, error } = await supabase
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
       .select('id, email, first_name, last_name, role, password_hash')
       .eq('email', email)
       .single();
-
+console.log('User fetched:', user, 'Error:', error);
     if (error || !user) {
       return NextResponse.json(
         { error: 'Email ou mot de passe incorrect' },
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
-    
+    console.log('User authenticated:', user);
 
     // 3. Créer une session (session token)
     const sessionToken = crypto.randomUUID();

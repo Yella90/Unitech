@@ -1,10 +1,9 @@
-// app/(dashboard)/admin/logs/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -18,7 +17,6 @@ import {
 } from '@/components/ui/select';
 import { 
   FaHistory, 
-  FaUser, 
   FaPlus, 
   FaEdit, 
   FaTrash, 
@@ -29,10 +27,7 @@ import {
   FaFilter,
   FaSearch,
   FaTimes,
-  FaCalendarAlt,
-  FaFileExport,
-  FaFileCsv,
-  FaPrint
+  FaFileCsv
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -73,7 +68,7 @@ const actionLabels: Record<string, { label: string; color: string; icon: React.R
   delete_user: { label: 'Suppression utilisateur', color: 'bg-red-100 text-red-700 border-red-200', icon: <FaTrash className="h-3 w-3" /> },
   update_settings: { label: 'Modification paramètres', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: <FaEdit className="h-3 w-3" /> },
   view_analytics: { label: 'Consultation analytics', color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: <FaHistory className="h-3 w-3" /> },
-  export_data: { label: 'Export données', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: <FaFileExport className="h-3 w-3" /> },
+  export_data: { label: 'Export données', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: <FaFileCsv className="h-3 w-3" /> },
 };
 
 const actionOptions = Object.entries(actionLabels).map(([value, { label }]) => ({ value, label }));
@@ -86,8 +81,8 @@ export default function AdminLogsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [tableExists, setTableExists] = useState(true);
   
-  // ✅ Filtres
   const [filters, setFilters] = useState<FilterOptions>({
     action: 'all',
     userId: '',
@@ -96,7 +91,6 @@ export default function AdminLogsPage() {
     entityType: '',
   });
 
-  // ✅ Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -133,26 +127,35 @@ export default function AdminLogsPage() {
         .order('created_at', { ascending: false })
         .limit(500);
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('relation "employee_logs" does not exist')) {
+          setTableExists(false);
+          setLogs([]);
+          setFilteredLogs([]);
+          toast.warning('⚠️ La table des logs n\'existe pas encore');
+          return;
+        }
+        console.error('Erreur chargement logs:', error);
+        toast.error('Erreur lors du chargement des logs');
+        return;
+      }
 
       setLogs(data || []);
       setFilteredLogs(data || []);
+      setTableExists(true);
     } catch (error) {
       console.error('Erreur chargement logs:', error);
       toast.error('Erreur lors du chargement des logs');
     }
   };
 
-  // ✅ Application des filtres
   useEffect(() => {
     let result = [...logs];
 
-    // Filtre action
     if (filters.action !== 'all') {
       result = result.filter(log => log.action === filters.action);
     }
 
-    // Filtre recherche
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(log => 
@@ -163,7 +166,6 @@ export default function AdminLogsPage() {
       );
     }
 
-    // Filtre date
     if (filters.dateFrom) {
       result = result.filter(log => new Date(log.created_at) >= new Date(filters.dateFrom));
     }
@@ -173,7 +175,6 @@ export default function AdminLogsPage() {
       result = result.filter(log => new Date(log.created_at) <= dateTo);
     }
 
-    // Filtre entité
     if (filters.entityType) {
       result = result.filter(log => log.entity_type === filters.entityType);
     }
@@ -225,7 +226,6 @@ export default function AdminLogsPage() {
     setSearchTerm('');
   };
 
-  // ✅ Pagination
   const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
   const paginatedLogs = filteredLogs.slice(
     (currentPage - 1) * itemsPerPage,
@@ -249,7 +249,6 @@ export default function AdminLogsPage() {
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
-        {/* En-tête */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-[#1E3A8A] flex items-center gap-3">
@@ -281,7 +280,21 @@ export default function AdminLogsPage() {
           </div>
         </div>
 
-        {/* Filtres */}
+        {!tableExists && (
+          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-yellow-800">
+              ⚠️ La table des logs n'existe pas encore. Exécutez le script SQL dans Supabase pour la créer.
+            </p>
+            <Button 
+              variant="outline" 
+              className="mt-2 border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+              onClick={() => window.open('https://app.supabase.com', '_blank')}
+            >
+              Aller à Supabase
+            </Button>
+          </div>
+        )}
+
         {showFilters && (
           <Card className="mt-4 border border-slate-200">
             <CardContent className="p-4">
@@ -347,7 +360,6 @@ export default function AdminLogsPage() {
           </Card>
         )}
 
-        {/* Recherche */}
         <div className="mt-4">
           <div className="relative">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -360,7 +372,6 @@ export default function AdminLogsPage() {
           </div>
         </div>
 
-        {/* Statistiques */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card>
             <CardContent className="p-3">
@@ -396,7 +407,6 @@ export default function AdminLogsPage() {
           </Card>
         </div>
 
-        {/* Liste des logs */}
         <div className="mt-4 rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -406,16 +416,17 @@ export default function AdminLogsPage() {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Utilisateur</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Action</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden md:table-cell">Entité</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden lg:table-cell">Détails</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                      {searchTerm || Object.values(filters).some(v => v && v !== 'all') 
-                        ? 'Aucun résultat pour ces critères' 
-                        : 'Aucune activité enregistrée'}
+                    <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                      {!tableExists 
+                        ? '⚠️ La table des logs n\'existe pas' 
+                        : searchTerm || Object.values(filters).some(v => v && v !== 'all') 
+                          ? 'Aucun résultat pour ces critères' 
+                          : 'Aucune activité enregistrée'}
                     </td>
                   </tr>
                 ) : (
@@ -457,10 +468,6 @@ export default function AdminLogsPage() {
                         <td className="px-4 py-3 hidden md:table-cell text-slate-600 text-xs">
                           {log.entity_type || '—'}
                         </td>
-                        <td className="px-4 py-3 hidden lg:table-cell text-slate-600 text-xs max-w-[200px] truncate">
-                          {log.details ? JSON.stringify(log.details).slice(0, 100) : '—'}
-                          {log.details && JSON.stringify(log.details).length > 100 && '...'}
-                        </td>
                       </tr>
                     );
                   })
@@ -469,7 +476,6 @@ export default function AdminLogsPage() {
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
               <p className="text-xs text-slate-500">
