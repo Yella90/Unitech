@@ -343,7 +343,7 @@ export class DonaTFIDF {
       spam: 'NONE',
       other: 'HUMAN',
     };
-    return map[category] || 'HUMAN';
+    return map[category];
   }
 
   // ✅ Traiter un email entrant
