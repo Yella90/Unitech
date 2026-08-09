@@ -1,7 +1,7 @@
 // app/(dashboard)/admin/analytics/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +20,8 @@ import {
   FaDownload,
   FaArrowUp,
   FaArrowDown,
-  FaMinus
+  FaMinus,
+  FaSpinner
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -40,6 +41,7 @@ type AnalyticsData = {
 export default function AdminAnalyticsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<AnalyticsData>({
     totalVisits: 0,
     uniqueVisitors: 0,
@@ -53,6 +55,8 @@ export default function AdminAnalyticsPage() {
     trend: 'stable'
   });
   const [isAdmin, setIsAdmin] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,6 +72,11 @@ export default function AdminAnalyticsPage() {
         setIsAdmin(true);
         await loadAnalytics();
 
+        // ✅ Mettre en place le rafraîchissement automatique
+        intervalRef.current = setInterval(() => {
+          loadAnalytics(true); // Rafraîchissement silencieux
+        }, 60000); // Toutes les minutes
+
       } catch (error) {
         console.error('Erreur:', error);
         toast.error('Erreur lors du chargement');
@@ -77,9 +86,20 @@ export default function AdminAnalyticsPage() {
     };
 
     fetchData();
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, [router]);
 
-  const loadAnalytics = async () => {
+  // ✅ Fonction de chargement optimisée
+  const loadAnalytics = async (silent: boolean = false) => {
+    if (!silent) {
+      setRefreshing(true);
+    }
+
     try {
       const { data: visits, error } = await supabase
         .from('page_visits')
@@ -90,105 +110,124 @@ export default function AdminAnalyticsPage() {
 
       if (!visits || visits.length === 0) {
         setData(prev => ({ ...prev, totalVisits: 0 }));
+        if (!silent) toast.info('Aucune donnée disponible');
         return;
       }
 
-      // Calculer les statistiques
-      const totalVisits = visits.length;
-      const uniqueVisitors = new Set(visits.map(v => v.visitor_id).filter(id => id)).size;
+      // ✅ Calculer les statistiques (en dehors du state pour éviter les re-rendus inutiles)
+      const newData = calculateStats(visits);
+      
+      // ✅ Mettre à jour le state en une seule fois
+      setData(newData);
+      setLastUpdate(new Date());
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayVisits = visits.filter(v => new Date(v.created_at) >= today).length;
-
-      // Appareils
-      const deviceCounts = { desktop: 0, mobile: 0, tablet: 0 };
-      visits.forEach(v => {
-        const device = v.device_type?.toLowerCase() || 'desktop';
-        if (device === 'desktop' || device === 'pc') deviceCounts.desktop++;
-        else if (device === 'mobile' || device === 'phone') deviceCounts.mobile++;
-        else if (device === 'tablet') deviceCounts.tablet++;
-        else deviceCounts.desktop++;
-      });
-
-      // Pages
-      const pageCounts: Record<string, number> = {};
-      visits.forEach(v => {
-        const page = v.page || '/';
-        pageCounts[page] = (pageCounts[page] || 0) + 1;
-      });
-      const visitsByPage = Object.entries(pageCounts)
-        .map(([page, count]) => ({ page, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-
-      // Pays
-      const countryCounts: Record<string, number> = {};
-      visits.forEach(v => {
-        const country = v.country || 'Inconnu';
-        countryCounts[country] = (countryCounts[country] || 0) + 1;
-      });
-      const visitsByCountry = Object.entries(countryCounts)
-        .map(([country, count]) => ({ country, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      // 7 derniers jours
-      const visitsByDay = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        const start = new Date(date);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(date);
-        end.setHours(23, 59, 59, 999);
-        
-        const count = visits.filter(v => {
-          const d = new Date(v.created_at);
-          return d >= start && d <= end;
-        }).length;
-        
-        visitsByDay.push({
-          date: date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }),
-          count
-        });
+      if (!silent) {
+        toast.success(`✅ Données actualisées (${new Date().toLocaleTimeString()})`);
       }
-
-      // Tendance
-      const yesterdayVisits = visits.filter(v => {
-        const d = new Date(v.created_at);
-        const y = new Date(today);
-        y.setDate(y.getDate() - 1);
-        return d >= y && d < today;
-      }).length;
-
-      const trend = yesterdayVisits > 0
-        ? todayVisits > yesterdayVisits ? 'up' 
-          : todayVisits < yesterdayVisits ? 'down' 
-          : 'stable'
-        : 'stable';
-
-      setData({
-        totalVisits,
-        uniqueVisitors,
-        todayVisits,
-        avgDuration: 0,
-        bounceRate: 0,
-        visitsByDevice: deviceCounts,
-        visitsByPage,
-        visitsByDay,
-        visitsByCountry,
-        trend
-      });
 
     } catch (error) {
       console.error('Erreur:', error);
-      toast.error('Erreur lors du chargement des analytics');
+      if (!silent) {
+        toast.error('Erreur lors du chargement des analytics');
+      }
+    } finally {
+      if (!silent) {
+        setRefreshing(false);
+      }
     }
   };
 
+  // ✅ Fonction de calcul des statistiques (pure, sans effet de bord)
+  const calculateStats = (visits: any[]): AnalyticsData => {
+    const totalVisits = visits.length;
+    const uniqueVisitors = new Set(visits.map(v => v.visitor_id).filter(id => id)).size;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayVisits = visits.filter(v => new Date(v.created_at) >= today).length;
+
+    // Appareils
+    const deviceCounts = { desktop: 0, mobile: 0, tablet: 0 };
+    visits.forEach(v => {
+      const device = v.device_type?.toLowerCase() || 'desktop';
+      if (device === 'desktop' || device === 'pc') deviceCounts.desktop++;
+      else if (device === 'mobile' || device === 'phone') deviceCounts.mobile++;
+      else if (device === 'tablet') deviceCounts.tablet++;
+      else deviceCounts.desktop++;
+    });
+
+    // Pages
+    const pageCounts: Record<string, number> = {};
+    visits.forEach(v => {
+      const page = v.page || '/';
+      pageCounts[page] = (pageCounts[page] || 0) + 1;
+    });
+    const visitsByPage = Object.entries(pageCounts)
+      .map(([page, count]) => ({ page, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Pays
+    const countryCounts: Record<string, number> = {};
+    visits.forEach(v => {
+      const country = v.country || 'Inconnu';
+      countryCounts[country] = (countryCounts[country] || 0) + 1;
+    });
+    const visitsByCountry = Object.entries(countryCounts)
+      .map(([country, count]) => ({ country, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // 7 derniers jours
+    const visitsByDay = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      
+      const count = visits.filter(v => {
+        const d = new Date(v.created_at);
+        return d >= start && d <= end;
+      }).length;
+      
+      visitsByDay.push({
+        date: date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }),
+        count
+      });
+    }
+
+    // Tendance
+    const yesterdayVisits = visits.filter(v => {
+      const d = new Date(v.created_at);
+      const y = new Date(today);
+      y.setDate(y.getDate() - 1);
+      return d >= y && d < today;
+    }).length;
+
+    const trend = yesterdayVisits > 0
+      ? todayVisits > yesterdayVisits ? 'up' 
+        : todayVisits < yesterdayVisits ? 'down' 
+        : 'stable'
+      : 'stable';
+
+    return {
+      totalVisits,
+      uniqueVisitors,
+      todayVisits,
+      avgDuration: 0,
+      bounceRate: 0,
+      visitsByDevice: deviceCounts,
+      visitsByPage,
+      visitsByDay,
+      visitsByCountry,
+      trend
+    };
+  };
+
   const exportCSV = () => {
-    // Logique d'export
     toast.success('Export CSV en cours...');
   };
 
@@ -209,20 +248,35 @@ export default function AdminAnalyticsPage() {
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
+        {/* ✅ En-tête avec indicateur de rafraîchissement */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-[#1E3A8A] flex items-center gap-3">
               <FaChartLine className="h-8 w-8 text-[#F97316]" />
               Analytics
+              {refreshing && (
+                <FaSpinner className="h-5 w-5 animate-spin text-[#F97316]" />
+              )}
             </h1>
-            <p className="mt-1 text-slate-500">
+            <p className="mt-1 text-slate-500 flex items-center gap-2">
               Statistiques détaillées des visiteurs
+              <span className="text-xs text-slate-400">
+                · Dernière mise à jour: {lastUpdate.toLocaleTimeString()}
+              </span>
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={loadAnalytics}>
-              <FaSync className="mr-2 h-4 w-4" />
-              Rafraîchir
+            <Button 
+              variant="outline" 
+              onClick={() => loadAnalytics(false)}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FaSync className="mr-2 h-4 w-4" />
+              )}
+              {refreshing ? 'Chargement...' : 'Rafraîchir'}
             </Button>
             <Button variant="outline" onClick={exportCSV}>
               <FaDownload className="mr-2 h-4 w-4" />
@@ -231,36 +285,48 @@ export default function AdminAnalyticsPage() {
           </div>
         </div>
 
-        {/* Statistiques générales */}
+        {/* ✅ Statistiques avec animations conditionnelles */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Card>
+          <Card className="transition-all hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Total visites</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{data.totalVisits}</p>
+                  <p className={`text-2xl font-bold text-[#1E3A8A] transition-opacity duration-300 ${
+                    refreshing ? 'opacity-50' : 'opacity-100'
+                  }`}>
+                    {data.totalVisits}
+                  </p>
                 </div>
                 <FaEye className="h-8 w-8 text-[#F97316]" />
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="transition-all hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Visiteurs uniques</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{data.uniqueVisitors}</p>
+                  <p className={`text-2xl font-bold text-[#1E3A8A] transition-opacity duration-300 ${
+                    refreshing ? 'opacity-50' : 'opacity-100'
+                  }`}>
+                    {data.uniqueVisitors}
+                  </p>
                 </div>
                 <FaUserFriends className="h-8 w-8 text-[#F97316]" />
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="transition-all hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Aujourd'hui</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{data.todayVisits}</p>
+                  <p className={`text-2xl font-bold text-[#1E3A8A] transition-opacity duration-300 ${
+                    refreshing ? 'opacity-50' : 'opacity-100'
+                  }`}>
+                    {data.todayVisits}
+                  </p>
                 </div>
                 <FaClock className="h-8 w-8 text-[#10B981]" />
               </div>
@@ -272,12 +338,16 @@ export default function AdminAnalyticsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="transition-all hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Taux de rebond</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{data.bounceRate}%</p>
+                  <p className={`text-2xl font-bold text-[#1E3A8A] transition-opacity duration-300 ${
+                    refreshing ? 'opacity-50' : 'opacity-100'
+                  }`}>
+                    {data.bounceRate}%
+                  </p>
                 </div>
                 <FaChartLine className="h-8 w-8 text-purple-500" />
               </div>
@@ -285,31 +355,38 @@ export default function AdminAnalyticsPage() {
           </Card>
         </div>
 
-        {/* Graphique 7 jours */}
+        {/* ✅ Graphique avec état de chargement */}
         <Card className="mt-6">
           <CardHeader>
             <CardTitle className="text-lg">Visites des 7 derniers jours</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-end gap-2 h-32">
-              {data.visitsByDay.map((day, index) => {
-                const height = maxVisits > 0 ? (day.count / maxVisits) * 100 : 0;
-                return (
-                  <div key={index} className="flex-1 flex flex-col items-center">
-                    <div 
-                      className="w-full rounded-sm bg-[#1E3A8A] transition-all duration-500"
-                      style={{ height: `${Math.max(height * 0.8, 2)}%` }}
-                    />
-                    <span className="mt-1 text-[10px] text-slate-400">{day.date}</span>
-                    <span className="text-[9px] text-slate-300">{day.count}</span>
-                  </div>
-                );
-              })}
+            <div className="relative">
+              {refreshing && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/50 rounded-lg z-10">
+                  <FaSpinner className="h-8 w-8 animate-spin text-[#1E3A8A]" />
+                </div>
+              )}
+              <div className="flex items-end gap-2 h-32">
+                {data.visitsByDay.map((day, index) => {
+                  const height = maxVisits > 0 ? (day.count / maxVisits) * 100 : 0;
+                  return (
+                    <div key={index} className="flex-1 flex flex-col items-center">
+                      <div 
+                        className="w-full rounded-sm bg-[#1E3A8A] transition-all duration-500"
+                        style={{ height: `${Math.max(height * 0.8, 2)}%` }}
+                      />
+                      <span className="mt-1 text-[10px] text-slate-400">{day.date}</span>
+                      <span className="text-[9px] text-slate-300">{day.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Pages et appareils */}
+        {/* ✅ Pages et appareils */}
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
@@ -359,7 +436,7 @@ export default function AdminAnalyticsPage() {
           </Card>
         </div>
 
-        {/* Pays */}
+        {/* ✅ Pays */}
         <Card className="mt-6">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
