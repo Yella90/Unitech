@@ -1,6 +1,9 @@
 // lib/dona/processor.ts
 import { supabase } from '@/lib/supabase';
 
+// ============================================================
+// TYPES
+// ============================================================
 type KeywordConfig = {
   id: string;
   category: string;
@@ -34,10 +37,30 @@ type ContactData = {
   message: string;
 };
 
+type ProcessEmailResult = {
+  action: 'stored' | 'ignored' | 'newsletter' | 'error';
+  reason?: string;
+  email_id?: string;
+  analysis?: AnalysisResult;
+  error?: Error;
+};
+
+type ProcessContactResult = {
+  action: 'updated' | 'error';
+  analysis?: AnalysisResult;
+  error?: Error;
+};
+
+// ============================================================
+// CLASSE DONA
+// ============================================================
 export class Dona {
   private keywordConfigs: KeywordConfig[] = [];
 
-  async loadConfig() {
+  // ============================================================
+  // CHARGEMENT DE LA CONFIGURATION
+  // ============================================================
+  async loadConfig(): Promise<void> {
     console.log('📊 DONA: Chargement de la configuration...');
 
     try {
@@ -55,31 +78,101 @@ export class Dona {
       
       console.log(`📋 ${this.keywordConfigs.length} catégories chargées`);
       
-      if (this.keywordConfigs.length > 0) {
-        const categories = this.keywordConfigs.map(c => c.category);
-        console.log(`📋 Catégories: ${categories.join(', ')}`);
-      } else {
+      if (this.keywordConfigs.length === 0) {
         console.warn('⚠️ Aucune catégorie chargée ! Utilisation des mots-clés par défaut');
         this.useDefaultKeywords();
       }
-    } catch (error) {
-      console.error('❌ Erreur inattendue:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      console.error('❌ Erreur inattendue:', errorMessage);
       this.useDefaultKeywords();
     }
   }
 
-  private useDefaultKeywords() {
+  // ============================================================
+  // MOTS-CLÉS PAR DÉFAUT
+  // ============================================================
+  private useDefaultKeywords(): void {
     this.keywordConfigs = [
-      { id: 'default-commercial', category: 'commercial', keywords: ['prix', 'achat', 'devis', 'acheter', 'tarif', 'facture', 'paiement', 'produit', 'service', 'domotique', 'boutique', 'scolaire', 'energie', 'solution', 'logiciel', 'catalogue', 'prestation'], priority: 1, is_active: true },
-      { id: 'default-project', category: 'project', keywords: ['projet', 'developpement', 'prestation', 'realisation', 'saas', 'logiciel', 'application', 'solution', 'gestion', 'boutique', 'scolaire', 'domotique', 'energie', 'plateforme', 'systeme', 'automatisation', 'application web', 'service'], priority: 1, is_active: true },
-      { id: 'default-support', category: 'support', keywords: ['aide', 'probleme', 'bug', 'erreur', 'assistance', 'support', 'help', 'issue', 'problem', 'panne', 'incident', 'difficulte', 'bloque', 'fonctionne pas', 'marche pas', 'plantage', 'urgent', 'assistance technique'], priority: 1, is_active: true },
-      { id: 'default-newsletter', category: 'newsletter', keywords: ['newsletter', 'inscription', 'desinscription', 'abonnement', 'unsubscribe', 'news', 'infolettre', 'actualite', 'information', 'rejoindre', 'quitter', 'se desinscrire', 'actualites'], priority: 2, is_active: true },
-      { id: 'default-information', category: 'information', keywords: ['information', 'renseignement', 'demande', 'question', 'infos', 'connaitre', 'savoir', 'details', 'precisions', 'expliquer'], priority: 3, is_active: true },
-      { id: 'default-spam', category: 'spam', keywords: ['spam', 'viagra', 'casino', 'porn', 'phishing', '$$$', 'lottery', 'gagnant', 'cliquez ici', 'offre exceptionnelle', 'million', 'gratuit', 'argent facile'], priority: 0, is_active: true },
+      { 
+        id: 'default-commercial', 
+        category: 'commercial', 
+        keywords: [
+          'prix', 'achat', 'devis', 'acheter', 'tarif', 'facture', 
+          'paiement', 'produit', 'service', 'domotique', 'boutique', 
+          'scolaire', 'energie', 'solution', 'logiciel', 'catalogue', 
+          'prestation', 'commande', 'livraison', 'stock'
+        ], 
+        priority: 1, 
+        is_active: true 
+      },
+      { 
+        id: 'default-project', 
+        category: 'project', 
+        keywords: [
+          'projet', 'developpement', 'prestation', 'realisation', 
+          'saas', 'logiciel', 'application', 'solution', 'gestion', 
+          'boutique', 'scolaire', 'domotique', 'energie', 'plateforme', 
+          'systeme', 'automatisation', 'application web', 'service',
+          'conception', 'architecture', 'base de donnees'
+        ], 
+        priority: 1, 
+        is_active: true 
+      },
+      { 
+        id: 'default-support', 
+        category: 'support', 
+        keywords: [
+          'aide', 'probleme', 'bug', 'erreur', 'assistance', 'support', 
+          'help', 'issue', 'problem', 'panne', 'incident', 'difficulte', 
+          'bloque', 'fonctionne pas', 'marche pas', 'plantage', 
+          'urgent', 'assistance technique', 'reparation', 'depannage'
+        ], 
+        priority: 1, 
+        is_active: true 
+      },
+      { 
+        id: 'default-newsletter', 
+        category: 'newsletter', 
+        keywords: [
+          'newsletter', 'inscription', 'desinscription', 'abonnement', 
+          'unsubscribe', 'news', 'infolettre', 'actualite', 'information', 
+          'rejoindre', 'quitter', 'se desinscrire', 'actualites',
+          'bulletin', 'mise a jour'
+        ], 
+        priority: 2, 
+        is_active: true 
+      },
+      { 
+        id: 'default-information', 
+        category: 'information', 
+        keywords: [
+          'information', 'renseignement', 'demande', 'question', 
+          'infos', 'connaitre', 'savoir', 'details', 'precisions', 
+          'expliquer', 'curieux', 'interesse'
+        ], 
+        priority: 3, 
+        is_active: true 
+      },
+      { 
+        id: 'default-spam', 
+        category: 'spam', 
+        keywords: [
+          'spam', 'viagra', 'casino', 'porn', 'phishing', '$$$', 
+          'lottery', 'gagnant', 'cliquez ici', 'offre exceptionnelle', 
+          'million', 'gratuit', 'argent facile', 'gagner', 'prix',
+          'cadeau', 'promotion', 'reduction', 'vente flash'
+        ], 
+        priority: 0, 
+        is_active: true 
+      },
     ];
     console.log(`📋 ${this.keywordConfigs.length} catégories par défaut chargées`);
   }
 
+  // ============================================================
+  // MAPPING PRIORITÉ
+  // ============================================================
   private getPriority(category: string): 'high' | 'medium' | 'low' {
     const map: Record<string, 'high' | 'medium' | 'low'> = {
       support: 'high',
@@ -93,6 +186,9 @@ export class Dona {
     return map[category] || 'medium';
   }
 
+  // ============================================================
+  // MAPPING AGENT
+  // ============================================================
   private getAgent(category: string): string {
     const map: Record<string, string> = {
       support: 'SUPPORT',
@@ -106,7 +202,9 @@ export class Dona {
     return map[category] || 'HUMAN';
   }
 
-  // ✅ analyze - version avec source
+  // ============================================================
+  // ANALYSE DU TEXTE
+  // ============================================================
   async analyze(input: {
     from?: string;
     subject?: string;
@@ -175,95 +273,211 @@ export class Dona {
     };
   }
 
-  // ✅ processEmail - avec source: 'email'
-  async processEmail(emailData: EmailData) {
+  // lib/dona/processor.ts - Version corrigée
+
+// ============================================================
+// TRAITER UN EMAIL (Version corrigée)
+// ============================================================
+async processEmail(emailData: EmailData): Promise<ProcessEmailResult> {
+  try {
     console.log(`📧 DONA analyse un email de ${emailData.from}`);
     
-    // ✅ Ajouter source: 'email'
     const analysis = await this.analyze({
       from: emailData.from,
       subject: emailData.subject,
       body: emailData.body,
-      source: 'email', // ✅ Ajouté
+      source: 'email',
     });
     
     console.log(`📊 Résultat: ${analysis.category} (confiance: ${analysis.confidence}%)`);
 
+    // ✅ SPAM → Ignorer
     if (analysis.category === 'spam') {
       console.log(`🚫 Email ignoré (spam)`);
+      
+      // ✅ Récupérer l'ID de l'email en attente
+      const { data: emailToUpdate, error: findError } = await supabase
+        .from('incoming_emails')
+        .select('id')
+        .eq('from_email', emailData.from)
+        .eq('subject', emailData.subject)
+        .eq('status', 'pending')
+        .limit(1)
+        .single();
+
+      if (findError) {
+        console.error('❌ Erreur recherche email:', findError);
+        return { action: 'error', error: new Error(findError.message) };
+      }
+
+      if (!emailToUpdate) {
+        console.log('⚠️ Aucun email en attente trouvé');
+        return { action: 'ignored', reason: 'no_pending_email' };
+      }
+
+      const { error } = await supabase
+        .from('incoming_emails')
+        .update({
+          category: analysis.category,
+          priority: analysis.priority,
+          assigned_agent: 'NONE',
+          status: 'ignored',
+          ai_analysis: analysis,
+          updated_at: new Date().toISOString(),
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', emailToUpdate.id);
+
+      if (error) {
+        console.error('❌ Erreur mise à jour spam:', error);
+        return { action: 'error', error: new Error(error.message) };
+      }
       return { action: 'ignored', reason: 'spam' };
     }
 
+    // ✅ NEWSLETTER → Ajouter à la liste
     if (analysis.category === 'newsletter') {
       await this.handleNewsletter(emailData);
+      
+      const { data: emailToUpdate, error: findError } = await supabase
+        .from('incoming_emails')
+        .select('id')
+        .eq('from_email', emailData.from)
+        .eq('subject', emailData.subject)
+        .eq('status', 'pending')
+        .limit(1)
+        .single();
+
+      if (findError) {
+        console.error('❌ Erreur recherche email:', findError);
+        return { action: 'error', error: new Error(findError.message) };
+      }
+
+      if (!emailToUpdate) {
+        console.log('⚠️ Aucun email en attente trouvé');
+        return { action: 'newsletter', analysis };
+      }
+
+      const { error } = await supabase
+        .from('incoming_emails')
+        .update({
+          category: analysis.category,
+          priority: analysis.priority,
+          assigned_agent: 'NEWSLETTER',
+          status: 'processed',
+          ai_analysis: analysis,
+          updated_at: new Date().toISOString(),
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', emailToUpdate.id);
+
+      if (error) {
+        console.error('❌ Erreur mise à jour newsletter:', error);
+        return { action: 'error', error: new Error(error.message) };
+      }
+      
       return { action: 'newsletter', analysis };
+    }
+
+    // ✅ Mettre à jour l'email avec un statut valide
+    const { data: emailToUpdate, error: findError } = await supabase
+      .from('incoming_emails')
+      .select('id')
+      .eq('from_email', emailData.from)
+      .eq('subject', emailData.subject)
+      .eq('status', 'pending')
+      .limit(1)
+      .single();
+
+    if (findError) {
+      console.error('❌ Erreur recherche email:', findError);
+      return { action: 'error', error: new Error(findError.message) };
+    }
+
+    if (!emailToUpdate) {
+      console.log('⚠️ Aucun email en attente trouvé');
+      return { action: 'error', error: new Error('No pending email found') };
     }
 
     const { data, error } = await supabase
       .from('incoming_emails')
-      .insert({
-        from_email: emailData.from,
-        to_email: emailData.to,
-        subject: emailData.subject,
-        body: emailData.body,
-        received_at: new Date().toISOString(),
+      .update({
         category: analysis.category,
         priority: analysis.priority,
         assigned_agent: analysis.assigned_agent,
-        status: 'pending',
+        status: 'processed',
         ai_analysis: analysis,
-        is_relevant: true,
+        updated_at: new Date().toISOString(),
+        processed_at: new Date().toISOString(),
       })
+      .eq('id', emailToUpdate.id)
       .select()
       .single();
 
     if (error) {
-      console.error('❌ Erreur insertion:', error);
-      return { action: 'error', error };
+      console.error('❌ Erreur mise à jour email:', error);
+      return { action: 'error', error: new Error(error.message) };
     }
 
-    console.log(`✅ Email ${data.id} stocké et assigné à ${analysis.assigned_agent}`);
+    console.log(`✅ Email ${data.id} classé: ${analysis.category} (assigné à ${analysis.assigned_agent})`);
     return { action: 'stored', email_id: data.id, analysis };
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+    console.error('❌ Erreur processEmail:', errorMessage);
+    return { action: 'error', error: new Error(errorMessage) };
   }
+}
 
-  // ✅ processContact - avec source: 'contact'
-  async processContact(contactData: ContactData) {
-    console.log(`📧 DONA analyse un contact de ${contactData.name}`);
-    
-    // ✅ Ajouter source: 'contact'
-    const analysis = await this.analyze({
-      from: contactData.email,
-      subject: contactData.subject,
-      body: contactData.message,
-      source: 'contact', // ✅ Ajouté
-    });
-    
-    console.log(`📊 Résultat: ${analysis.category} (confiance: ${analysis.confidence}%)`);
+  // ============================================================
+  // TRAITER UN CONTACT
+  // ============================================================
+  async processContact(contactData: ContactData): Promise<ProcessContactResult> {
+    try {
+      console.log(`📧 DONA analyse un contact de ${contactData.name}`);
+      
+      const analysis = await this.analyze({
+        from: contactData.email,
+        subject: contactData.subject,
+        body: contactData.message,
+        source: 'contact',
+      });
+      
+      console.log(`📊 Résultat: ${analysis.category} (confiance: ${analysis.confidence}%)`);
 
-    const updateData: any = {
-      status: 'read',
-      category: analysis.category,
-      assigned_agent: analysis.assigned_agent,
-      priority: analysis.priority,
-      processed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+      const updateData: any = {
+        status: 'processed',
+        category: analysis.category,
+        assigned_agent: analysis.assigned_agent,
+        priority: analysis.priority,
+        processed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-    const { error } = await supabase
-      .from('contacts')
-      .update(updateData)
-      .eq('id', contactData.id);
+      const { error } = await supabase
+        .from('contacts')
+        .update(updateData)
+        .eq('id', contactData.id);
 
-    if (error) {
-      console.error('❌ Erreur mise à jour contact:', error);
-      return { action: 'error', error };
+      if (error) {
+        console.error('❌ Erreur mise à jour contact:', error);
+        return { action: 'error', error: new Error(error.message) };
+      }
+
+      console.log(`✅ Contact ${contactData.id} classé: ${analysis.category} (confiance: ${analysis.confidence}%)`);
+      return { action: 'updated', analysis };
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      console.error('❌ Erreur processContact:', errorMessage);
+      return { action: 'error', error: new Error(errorMessage) };
     }
-
-    console.log(`✅ Contact ${contactData.id} classé: ${analysis.category} (confiance: ${analysis.confidence}%)`);
-    return { action: 'updated', analysis };
   }
 
-  private async handleNewsletter(emailData: EmailData) {
+  // ============================================================
+  // GÉRER LA NEWSLETTER
+  // ============================================================
+  private async handleNewsletter(emailData: EmailData): Promise<void> {
     try {
       const { data: existing } = await supabase
         .from('newsletter_subscribers')
@@ -286,10 +500,14 @@ export class Dona {
         });
 
       console.log(`📬 ${emailData.from} ajouté à la newsletter`);
-    } catch (error) {
-      console.error('❌ Erreur newsletter:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+      console.error('❌ Erreur newsletter:', errorMessage);
     }
   }
 }
 
+// ============================================================
+// EXPORT DE L'INSTANCE
+// ============================================================
 export const dona = new Dona();

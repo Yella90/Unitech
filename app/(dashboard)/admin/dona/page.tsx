@@ -21,10 +21,15 @@ import {
   FaTrash,
   FaChartBar,
   FaDownload,
-  FaSpinner
+  FaSpinner,
+  FaInbox,
+  FaUserFriends
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
+// ============================================================
+// TYPES
+// ============================================================
 type Contact = {
   id: string;
   name: string;
@@ -50,8 +55,14 @@ type Email = {
   priority: string;
   status: string;
   created_at: string;
+  received_at: string;
+  processed_at: string;
+  ai_analysis: any;
 };
 
+// ============================================================
+// CONFIGURATION DES COULEURS
+// ============================================================
 const categoryColors: Record<string, string> = {
   support: 'bg-blue-100 text-blue-700 border-blue-200',
   commercial: 'bg-orange-100 text-orange-700 border-orange-200',
@@ -76,8 +87,13 @@ const statusColors: Record<string, string> = {
   responded: 'bg-emerald-100 text-emerald-700',
   archived: 'bg-gray-100 text-gray-700',
   read: 'bg-blue-100 text-blue-700',
+  ignored: 'bg-gray-100 text-gray-500',
+  error: 'bg-red-100 text-red-700',
 };
 
+// ============================================================
+// COMPOSANT PRINCIPAL
+// ============================================================
 export default function AdminDonaPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -86,12 +102,18 @@ export default function AdminDonaPage() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [emailFilter, setEmailFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [emailSearchTerm, setEmailSearchTerm] = useState('');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [activeTab, setActiveTab] = useState('contacts');
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ============================================================
+  // INITIALISATION
+  // ============================================================
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -116,14 +138,13 @@ export default function AdminDonaPage() {
 
     fetchData();
 
-    // ✅ Mettre en place l'intervalle de rafraîchissement automatique
+    // Auto-raffraîchissement
     if (autoRefresh) {
       intervalRef.current = setInterval(() => {
-        loadData(true); // Rafraîchir en arrière-plan
-      }, 30000); // Toutes les 30 secondes
+        loadData(true);
+      }, 30000);
     }
 
-    // ✅ Nettoyer l'intervalle
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -131,13 +152,16 @@ export default function AdminDonaPage() {
     };
   }, [router, autoRefresh]);
 
+  // ============================================================
+  // CHARGEMENT DES DONNÉES
+  // ============================================================
   const loadData = async (silent: boolean = false) => {
     if (!silent) {
       setRefreshing(true);
     }
 
     try {
-      // ✅ Charger les contacts avec écoute en temps réel
+      // ✅ Charger les contacts
       const { data: contactsData, error: contactError } = await supabase
         .from('contacts')
         .select('*')
@@ -151,7 +175,7 @@ export default function AdminDonaPage() {
         setContacts(contactsData || []);
       }
 
-      // ✅ Charger les emails traités (si la table existe)
+      // ✅ Charger les emails
       const { data: emailsData, error: emailError } = await supabase
         .from('incoming_emails')
         .select('*')
@@ -161,6 +185,7 @@ export default function AdminDonaPage() {
       if (emailError) {
         if (emailError.code !== '42P01') {
           console.error('Erreur emails:', emailError);
+          if (!silent) toast.error('Erreur lors du chargement des emails');
         }
       } else {
         setEmails(emailsData || []);
@@ -183,43 +208,26 @@ export default function AdminDonaPage() {
     }
   };
 
-  // ✅ Écouter les changements en temps réel via Supabase Realtime
+  // ============================================================
+  // TEMPS RÉEL (REALTIME)
+  // ============================================================
   useEffect(() => {
     if (!isAdmin) return;
 
-    // ✅ S'abonner aux changements sur la table contacts
+    // Contacts
     const contactsChannel = supabase
       .channel('contacts-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'contacts',
-        },
-        (payload) => {
-          console.log('🔄 Changement contact:', payload);
-          // Recharger les données silencieusement
-          loadData(true);
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => {
+        loadData(true);
+      })
       .subscribe();
 
-    // ✅ S'abonner aux changements sur la table incoming_emails (si existe)
+    // Emails
     const emailsChannel = supabase
       .channel('emails-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'incoming_emails',
-        },
-        (payload) => {
-          console.log('🔄 Changement email:', payload);
-          loadData(true);
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_emails' }, () => {
+        loadData(true);
+      })
       .subscribe();
 
     return () => {
@@ -228,6 +236,79 @@ export default function AdminDonaPage() {
     };
   }, [isAdmin]);
 
+  // ============================================================
+  // FILTRES ET RECHERCHE
+  // ============================================================
+  const getFilteredContacts = () => {
+    let filtered = contacts;
+    
+    if (filter === 'processed') {
+      filtered = filtered.filter(c => c.status === 'processed' || c.status === 'read');
+    } else if (filter === 'pending') {
+      filtered = filtered.filter(c => c.status === 'pending');
+    } else if (filter !== 'all') {
+      filtered = filtered.filter(c => c.category === filter);
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(c => 
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.subject.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  const getFilteredEmails = () => {
+    let filtered = emails;
+    
+    if (emailFilter === 'processed') {
+      filtered = filtered.filter(e => e.status === 'processed');
+    } else if (emailFilter === 'pending') {
+      filtered = filtered.filter(e => e.status === 'pending');
+    } else if (emailFilter === 'ignored') {
+      filtered = filtered.filter(e => e.status === 'ignored' || e.status === 'spam');
+    } else if (emailFilter !== 'all') {
+      filtered = filtered.filter(e => e.category === emailFilter);
+    }
+
+    if (emailSearchTerm) {
+      filtered = filtered.filter(e => 
+        e.from_email.toLowerCase().includes(emailSearchTerm.toLowerCase()) ||
+        e.subject.toLowerCase().includes(emailSearchTerm.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  // ============================================================
+  // STATISTIQUES
+  // ============================================================
+  const contactsStats = {
+    total: contacts.length,
+    processed: contacts.filter(c => c.status === 'processed' || c.status === 'read').length,
+    pending: contacts.filter(c => c.status === 'pending').length,
+    rate: contacts.length > 0 
+      ? Math.round((contacts.filter(c => c.status === 'processed' || c.status === 'read').length / contacts.length) * 100) 
+      : 0
+  };
+
+  const emailsStats = {
+    total: emails.length,
+    processed: emails.filter(e => e.status === 'processed').length,
+    pending: emails.filter(e => e.status === 'pending').length,
+    ignored: emails.filter(e => e.status === 'ignored' || e.status === 'spam').length,
+    rate: emails.length > 0 
+      ? Math.round((emails.filter(e => e.status === 'processed').length / emails.length) * 100) 
+      : 0
+  };
+
+  // ============================================================
+  // RENDU
+  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F5F7FB]">
@@ -240,31 +321,17 @@ export default function AdminDonaPage() {
     return null;
   }
 
-  const processedContacts = contacts.filter(c => c.status === 'processed' || c.status === 'read').length;
-  const pendingContacts = contacts.filter(c => c.status === 'pending').length;
-  const totalContacts = contacts.length;
-
-  const filteredContacts = contacts.filter(c => {
-    if (filter === 'all') return true;
-    if (filter === 'processed') return c.status === 'processed' || c.status === 'read';
-    if (filter === 'pending') return c.status === 'pending';
-    return c.category === filter;
-  });
-
-  const displayedContacts = searchTerm
-    ? filteredContacts.filter(c => 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.subject.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : filteredContacts;
+  const displayedContacts = getFilteredContacts();
+  const displayedEmails = getFilteredEmails();
 
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-6">
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
-        {/* En-tête avec statut en temps réel */}
+        {/* ============================================================
+        EN-TÊTE
+        ============================================================ */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-[#1E3A8A] flex items-center gap-3">
@@ -308,16 +375,18 @@ export default function AdminDonaPage() {
           </div>
         </div>
 
-        {/* Statistiques avec animations */}
+        {/* ============================================================
+        STATISTIQUES GLOBALES
+        ============================================================ */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-6">
           <Card className="transition-all hover:shadow-md">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Total contacts</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A] animate-count">{totalContacts}</p>
+                  <p className="text-2xl font-bold text-[#1E3A8A]">{contactsStats.total}</p>
                 </div>
-                <FaUsers className="h-8 w-8 text-[#F97316]" />
+                <FaUserFriends className="h-8 w-8 text-[#F97316]" />
               </div>
             </CardContent>
           </Card>
@@ -325,8 +394,8 @@ export default function AdminDonaPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Traités</p>
-                  <p className="text-2xl font-bold text-green-600">{processedContacts}</p>
+                  <p className="text-xs text-slate-500">Contacts traités</p>
+                  <p className="text-2xl font-bold text-green-600">{contactsStats.processed}</p>
                 </div>
                 <FaCheckCircle className="h-8 w-8 text-green-500" />
               </div>
@@ -336,10 +405,10 @@ export default function AdminDonaPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">En attente</p>
-                  <p className="text-2xl font-bold text-yellow-600">{pendingContacts}</p>
+                  <p className="text-xs text-slate-500">Total emails</p>
+                  <p className="text-2xl font-bold text-[#1E3A8A]">{emailsStats.total}</p>
                 </div>
-                <FaClock className="h-8 w-8 text-yellow-500" />
+                <FaEnvelope className="h-8 w-8 text-[#F97316]" />
               </div>
             </CardContent>
           </Card>
@@ -347,164 +416,357 @@ export default function AdminDonaPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Taux de traitement</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">
-                    {totalContacts > 0 ? Math.round((processedContacts / totalContacts) * 100) : 0}%
-                  </p>
+                  <p className="text-xs text-slate-500">Emails traités</p>
+                  <p className="text-2xl font-bold text-green-600">{emailsStats.processed}</p>
                 </div>
-                <FaChartBar className="h-8 w-8 text-[#F97316]" />
+                <FaCheckCircle className="h-8 w-8 text-green-500" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Filtres et recherche */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              variant={filter === 'all' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('all')}
-              className={filter === 'all' ? 'bg-[#1E3A8A]' : ''}
-            >
-              Tous
-            </Button>
-            <Button 
-              variant={filter === 'processed' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('processed')}
-              className={filter === 'processed' ? 'bg-green-600' : ''}
-            >
-              ✅ Traités
-            </Button>
-            <Button 
-              variant={filter === 'pending' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('pending')}
-              className={filter === 'pending' ? 'bg-yellow-600' : ''}
-            >
-              ⏳ En attente
-            </Button>
-            <Button 
-              variant={filter === 'support' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('support')}
-              className={filter === 'support' ? 'bg-blue-600' : ''}
-            >
-              Support
-            </Button>
-            <Button 
-              variant={filter === 'commercial' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('commercial')}
-              className={filter === 'commercial' ? 'bg-orange-600' : ''}
-            >
-              Commercial
-            </Button>
-            <Button 
-              variant={filter === 'project' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('project')}
-              className={filter === 'project' ? 'bg-purple-600' : ''}
-            >
-              Projet
-            </Button>
-          </div>
-
-          <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Rechercher..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm w-48 sm:w-64"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Liste des contacts avec animation */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FaUsers className="h-5 w-5 text-[#F97316]" />
-              Contacts traités
-              <Badge variant="secondary" className="ml-2">
-                {displayedContacts.length}
+        {/* ============================================================
+        TABS - CONTACTS / EMAILS
+        ============================================================ */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="contacts" className="flex items-center gap-2">
+              <FaUserFriends className="h-4 w-4" />
+              Contacts
+              <Badge variant="secondary" className="ml-1">
+                {contactsStats.pending}
               </Badge>
-              {refreshing && (
-                <FaSpinner className="h-4 w-4 animate-spin ml-2 text-slate-400" />
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {displayedContacts.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <p>Aucun contact traité par DONA</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/50">
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Nom / Email</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden md:table-cell">Sujet</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Catégorie</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Statut</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden lg:table-cell">Agent</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-600">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayedContacts.map((contact) => (
-                      <tr key={contact.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="font-medium text-slate-800">{contact.name}</p>
-                            <p className="text-xs text-slate-400">{contact.email}</p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell text-slate-600">
-                          {contact.subject}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge className={categoryColors[contact.category] || categoryColors.other}>
-                            {contact.category || 'Non classé'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge className={statusColors[contact.status] || statusColors.pending}>
-                            {contact.status || 'pending'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 hidden lg:table-cell">
-                          <span className="text-xs font-medium text-slate-600">
-                            {contact.assigned_agent || '—'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">
-                          {new Date(contact.created_at).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric'
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </TabsTrigger>
+            <TabsTrigger value="emails" className="flex items-center gap-2">
+              <FaEnvelope className="h-4 w-4" />
+              Emails
+              <Badge variant="secondary" className="ml-1">
+                {emailsStats.pending}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ============================================================
+          TAB CONTACTS
+          ============================================================ */}
+          <TabsContent value="contacts">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FaUserFriends className="h-5 w-5 text-[#F97316]" />
+                  Contacts traités
+                  <Badge variant="secondary" className="ml-2">
+                    {displayedContacts.length}
+                  </Badge>
+                  {refreshing && (
+                    <FaSpinner className="h-4 w-4 animate-spin ml-2 text-slate-400" />
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Filtres contacts */}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      variant={filter === 'all' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('all')}
+                      className={filter === 'all' ? 'bg-[#1E3A8A]' : ''}
+                    >
+                      Tous ({contacts.length})
+                    </Button>
+                    <Button 
+                      variant={filter === 'processed' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('processed')}
+                      className={filter === 'processed' ? 'bg-green-600' : ''}
+                    >
+                      ✅ Traités ({contactsStats.processed})
+                    </Button>
+                    <Button 
+                      variant={filter === 'pending' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('pending')}
+                      className={filter === 'pending' ? 'bg-yellow-600' : ''}
+                    >
+                      ⏳ En attente ({contactsStats.pending})
+                    </Button>
+                    <Button 
+                      variant={filter === 'support' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('support')}
+                      className={filter === 'support' ? 'bg-blue-600' : ''}
+                    >
+                      Support
+                    </Button>
+                    <Button 
+                      variant={filter === 'commercial' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('commercial')}
+                      className={filter === 'commercial' ? 'bg-orange-600' : ''}
+                    >
+                      Commercial
+                    </Button>
+                    <Button 
+                      variant={filter === 'project' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('project')}
+                      className={filter === 'project' ? 'bg-purple-600' : ''}
+                    >
+                      Projet
+                    </Button>
+                  </div>
+
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher un contact..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm w-48 sm:w-64"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={() => setSearchTerm('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tableau contacts */}
+                {displayedContacts.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <p>Aucun contact trouvé</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50/50">
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Nom / Email</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden md:table-cell">Sujet</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Catégorie</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Statut</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden lg:table-cell">Agent</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedContacts.map((contact) => (
+                          <tr key={contact.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-slate-800">{contact.name}</p>
+                                <p className="text-xs text-slate-400">{contact.email}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 hidden md:table-cell text-slate-600 max-w-xs truncate">
+                              {contact.subject}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge className={categoryColors[contact.category] || categoryColors.other}>
+                                {contact.category || 'Non classé'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge className={statusColors[contact.status] || statusColors.pending}>
+                                {contact.status || 'pending'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 hidden lg:table-cell">
+                              <span className="text-xs font-medium text-slate-600">
+                                {contact.assigned_agent || '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 text-xs">
+                              {new Date(contact.created_at).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ============================================================
+          TAB EMAILS
+          ============================================================ */}
+          <TabsContent value="emails">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FaEnvelope className="h-5 w-5 text-[#F97316]" />
+                  Emails traités
+                  <Badge variant="secondary" className="ml-2">
+                    {displayedEmails.length}
+                  </Badge>
+                  {refreshing && (
+                    <FaSpinner className="h-4 w-4 animate-spin ml-2 text-slate-400" />
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Filtres emails */}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      variant={emailFilter === 'all' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('all')}
+                      className={emailFilter === 'all' ? 'bg-[#1E3A8A]' : ''}
+                    >
+                      Tous ({emails.length})
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'processed' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('processed')}
+                      className={emailFilter === 'processed' ? 'bg-green-600' : ''}
+                    >
+                      ✅ Traités ({emailsStats.processed})
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'pending' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('pending')}
+                      className={emailFilter === 'pending' ? 'bg-yellow-600' : ''}
+                    >
+                      ⏳ En attente ({emailsStats.pending})
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'ignored' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('ignored')}
+                      className={emailFilter === 'ignored' ? 'bg-gray-600' : ''}
+                    >
+                      🚫 Ignorés ({emailsStats.ignored})
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'support' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('support')}
+                      className={emailFilter === 'support' ? 'bg-blue-600' : ''}
+                    >
+                      Support
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'commercial' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('commercial')}
+                      className={emailFilter === 'commercial' ? 'bg-orange-600' : ''}
+                    >
+                      Commercial
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'project' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('project')}
+                      className={emailFilter === 'project' ? 'bg-purple-600' : ''}
+                    >
+                      Projet
+                    </Button>
+                  </div>
+
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher un email..."
+                      value={emailSearchTerm}
+                      onChange={(e) => setEmailSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm w-48 sm:w-64"
+                    />
+                    {emailSearchTerm && (
+                      <button
+                        onClick={() => setEmailSearchTerm('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tableau emails */}
+                {displayedEmails.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <p>Aucun email trouvé</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50/50">
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Expéditeur</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden md:table-cell">Sujet</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Catégorie</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Statut</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600 hidden lg:table-cell">Agent</th>
+                          <th className="px-4 py-3 text-left font-semibold text-slate-600">Reçu le</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayedEmails.map((email) => (
+                          <tr key={email.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-slate-800 text-xs truncate max-w-[150px]">
+                                  {email.from_email}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 hidden md:table-cell text-slate-600 max-w-xs truncate">
+                              {email.subject}
+                            </td>
+                            <td className="px-4 py-3">
+                              {email.category ? (
+                                <Badge className={categoryColors[email.category] || categoryColors.other}>
+                                  {email.category}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-slate-400">
+                                  Non classé
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge className={statusColors[email.status] || statusColors.pending}>
+                                {email.status || 'pending'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 hidden lg:table-cell">
+                              <span className="text-xs font-medium text-slate-600">
+                                {email.assigned_agent || '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 text-xs">
+                              {new Date(email.received_at || email.created_at).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );
