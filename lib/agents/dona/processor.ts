@@ -388,7 +388,7 @@ export class Dona {
       const { error } = await supabase
         .from('contacts')
         .update({
-          status: 'processed',
+          status: 'analyzed',
           category: analysis.category,
           assigned_agent: analysis.assigned_agent,
           priority: analysis.priority,
