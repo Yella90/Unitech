@@ -1,0 +1,999 @@
+// lib/agents/harvey/harvey.ts
+
+import { supabase } from '@/lib/supabase';
+import { generateWithFallback } from '@/lib/config/llm';
+
+import {
+  EmailWithAnalysis,
+  CompanyData,
+  ConversationHistory,
+  HarveyResponse,
+  HarveyConfig,
+} from './types';
+
+// ============================================================
+// CONFIGURATION PAR DÉFAUT
+// ============================================================
+
+const defaultConfig: HarveyConfig = {
+  maxEmailsPerRun: 5,
+  minConfidence: 60,
+  requireHumanReview: true,
+  defaultTone: 'professional',
+  temperature: 0.7,      // ✅ Ajouté
+  maxTokens: 800,        // ✅ Ajouté
+};
+
+// ============================================================
+// CLASSE HARVEY
+// ============================================================
+
+export class Harvey {
+  private config: HarveyConfig;
+  private companyData: CompanyData | null = null;
+  private knowledgeBase: any[] = [];
+  private templates: any[] = [];
+  private initialized = false;
+
+  constructor(config: Partial<HarveyConfig> = {}) {
+    this.config = { ...defaultConfig, ...config };
+  }
+
+  // ============================================================
+  // INITIALISATION
+  // ============================================================
+
+  async init(): Promise<void> {
+    if (this.initialized) return;
+
+    console.log('🦸‍♂️ HARVEY: Initialisation...');
+
+    await Promise.all([
+      this.loadCompanyData(),
+      this.loadKnowledgeBase(),
+      this.loadTemplates(),
+    ]);
+
+    this.initialized = true;
+    console.log('✅ HARVEY: Prêt à répondre');
+  }
+
+  // ============================================================
+  // CHARGEMENT DES DONNÉES ENTREPRISE
+  // ============================================================
+
+ // lib/agents/harvey/harvey.ts
+
+// ============================================================
+// CHARGEMENT DES DONNÉES ENTREPRISE (MODIFIÉ)
+// ============================================================
+
+private async loadCompanyData(): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from('company_data')
+      .select('*')
+      .single();
+
+    if (error) {
+      console.warn('⚠️ HARVEY: Données entreprise par défaut utilisées');
+      this.companyData = this.getDefaultCompanyData();
+      return;
+    }
+
+    // ✅ Transformer les données JSONB en objets typés
+    this.companyData = {
+      name: data.name || 'UNITECH',
+      description: data.description || '',
+      services: data.services || [],
+      formations: data.formations || [],      // ✅ NOUVEAU
+      projects: data.projects || [],          // ✅ NOUVEAU
+      missions: data.missions || [],          // ✅ NOUVEAU
+      pricing: data.pricing || {},
+      team: data.team || [],
+      faq: data.faq || [],
+    };
+
+    console.log(`🏢 HARVEY: ${this.companyData.name} chargé`);
+    console.log(`📚 ${this.companyData.services.length} services`);
+    console.log(`🎓 ${this.companyData.formations.length} formations`);
+    console.log(`📊 ${this.companyData.projects.length} projets`);
+    console.log(`🎯 ${this.companyData.missions.length} missions`);
+  } catch (error) {
+    console.warn('⚠️ HARVEY: Erreur chargement entreprise');
+    this.companyData = this.getDefaultCompanyData();
+  }
+}
+
+// ============================================================
+// DONNÉES PAR DÉFAUT (FALLBACK)
+// ============================================================
+
+private getDefaultCompanyData(): CompanyData {
+  return {
+    name: 'UNITECH',
+    description: 'Solutions technologiques intelligentes pour l\'éducation, l\'industrie et la formation professionnelle.',
+    services: [
+      {
+        name: 'SaaS Scolaire',
+        description: 'Gestion complète des établissements scolaires',
+        features: ['Gestion des élèves', 'Notes et bulletins', 'Paiements', 'Statistiques']
+      },
+      {
+        name: 'SaaS Boutique',
+        description: 'Gestion pour commerçants locaux',
+        features: ['Gestion des stocks', 'Suivi des ventes', 'Clients', 'Facturation']
+      },
+      {
+        name: 'Domotique Énergétique',
+        description: 'Système intelligent de gestion énergétique',
+        features: ['Suivi consommation', 'Facturation automatique', 'Optimisation IA']
+      }
+    ],
+    // ✅ Formations par défaut
+    formations: [
+      { name: 'Développement Web Full Stack', duration: '6 mois', level: 'Débutant à Avancé', technologies: ['React', 'Node.js', 'MongoDB'] },
+      { name: 'Intelligence Artificielle et ML', duration: '4 mois', level: 'Intermédiaire', technologies: ['Python', 'TensorFlow', 'Scikit-learn'] },
+      { name: 'Domotique et IoT', duration: '3 mois', level: 'Intermédiaire', technologies: ['Arduino', 'ESP32', 'MQTT'] }
+    ],
+    // ✅ Projets par défaut
+    projects: [
+      { name: 'SaaS Scolaire', status: 'En développement', progress: 68, description: 'Plateforme de gestion pour écoles' },
+      { name: 'SaaS Boutique', status: 'En développement', progress: 42, description: 'Solution pour commerçants locaux' },
+      { name: 'Domotique Énergétique', status: 'En développement', progress: 55, description: 'Système de gestion énergétique intelligente' }
+    ],
+    // ✅ Missions par défaut
+    missions: [
+      { title: 'Développeur Full Stack', description: 'Conception d\'applications web et mobiles' },
+      { title: 'Ingénieur IA', description: 'Développement de modèles d\'intelligence artificielle' },
+      { title: 'Expert Domotique', description: 'Installation et configuration de systèmes domotiques' }
+    ],
+    pricing: {
+      base: 'Sur devis',
+      consultation: 'Gratuite',
+      details: 'Nous proposons des solutions adaptées à vos besoins avec des tarifs compétitifs.'
+    },
+    team: [
+      { name: 'Laye Soma', role: 'Fondateur & CEO', email: 'laye@unitech.com' },
+      { name: 'Équipe TECH', role: 'Développement', email: 'tech@unitech.com' }
+    ],
+    faq: [
+      { question: 'Quels sont vos services ?', answer: 'Nous proposons des solutions SaaS, formations et missions' },
+      { question: 'Comment obtenir un devis ?', answer: 'Contactez-nous via le formulaire de contact ou par email.' }
+    ]
+  };
+}
+
+
+  // ============================================================
+  // CHARGEMENT BASE DE CONNAISSANCES
+  // ============================================================
+
+  private async loadKnowledgeBase(): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from('knowledge_base')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) {
+        console.warn('⚠️ HARVEY: Base de connaissances vide');
+        this.knowledgeBase = [];
+        return;
+      }
+
+      this.knowledgeBase = data || [];
+      console.log(`📚 HARVEY: ${this.knowledgeBase.length} connaissances chargées`);
+    } catch (error) {
+      console.error('❌ HARVEY: Erreur base de connaissances');
+      this.knowledgeBase = [];
+    }
+  }
+
+  // ============================================================
+  // CHARGEMENT DES TEMPLATES
+  // ============================================================
+
+  private async loadTemplates(): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from('response_templates')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) {
+        console.warn('⚠️ HARVEY: Aucun template disponible');
+        this.templates = [];
+        return;
+      }
+
+      this.templates = data || [];
+      console.log(`📝 HARVEY: ${this.templates.length} templates chargés`);
+    } catch (error) {
+      console.error('❌ HARVEY: Erreur chargement templates');
+      this.templates = [];
+    }
+  }
+
+  // ============================================================
+  // HISTORIQUE DES CONVERSATIONS
+  // ============================================================
+
+  private async getConversationHistory(
+    email: string,
+    limit: number = 5
+  ): Promise<ConversationHistory[]> {
+    try {
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .select(
+          'id, from_email, subject, message, body, agent_response, sent_at, response_tone, confidence'
+        )
+        .eq('from_email', email)
+        .eq('status', 'sent')
+        .order('sent_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur historique:', error);
+        return [];
+      }
+
+      if (!data || data.length === 0) return [];
+
+      return data.map(
+        (item: any): ConversationHistory => ({
+          id: item.id,
+          from_email: item.from_email,
+          subject: item.subject || 'Sans sujet',
+          body: item.message || item.body || '',
+          agent_response: item.agent_response || '',
+          sent_at: item.sent_at || new Date().toISOString(),
+          category: 'information',
+          tone: item.response_tone || 'professional',
+          confidence: item.confidence || 70,
+        })
+      );
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur historique:', error?.message || error);
+      return [];
+    }
+  }
+
+  // ============================================================
+  // CONSTRUCTION DU PROMPT
+  // ============================================================
+
+  // lib/agents/harvey/harvey.ts - buildPrompt()
+
+private buildPrompt(
+  email: EmailWithAnalysis,
+  history: ConversationHistory[],
+  companyData: CompanyData
+): string {
+  let prompt = `
+Tu es HARVEY, l'assistant IA professionnel de ${companyData.name}.
+
+## ENTREPRISE
+
+Nom : ${companyData.name}
+Description : ${companyData.description}
+
+## SERVICES
+
+${companyData.services.map(s => `- ${s.name}: ${s.description}`).join('\n')}
+
+## FORMATIONS PROPOSÉES
+
+${companyData.formations.map(f => 
+  `- ${f.name}: ${f.duration} (${f.level}) - Technologies: ${f.technologies.join(', ')}`
+).join('\n')}
+
+## PROJETS EN COURS
+
+${companyData.projects.map(p => 
+  `- ${p.name}: ${p.status} (${p.progress}%) - ${p.description}`
+).join('\n')}
+
+## MISSIONS DE L'ENTREPRISE
+
+${companyData.missions.map(m => `- ${m.title}: ${m.description}`).join('\n')}
+
+## TARIFS
+
+${JSON.stringify(companyData.pricing, null, 2)}
+
+## FAQ
+
+${companyData.faq.map(f => `- ${f.question}: ${f.answer}`).join('\n')}
+
+## EMAIL DU CLIENT
+
+De : ${email.from_email}
+Sujet : ${email.subject}
+Catégorie : ${email.category}
+Priorité : ${email.priority}
+Message : ${email.body.substring(0, 1500)}...
+
+## INSTRUCTION FINALE
+
+Rédige une réponse professionnelle et utile.
+Termine par : L'équipe ${companyData.name}
+`;
+
+  return prompt;
+}
+
+  // ============================================================
+  // APPEL À L'API LLM AVEC FALLBACK
+  // ============================================================
+
+  private async callLLM(prompt: string): Promise<string> {
+    try {
+      console.log('🤖 HARVEY: Appel du LLM avec fallback...');
+
+      // ✅ Utilisation de maxTokens (correct) au lieu de max_tokens
+      const result = await generateWithFallback({
+        messages: [
+          {
+            role: 'system',
+            content: `Tu es HARVEY, Associe Gérant  de UNITECH.
+
+Tu es spécialisé dans :
+- les solutions SaaS
+- l'éducation
+- le commerce
+- la domotique
+- la gestion d'entreprise
+
+Tu réponds toujours :
+- clairement
+- professionnellement
+- honnêtement
+- dans la langue du client
+
+Tu ne dois jamais inventer une information.
+
+Si tu ne connais pas une information, indique-le clairement.
+
+Signature :
+L'équipe UNITECH`,
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: this.config.temperature,
+         max_tokens: this.config.maxTokens,  // ✅ Correction : max_tokens
+      });
+
+      if (!result.content) {
+        throw new Error('Le LLM a retourné une réponse vide.');
+      }
+
+      console.log(`✅ HARVEY: Réponse reçue (provider: ${result.provider})`);
+
+      return result.content;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur LLM:', error.message);
+      return this.getFallbackResponse();
+    }
+  }
+
+  // ============================================================
+  // RÉPONSE DE SECOURS
+  // ============================================================
+
+  private getFallbackResponse(): string {
+    return `
+Bonjour,
+
+Merci pour votre message. Nous avons bien reçu votre demande.
+
+Notre équipe examine actuellement votre demande afin de vous apporter une réponse précise et adaptée.
+
+Nous reviendrons vers vous dans les plus brefs délais.
+
+Si votre demande concerne un problème technique, merci de nous communiquer les détails du problème ainsi que, si possible, une capture d'écran ou toute information utile.
+
+Nous vous remercions pour votre confiance.
+
+L'équipe UNITECH
+`.trim();
+  }
+
+  // ============================================================
+  // ANALYSE DE LA RÉPONSE
+  // ============================================================
+
+  private analyzeResponse(content: string, email: EmailWithAnalysis): HarveyResponse {
+    const wordCount = content.split(/\s+/).filter(Boolean).length;
+    const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+    const lower = content.toLowerCase();
+
+    // ==========================================================
+    // TON
+    // ==========================================================
+
+    let tone: HarveyResponse['tone'] = this.config.defaultTone;
+
+    if (lower.includes('merci') || lower.includes('bonjour') || lower.includes('cordialement')) {
+      tone = 'professional';
+    }
+
+    if (lower.includes('technique') || lower.includes('solution') || lower.includes('code')) {
+      tone = 'technical';
+    }
+
+    if (lower.includes(' :)') || lower.includes(';)')) {
+      tone = 'friendly';
+    }
+
+    if (wordCount < 100) {
+      tone = 'concise';
+    }
+
+    // ==========================================================
+    // ACTIONS
+    // ==========================================================
+
+    const actions: string[] = [];
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      const normalized = line.toLowerCase();
+
+      if (
+        normalized.includes('propose') ||
+        normalized.includes('suggère') ||
+        normalized.includes('suggere') ||
+        normalized.includes('recommande') ||
+        normalized.includes('merci de') ||
+        normalized.includes('veuillez')
+      ) {
+        const action = line.trim().replace(/^[•\-*]\s*/, '');
+        if (action.length > 10) {
+          actions.push(action);
+        }
+      }
+    }
+
+    // ==========================================================
+    // RELECTURE HUMAINE
+    // ==========================================================
+
+    const requiresHumanReview =
+      lower.includes('une personne') ||
+      lower.includes('un humain') ||
+      lower.includes('membre de notre équipe') ||
+      lower.includes('équipe va examiner') ||
+      lower.includes('équipe doit examiner') ||
+      lower.includes('transférer') ||
+      email.priority === 'high' ||
+      wordCount > 500;
+
+    // ==========================================================
+    // CONFIANCE
+    // ==========================================================
+
+    let confidence = 70;
+
+    if (email.ai_analysis?.confidence && email.ai_analysis.confidence > 60) {
+      confidence += 15;
+    }
+
+    if (wordCount > 150) {
+      confidence += 10;
+    }
+
+    if (content.split('\n\n').length > 2) {
+      confidence += 5;
+    }
+
+    if (requiresHumanReview) {
+      confidence = Math.min(confidence, 65);
+    }
+
+    confidence = Math.min(confidence, 100);
+
+    // ==========================================================
+    // SENTIMENT
+    // ==========================================================
+
+    let sentiment: HarveyResponse['metadata']['sentiment'] = 'neutral';
+
+    if (
+      lower.includes('ravi') ||
+      lower.includes('plaisir') ||
+      lower.includes('content') ||
+      lower.includes('heureux')
+    ) {
+      sentiment = 'positive';
+    }
+
+    if (lower.includes('désolé') || lower.includes('désolée') || lower.includes('probleme') || lower.includes('problème')) {
+      sentiment = 'negative';
+    }
+
+    // ==========================================================
+    // AGENT RECOMMANDÉ
+    // ==========================================================
+
+    let suggestedAgent: HarveyResponse['suggested_agent'] = 'HUMAN';
+    const category = String(email.category || '').toLowerCase();
+
+    if (category === 'support') {
+      suggestedAgent = 'SUPPORT';
+    } else if (category === 'commercial') {
+      suggestedAgent = 'COMMERCIAL';
+    } else if (category === 'project') {
+      suggestedAgent = 'PROJET';
+    } else if (confidence < this.config.minConfidence) {
+      suggestedAgent = 'HUMAN';
+    }
+
+    return {
+      content,
+      tone,
+      actions: actions.slice(0, 3),
+      requires_human_review: requiresHumanReview && this.config.requireHumanReview,
+      confidence,
+      suggested_agent: suggestedAgent,
+      metadata: {
+        word_count: wordCount,
+        reading_time: readingTime,
+        sentiment,
+      },
+    };
+  }
+
+  // ============================================================
+  // STOCKAGE DE LA RÉPONSE EMAIL
+  // ============================================================
+
+  private async storeResponse(
+    emailId: string,
+    response: HarveyResponse,
+    email: EmailWithAnalysis
+  ): Promise<any> {
+    try {
+      const insertData: any = {
+        email_id: emailId,
+        from_email: email.from_email,
+        to_email: email.to_email || 'doumbialayesoma@gmail.com',
+        subject: email.subject,
+        message: email.body,
+        body: email.body,
+        agent_response: response.content,
+        response_tone: response.tone,
+        tone: response.tone,
+        confidence: response.confidence,
+        actions: response.actions,
+        status: response.requires_human_review ? 'review' : 'pending',
+        requires_human_review: response.requires_human_review,
+        suggested_agent: response.suggested_agent,
+        is_outgoing: true,
+        category: email.category || 'information',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .insert(insertData)
+        .select();
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur stockage:', error);
+        return null;
+      }
+
+      console.log(`✅ HARVEY: Réponse stockée pour ${emailId}`);
+
+      if (response.requires_human_review) {
+        await this.createReviewNotification(emailId, response);
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur stockage:', error?.message || error);
+      return null;
+    }
+  }
+
+  // ============================================================
+  // NOTIFICATION DE RELECTURE
+  // ============================================================
+
+  private async createReviewNotification(emailId: string, response: HarveyResponse): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('review_notifications')
+        .insert({
+          email_id: emailId,
+          message: `L'email ${emailId} nécessite une relecture humaine (confiance: ${response.confidence}%).`,
+          status: 'pending',
+          confidence: response.confidence,
+          created_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        if (error.code === '42501') {
+          console.log('⚠️ HARVEY: Notification ignorée à cause des règles RLS');
+          return;
+        }
+
+        console.error('❌ HARVEY: Erreur notification:', error);
+        return;
+      }
+
+      console.log(`📢 HARVEY: Notification créée pour ${emailId}`);
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur notification:', error?.message || error);
+    }
+  }
+
+  // ============================================================
+  // GÉNÉRER UNE RÉPONSE POUR UN CONTACT
+  // ============================================================
+
+  async generateContactResponse(contact: any): Promise<HarveyResponse | null> {
+    try {
+      if (!this.initialized) {
+        await this.init();
+      }
+
+      if (!this.companyData) {
+        this.companyData = this.getDefaultCompanyData();
+      }
+
+      console.log(`🦸‍♂️ HARVEY: Génération réponse contact ${contact.id}`);
+
+      // ========================================================
+      // CONSTRUIRE EMAIL
+      // ========================================================
+
+      const emailData: EmailWithAnalysis = {
+        id: contact.id,
+        from_email: contact.email,
+        to_email: 'doumbialayesoma@gmail.com',
+        subject: contact.subject || 'Demande de contact',
+        body: contact.message || '',
+        category: contact.category || 'information',
+        priority: contact.priority || 'medium',
+        assigned_agent: contact.assigned_agent || 'HUMAN',
+        ai_analysis: {
+          category: contact.category || 'information',
+          priority: contact.priority || 'medium',
+          assigned_agent: contact.assigned_agent || 'HUMAN',
+          confidence: 50,
+          matched_keywords: [],
+          summary: 'Demande de contact',
+          score: 0.5,
+        },
+        received_at: contact.created_at || new Date().toISOString(),
+        status: contact.status || 'pending',
+      };
+
+      // ========================================================
+      // HISTORIQUE
+      // ========================================================
+
+      const history = await this.getConversationHistory(contact.email);
+
+      // ========================================================
+      // PROMPT
+      // ========================================================
+
+      const prompt = this.buildPrompt(emailData, history, this.companyData);
+
+      // ========================================================
+      // LLM
+      // ========================================================
+
+      const responseContent = await this.callLLM(prompt);
+
+      if (!responseContent) {
+        console.error('❌ HARVEY: Aucune réponse générée');
+        return null;
+      }
+
+      // ========================================================
+      // ANALYSE
+      // ========================================================
+
+      const analysis = this.analyzeResponse(responseContent, emailData);
+
+      // ========================================================
+      // STOCKAGE
+      // ========================================================
+
+      await this.storeContactResponse(contact.id, analysis, contact);
+
+      // ========================================================
+      // MISE À JOUR CONTACT
+      // ========================================================
+
+      await supabase
+        .from('contacts')
+        .update({
+          status: analysis.requires_human_review ? 'review' : 'answered',
+          assigned_agent: 'HARVEY',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contact.id);
+
+      console.log(`✅ HARVEY: Contact ${contact.id} traité (${analysis.confidence}%)`);
+
+      return analysis;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur contact:', error?.message || error);
+      return null;
+    }
+  }
+
+  // ============================================================
+  // STOCKER RÉPONSE CONTACT
+  // ============================================================
+
+  private async storeContactResponse(
+    contactId: string,
+    response: HarveyResponse,
+    contact: any
+  ): Promise<any> {
+    try {
+      const insertData: any = {
+        email_id: contactId,
+        from_email: contact.email,
+        to_email: 'doumbialayesoma@gmail.com',
+        subject: contact.subject || 'Demande de contact',
+        message: contact.message || '',
+        body: contact.message || '',
+        agent_response: response.content,
+        response_tone: response.tone,
+        tone: response.tone,
+        confidence: response.confidence,
+        actions: response.actions,
+        status: response.requires_human_review ? 'review' : 'pending',
+        requires_human_review: response.requires_human_review,
+        suggested_agent: response.suggested_agent,
+        is_outgoing: true,
+        category: contact.category || 'information',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .insert(insertData)
+        .select();
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur stockage contact:', error);
+        return null;
+      }
+
+      console.log(`✅ HARVEY: Réponse contact stockée pour ${contactId}`);
+
+      if (response.requires_human_review) {
+        await this.createReviewNotification(contactId, response);
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur stockage contact:', error?.message || error);
+      return null;
+    }
+  }
+
+  // ============================================================
+  // MÉTHODE PRINCIPALE
+  // ============================================================
+
+  async generateResponse(emailId: string): Promise<HarveyResponse | null> {
+    try {
+      if (!this.initialized) {
+        await this.init();
+      }
+
+      if (!this.companyData) {
+        this.companyData = this.getDefaultCompanyData();
+      }
+
+      console.log(`🦸‍♂️ HARVEY: Génération réponse email ${emailId}`);
+
+      // ========================================================
+      // RÉCUPÉRATION EMAIL
+      // ========================================================
+
+      const { data: email, error: emailError } = await supabase
+        .from('incoming_emails')
+        .select('*')
+        .eq('id', emailId)
+        .single();
+
+      if (emailError || !email) {
+        console.error('❌ HARVEY: Email non trouvé:', emailError);
+        return null;
+      }
+
+      // ========================================================
+      // HISTORIQUE
+      // ========================================================
+
+      const history = await this.getConversationHistory(email.from_email);
+
+      // ========================================================
+      // PROMPT
+      // ========================================================
+
+      const prompt = this.buildPrompt(email, history, this.companyData);
+
+      // ========================================================
+      // IA
+      // ========================================================
+
+      const responseContent = await this.callLLM(prompt);
+
+      if (!responseContent) {
+        console.error('❌ HARVEY: Aucune réponse générée');
+        return null;
+      }
+
+      // ========================================================
+      // ANALYSE
+      // ========================================================
+
+      const analysis = this.analyzeResponse(responseContent, email);
+
+      // ========================================================
+      // STOCKAGE
+      // ========================================================
+
+      await this.storeResponse(emailId, analysis, email);
+
+      // ========================================================
+      // MISE À JOUR EMAIL
+      // ========================================================
+
+      await supabase
+        .from('incoming_emails')
+        .update({
+          status: analysis.requires_human_review ? 'review' : 'answered',
+          assigned_agent: 'HARVEY',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', emailId);
+
+      console.log(`✅ HARVEY: Email ${emailId} traité (${analysis.confidence}% confiance)`);
+
+      return analysis;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur génération:', error?.message || error);
+      return null;
+    }
+  }
+
+  // ============================================================
+  // TRAITEMENT DES EMAILS EN ATTENTE
+  // ============================================================
+
+  async processPendingEmails(
+    limit: number = this.config.maxEmailsPerRun
+  ): Promise<{ processed: number; errors: number }> {
+    console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} emails`);
+
+    try {
+      const { data, error } = await supabase
+        .from('incoming_emails')
+        .select('id')
+        .eq('status', 'analyzed')
+        .neq('category', 'spam')
+        .neq('category', 'newsletter')
+        .limit(limit);
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur récupération emails:', error);
+        return { processed: 0, errors: 1 };
+      }
+
+      if (!data || data.length === 0) {
+        console.log('📭 HARVEY: Aucun email à traiter');
+        return { processed: 0, errors: 0 };
+      }
+
+      console.log(`📧 HARVEY: ${data.length} emails trouvés`);
+
+      let processed = 0;
+      let errors = 0;
+
+      for (const email of data) {
+        try {
+          const response = await this.generateResponse(email.id);
+
+          if (response) {
+            processed++;
+            console.log(`✅ HARVEY: Email ${email.id} traité`);
+          } else {
+            errors++;
+            console.log(`❌ HARVEY: Échec email ${email.id}`);
+          }
+        } catch (error: any) {
+          errors++;
+          console.error(`❌ HARVEY: Erreur email ${email.id}:`, error?.message || error);
+        }
+      }
+
+      console.log(`📊 HARVEY: ${processed} traités, ${errors} erreurs`);
+
+      return { processed, errors };
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur fatale:', error?.message || error);
+      return { processed: 0, errors: 1 };
+    }
+  }
+
+  // ============================================================
+  // TRAITEMENT DES CONTACTS EN ATTENTE
+  // ============================================================
+
+  async processPendingContacts(
+    limit: number = this.config.maxEmailsPerRun
+  ): Promise<{ processed: number; errors: number }> {
+    console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} contacts`);
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('status', 'pending')
+        .limit(limit);
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur récupération contacts:', error);
+        return { processed: 0, errors: 1 };
+      }
+
+      if (!data || data.length === 0) {
+        console.log('📭 HARVEY: Aucun contact à traiter');
+        return { processed: 0, errors: 0 };
+      }
+
+      console.log(`📋 HARVEY: ${data.length} contacts trouvés`);
+
+      let processed = 0;
+      let errors = 0;
+
+      for (const contact of data) {
+        try {
+          const response = await this.generateContactResponse(contact);
+
+          if (response) {
+            processed++;
+            console.log(`✅ HARVEY: Contact ${contact.id} traité`);
+          } else {
+            errors++;
+            console.log(`❌ HARVEY: Échec contact ${contact.id}`);
+          }
+        } catch (error: any) {
+          errors++;
+          console.error(`❌ HARVEY: Erreur contact ${contact.id}:`, error?.message || error);
+        }
+      }
+
+      console.log(`📊 HARVEY: ${processed} contacts traités, ${errors} erreurs`);
+
+      return { processed, errors };
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur fatale contacts:', error?.message || error);
+      return { processed: 0, errors: 1 };
+    }
+  }
+}
+
+// ============================================================
+// INSTANCE HARVEY
+// ============================================================
+
+export const harvey = new Harvey();

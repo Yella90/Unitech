@@ -1,9 +1,9 @@
 // app/(dashboard)/admin/dona/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/agents/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,15 +15,14 @@ import {
   FaCheckCircle, 
   FaClock, 
   FaSync,
-  FaFilter,
   FaSearch,
+  FaSpinner,
+  FaUserFriends,
+  FaInbox,
+  FaChartBar,
   FaEye,
   FaTrash,
-  FaChartBar,
-  FaDownload,
-  FaSpinner,
-  FaInbox,
-  FaUserFriends
+  FaReply
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -58,6 +57,22 @@ type Email = {
   received_at: string;
   processed_at: string;
   ai_analysis: any;
+};
+
+type DonaStats = {
+  contacts: {
+    total: number;
+    processed: number;
+    pending: number;
+    rate: number;
+  };
+  emails: {
+    total: number;
+    processed: number;
+    pending: number;
+    ignored: number;
+    rate: number;
+  };
 };
 
 // ============================================================
@@ -108,7 +123,11 @@ export default function AdminDonaPage() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeTab, setActiveTab] = useState('contacts');
-  
+  const [stats, setStats] = useState<DonaStats>({
+    contacts: { total: 0, processed: 0, pending: 0, rate: 0 },
+    emails: { total: 0, processed: 0, pending: 0, ignored: 0, rate: 0 }
+  });
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // ============================================================
@@ -161,7 +180,7 @@ export default function AdminDonaPage() {
     }
 
     try {
-      // ✅ Charger les contacts
+      // Charger les contacts
       const { data: contactsData, error: contactError } = await supabase
         .from('contacts')
         .select('*')
@@ -175,7 +194,7 @@ export default function AdminDonaPage() {
         setContacts(contactsData || []);
       }
 
-      // ✅ Charger les emails
+      // Charger les emails
       const { data: emailsData, error: emailError } = await supabase
         .from('incoming_emails')
         .select('*')
@@ -190,6 +209,9 @@ export default function AdminDonaPage() {
       } else {
         setEmails(emailsData || []);
       }
+
+      // Mettre à jour les statistiques
+      updateStats(contactsData || [], emailsData || []);
 
       setLastUpdate(new Date());
       if (!silent) {
@@ -206,6 +228,34 @@ export default function AdminDonaPage() {
         setRefreshing(false);
       }
     }
+  };
+
+  // ============================================================
+  // STATISTIQUES
+  // ============================================================
+  const updateStats = (contactsData: Contact[], emailsData: Email[]) => {
+    const processedContacts = contactsData.filter(c => c.status === 'processed' || c.status === 'read').length;
+    const pendingContacts = contactsData.filter(c => c.status === 'pending').length;
+    
+    const processedEmails = emailsData.filter(e => e.status === 'processed' || e.status === 'analyzed').length;
+    const pendingEmails = emailsData.filter(e => e.status === 'pending').length;
+    const ignoredEmails = emailsData.filter(e => e.status === 'ignored' || e.status === 'spam').length;
+
+    setStats({
+      contacts: {
+        total: contactsData.length,
+        processed: processedContacts,
+        pending: pendingContacts,
+        rate: contactsData.length > 0 ? Math.round((processedContacts / contactsData.length) * 100) : 0
+      },
+      emails: {
+        total: emailsData.length,
+        processed: processedEmails,
+        pending: pendingEmails,
+        ignored: ignoredEmails,
+        rate: emailsData.length > 0 ? Math.round((processedEmails / emailsData.length) * 100) : 0
+      }
+    });
   };
 
   // ============================================================
@@ -265,7 +315,7 @@ export default function AdminDonaPage() {
     let filtered = emails;
     
     if (emailFilter === 'processed') {
-      filtered = filtered.filter(e => e.status === 'processed');
+      filtered = filtered.filter(e => e.status === 'processed' || e.status === 'analyzed');
     } else if (emailFilter === 'pending') {
       filtered = filtered.filter(e => e.status === 'pending');
     } else if (emailFilter === 'ignored') {
@@ -282,28 +332,6 @@ export default function AdminDonaPage() {
     }
 
     return filtered;
-  };
-
-  // ============================================================
-  // STATISTIQUES
-  // ============================================================
-  const contactsStats = {
-    total: contacts.length,
-    processed: contacts.filter(c => c.status === 'processed' || c.status === 'read').length,
-    pending: contacts.filter(c => c.status === 'pending').length,
-    rate: contacts.length > 0 
-      ? Math.round((contacts.filter(c => c.status === 'processed' || c.status === 'read').length / contacts.length) * 100) 
-      : 0
-  };
-
-  const emailsStats = {
-    total: emails.length,
-    processed: emails.filter(e => e.status === 'processed').length,
-    pending: emails.filter(e => e.status === 'pending').length,
-    ignored: emails.filter(e => e.status === 'ignored' || e.status === 'spam').length,
-    rate: emails.length > 0 
-      ? Math.round((emails.filter(e => e.status === 'processed').length / emails.length) * 100) 
-      : 0
   };
 
   // ============================================================
@@ -384,7 +412,7 @@ export default function AdminDonaPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Total contacts</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{contactsStats.total}</p>
+                  <p className="text-2xl font-bold text-[#1E3A8A]">{stats.contacts.total}</p>
                 </div>
                 <FaUserFriends className="h-8 w-8 text-[#F97316]" />
               </div>
@@ -395,7 +423,7 @@ export default function AdminDonaPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Contacts traités</p>
-                  <p className="text-2xl font-bold text-green-600">{contactsStats.processed}</p>
+                  <p className="text-2xl font-bold text-green-600">{stats.contacts.processed}</p>
                 </div>
                 <FaCheckCircle className="h-8 w-8 text-green-500" />
               </div>
@@ -406,7 +434,7 @@ export default function AdminDonaPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Total emails</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{emailsStats.total}</p>
+                  <p className="text-2xl font-bold text-[#1E3A8A]">{stats.emails.total}</p>
                 </div>
                 <FaEnvelope className="h-8 w-8 text-[#F97316]" />
               </div>
@@ -417,7 +445,7 @@ export default function AdminDonaPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Emails traités</p>
-                  <p className="text-2xl font-bold text-green-600">{emailsStats.processed}</p>
+                  <p className="text-2xl font-bold text-green-600">{stats.emails.processed}</p>
                 </div>
                 <FaCheckCircle className="h-8 w-8 text-green-500" />
               </div>
@@ -434,14 +462,14 @@ export default function AdminDonaPage() {
               <FaUserFriends className="h-4 w-4" />
               Contacts
               <Badge variant="secondary" className="ml-1">
-                {contactsStats.pending}
+                {stats.contacts.pending}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="emails" className="flex items-center gap-2">
               <FaEnvelope className="h-4 w-4" />
               Emails
               <Badge variant="secondary" className="ml-1">
-                {emailsStats.pending}
+                {stats.emails.pending}
               </Badge>
             </TabsTrigger>
           </TabsList>
@@ -454,7 +482,7 @@ export default function AdminDonaPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FaUserFriends className="h-5 w-5 text-[#F97316]" />
-                  Contacts traités
+                  Contacts
                   <Badge variant="secondary" className="ml-2">
                     {displayedContacts.length}
                   </Badge>
@@ -481,7 +509,7 @@ export default function AdminDonaPage() {
                       onClick={() => setFilter('processed')}
                       className={filter === 'processed' ? 'bg-green-600' : ''}
                     >
-                      ✅ Traités ({contactsStats.processed})
+                      ✅ Traités ({stats.contacts.processed})
                     </Button>
                     <Button 
                       variant={filter === 'pending' ? 'default' : 'outline'} 
@@ -489,7 +517,7 @@ export default function AdminDonaPage() {
                       onClick={() => setFilter('pending')}
                       className={filter === 'pending' ? 'bg-yellow-600' : ''}
                     >
-                      ⏳ En attente ({contactsStats.pending})
+                      ⏳ En attente ({stats.contacts.pending})
                     </Button>
                     <Button 
                       variant={filter === 'support' ? 'default' : 'outline'} 
@@ -521,7 +549,7 @@ export default function AdminDonaPage() {
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
                     <input
                       type="text"
-                      placeholder="Rechercher un contact..."
+                      placeholder="Rechercher..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm w-48 sm:w-64"
@@ -607,7 +635,7 @@ export default function AdminDonaPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FaEnvelope className="h-5 w-5 text-[#F97316]" />
-                  Emails traités
+                  Emails
                   <Badge variant="secondary" className="ml-2">
                     {displayedEmails.length}
                   </Badge>
@@ -634,7 +662,7 @@ export default function AdminDonaPage() {
                       onClick={() => setEmailFilter('processed')}
                       className={emailFilter === 'processed' ? 'bg-green-600' : ''}
                     >
-                      ✅ Traités ({emailsStats.processed})
+                      ✅ Traités ({stats.emails.processed})
                     </Button>
                     <Button 
                       variant={emailFilter === 'pending' ? 'default' : 'outline'} 
@@ -642,7 +670,7 @@ export default function AdminDonaPage() {
                       onClick={() => setEmailFilter('pending')}
                       className={emailFilter === 'pending' ? 'bg-yellow-600' : ''}
                     >
-                      ⏳ En attente ({emailsStats.pending})
+                      ⏳ En attente ({stats.emails.pending})
                     </Button>
                     <Button 
                       variant={emailFilter === 'ignored' ? 'default' : 'outline'} 
@@ -650,7 +678,7 @@ export default function AdminDonaPage() {
                       onClick={() => setEmailFilter('ignored')}
                       className={emailFilter === 'ignored' ? 'bg-gray-600' : ''}
                     >
-                      🚫 Ignorés ({emailsStats.ignored})
+                      🚫 Ignorés ({stats.emails.ignored})
                     </Button>
                     <Button 
                       variant={emailFilter === 'support' ? 'default' : 'outline'} 
@@ -682,7 +710,7 @@ export default function AdminDonaPage() {
                     <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
                     <input
                       type="text"
-                      placeholder="Rechercher un email..."
+                      placeholder="Rechercher..."
                       value={emailSearchTerm}
                       onChange={(e) => setEmailSearchTerm(e.target.value)}
                       className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm w-48 sm:w-64"
