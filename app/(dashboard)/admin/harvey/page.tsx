@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   FaRobot, 
   FaEnvelope, 
@@ -27,7 +26,11 @@ import {
   FaChartLine,
   FaUsers,
   FaUserFriends,
-  FaInbox
+  FaInbox,
+  FaFilter,
+  FaTimesCircle,
+  FaChevronDown,
+  FaChevronUp
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -133,6 +136,9 @@ export default function AdminHarveyPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
   const [stats, setStats] = useState<HarveyStats>({
     total: 0,
     pending: 0,
@@ -189,7 +195,7 @@ export default function AdminHarveyPage() {
   }, [router, autoRefresh]);
 
   // ============================================================
-  // CHARGEMENT DES DONNÉES AVEC IDENTIFICATION DES CONTACTS
+  // CHARGEMENT DES DONNÉES
   // ============================================================
   const loadData = async (silent: boolean = false) => {
     if (!silent) {
@@ -197,7 +203,6 @@ export default function AdminHarveyPage() {
     }
 
     try {
-      // Charger les conversations
       const { data: conversationsData, error: convError } = await supabase
         .from('email_conversations')
         .select('*')
@@ -208,7 +213,6 @@ export default function AdminHarveyPage() {
         console.error('Erreur conversations:', convError);
         if (!silent) toast.error('Erreur lors du chargement des conversations');
       } else {
-        // Récupérer les emails des contacts pour identification
         const { data: contacts } = await supabase
           .from('contacts')
           .select('email, name');
@@ -216,7 +220,6 @@ export default function AdminHarveyPage() {
         const contactEmails = new Map();
         contacts?.forEach(c => contactEmails.set(c.email, c.name));
 
-        // Transformer et identifier les sources
         const transformed = (conversationsData || []).map((item: any) => {
           const isContact = contactEmails.has(item.from_email);
           return {
@@ -269,27 +272,22 @@ export default function AdminHarveyPage() {
     let totalConfidence = 0;
 
     data.forEach(item => {
-      // Statuts
       if (item.status === 'pending') stats.pending++;
       else if (item.status === 'review') stats.review++;
       else if (item.status === 'approved') stats.approved++;
       else if (item.status === 'sent') stats.sent++;
       else if (item.status === 'archived') stats.archived++;
 
-      // Confiance
       totalConfidence += item.confidence || 0;
 
-      // Catégories
       if (item.category) {
         stats.byCategory[item.category] = (stats.byCategory[item.category] || 0) + 1;
       }
 
-      // Tons
       if (item.tone) {
         stats.byTone[item.tone] = (stats.byTone[item.tone] || 0) + 1;
       }
 
-      // Source
       if (item.source === 'contact') {
         stats.bySource.contact++;
       } else {
@@ -359,6 +357,16 @@ export default function AdminHarveyPage() {
       console.error('Erreur régénération:', error);
       toast.error(`❌ Erreur: ${error.message}`);
     }
+  };
+
+  const toggleExpand = (id: string) => {
+    const newSet = new Set(expandedItems);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setExpandedItems(newSet);
   };
 
   // ============================================================
@@ -441,416 +449,471 @@ export default function AdminHarveyPage() {
   const displayedConversations = getFilteredConversations();
 
   return (
-    <main className="min-h-screen bg-[#F5F7FB] p-6">
+    <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
         {/* ============================================================
         EN-TÊTE
         ============================================================ */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-[#1E3A8A] flex items-center gap-3">
-              <FaUserTie className="h-8 w-8 text-[#F97316]" />
-              HARVEY - Agent de réponse
-              <Badge variant="outline" className="ml-2">
+        <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between mb-4 md:mb-6">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[#1E3A8A] flex flex-wrap items-center gap-2 md:gap-3">
+              <FaUserTie className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-[#F97316] flex-shrink-0" />
+              <span className="truncate">HARVEY - Agent de réponse</span>
+              <Badge variant="outline" className="flex-shrink-0">
                 <span className="flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                  En direct
+                  <span className="hidden xs:inline">En direct</span>
                 </span>
               </Badge>
             </h1>
-            <p className="mt-1 text-slate-500 flex items-center gap-2">
+            <p className="text-xs sm:text-sm text-slate-500 flex flex-wrap items-center gap-1 sm:gap-2 mt-0.5">
               Gestion des réponses générées par l'agent IA
+              <span className="text-xs text-slate-400 hidden sm:inline">·</span>
               <span className="text-xs text-slate-400">
-                · Dernière mise à jour: {lastUpdate.toLocaleTimeString()}
+                Dernière MAJ: {lastUpdate.toLocaleTimeString()}
               </span>
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 flex-shrink-0">
             <Button 
               variant="outline" 
+              size="sm"
               onClick={() => loadData(false)}
               disabled={refreshing}
-              className="relative"
+              className="text-xs sm:text-sm"
             >
               {refreshing ? (
-                <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+                <FaSpinner className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
               ) : (
-                <FaSync className="mr-2 h-4 w-4" />
+                <FaSync className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
               )}
-              {refreshing ? 'Chargement...' : 'Rafraîchir'}
+              <span className="hidden xs:inline">{refreshing ? 'Chargement...' : 'Rafraîchir'}</span>
             </Button>
             <Button 
-              variant={autoRefresh ? 'default' : 'outline'}
+              variant={autoRefresh ? 'default' : 'outline'} 
+              size="sm"
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={autoRefresh ? 'bg-[#1E3A8A]' : ''}
+              className={`text-xs sm:text-sm ${autoRefresh ? 'bg-[#1E3A8A]' : ''}`}
             >
-              {autoRefresh ? '🔄 Auto' : '⏸️ Auto'}
+              {autoRefresh ? '🔄' : '⏸️'}
+              <span className="hidden xs:inline ml-1">Auto</span>
             </Button>
             <Button
               variant="default"
-              className="bg-[#F97316] hover:bg-[#E86A0A]"
+              size="sm"
+              className="bg-[#F97316] hover:bg-[#E86A0A] text-xs sm:text-sm"
               onClick={triggerHarvey}
             >
-              <FaReply className="mr-2 h-4 w-4" />
-              Traiter maintenant
+              <FaReply className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline">Traiter</span>
+              <span className="xs:hidden">⚡</span>
             </Button>
           </div>
         </div>
 
         {/* ============================================================
-        STATISTIQUES
+        STATISTIQUES - Version responsive
         ============================================================ */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-3 mb-4 md:mb-6">
           <Card className="transition-all hover:shadow-md">
-            <CardContent className="p-3">
+            <CardContent className="p-2 sm:p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Total</p>
-                  <p className="text-xl font-bold text-[#1E3A8A]">{stats.total}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Total</p>
+                  <p className="text-base sm:text-lg md:text-xl font-bold text-[#1E3A8A]">{stats.total}</p>
                 </div>
-                <FaFileAlt className="h-6 w-6 text-[#F97316]" />
+                <FaFileAlt className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-[#F97316]" />
               </div>
             </CardContent>
           </Card>
           <Card className="transition-all hover:shadow-md">
-            <CardContent className="p-3">
+            <CardContent className="p-2 sm:p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">En attente</p>
-                  <p className="text-xl font-bold text-yellow-600">{stats.pending}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500">En attente</p>
+                  <p className="text-base sm:text-lg md:text-xl font-bold text-yellow-600">{stats.pending}</p>
                 </div>
-                <FaClock className="h-6 w-6 text-yellow-500" />
+                <FaClock className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-yellow-500" />
               </div>
             </CardContent>
           </Card>
           <Card className="transition-all hover:shadow-md">
-            <CardContent className="p-3">
+            <CardContent className="p-2 sm:p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Relecture</p>
-                  <p className="text-xl font-bold text-orange-600">{stats.review}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Relecture</p>
+                  <p className="text-base sm:text-lg md:text-xl font-bold text-orange-600">{stats.review}</p>
                 </div>
-                <FaEye className="h-6 w-6 text-orange-500" />
+                <FaEye className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-orange-500" />
               </div>
             </CardContent>
           </Card>
           <Card className="transition-all hover:shadow-md">
-            <CardContent className="p-3">
+            <CardContent className="p-2 sm:p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Approuvés</p>
-                  <p className="text-xl font-bold text-blue-600">{stats.approved}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Approuvés</p>
+                  <p className="text-base sm:text-lg md:text-xl font-bold text-blue-600">{stats.approved}</p>
                 </div>
-                <FaCheck className="h-6 w-6 text-blue-500" />
+                <FaCheck className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-blue-500" />
               </div>
             </CardContent>
           </Card>
           <Card className="transition-all hover:shadow-md">
-            <CardContent className="p-3">
+            <CardContent className="p-2 sm:p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Envoyés</p>
-                  <p className="text-xl font-bold text-green-600">{stats.sent}</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Envoyés</p>
+                  <p className="text-base sm:text-lg md:text-xl font-bold text-green-600">{stats.sent}</p>
                 </div>
-                <FaReply className="h-6 w-6 text-green-500" />
+                <FaReply className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-green-500" />
               </div>
             </CardContent>
           </Card>
-          <Card className="transition-all hover:shadow-md">
-            <CardContent className="p-3">
+          <Card className="transition-all hover:shadow-md col-span-2 sm:col-span-1">
+            <CardContent className="p-2 sm:p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Confiance moy.</p>
-                  <p className="text-xl font-bold text-[#1E3A8A]">{stats.avgConfidence}%</p>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Confiance moy.</p>
+                  <p className="text-base sm:text-lg md:text-xl font-bold text-[#1E3A8A]">{stats.avgConfidence}%</p>
                 </div>
-                <FaBrain className="h-6 w-6 text-[#F97316]" />
+                <FaBrain className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-[#F97316]" />
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* ============================================================
-        FILTRES AVEC BOUTONS CONTACTS / EMAILS
+        FILTRES - Version responsive avec toggle mobile
         ============================================================ */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              variant={filter === 'all' ? 'default' : 'outline'} 
+        <div className="flex flex-col gap-3 sm:gap-4 mb-4">
+          {/* Barre de recherche et bouton filtres */}
+          <div className="flex flex-col xs:flex-row gap-2 items-stretch xs:items-center">
+            <div className="relative flex-1 min-w-0">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-3 w-3 sm:h-4 sm:w-4" />
+              <input
+                type="text"
+                placeholder="Rechercher..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <FaTimesCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                </button>
+              )}
+            </div>
+            
+            <Button
+              variant="outline"
               size="sm"
-              onClick={() => setFilter('all')}
-              className={filter === 'all' ? 'bg-[#1E3A8A]' : ''}
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex-shrink-0 lg:hidden"
             >
-              📋 Tous ({stats.total})
-            </Button>
-            <Button 
-              variant={filter === 'contacts' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('contacts')}
-              className={filter === 'contacts' ? 'bg-purple-600' : ''}
-            >
-              <FaUserFriends className="mr-1 h-3 w-3" />
-              Contacts ({stats.bySource.contact})
-            </Button>
-            <Button 
-              variant={filter === 'emails' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('emails')}
-              className={filter === 'emails' ? 'bg-blue-600' : ''}
-            >
-              <FaEnvelope className="mr-1 h-3 w-3" />
-              Emails ({stats.bySource.email})
-            </Button>
-            <Button 
-              variant={filter === 'pending' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('pending')}
-              className={filter === 'pending' ? 'bg-yellow-600' : ''}
-            >
-              ⏳ En attente ({stats.pending})
-            </Button>
-            <Button 
-              variant={filter === 'review' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('review')}
-              className={filter === 'review' ? 'bg-orange-600' : ''}
-            >
-              👀 Relecture ({stats.review})
-            </Button>
-            <Button 
-              variant={filter === 'approved' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('approved')}
-              className={filter === 'approved' ? 'bg-blue-600' : ''}
-            >
-              ✅ Approuvés ({stats.approved})
-            </Button>
-            <Button 
-              variant={filter === 'sent' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('sent')}
-              className={filter === 'sent' ? 'bg-green-600' : ''}
-            >
-              📤 Envoyés ({stats.sent})
-            </Button>
-            <Button 
-              variant={filter === 'support' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('support')}
-              className={filter === 'support' ? 'bg-blue-600' : ''}
-            >
-              Support
-            </Button>
-            <Button 
-              variant={filter === 'commercial' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('commercial')}
-              className={filter === 'commercial' ? 'bg-orange-600' : ''}
-            >
-              Commercial
-            </Button>
-            <Button 
-              variant={filter === 'project' ? 'default' : 'outline'} 
-              size="sm"
-              onClick={() => setFilter('project')}
-              className={filter === 'project' ? 'bg-purple-600' : ''}
-            >
-              Projet
+              <FaFilter className="mr-2 h-3 w-3" />
+              Filtres
+              {showFilters ? <FaChevronUp className="ml-2 h-3 w-3" /> : <FaChevronDown className="ml-2 h-3 w-3" />}
             </Button>
           </div>
 
-          <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="Rechercher..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 rounded-lg border border-slate-200 bg-white text-sm w-48 sm:w-64"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          {/* Filtres - visible sur desktop, toggle sur mobile */}
+          <div className={`${showFilters ? 'block' : 'hidden'} lg:block`}>
+            <div className="flex flex-wrap gap-1 sm:gap-2">
+              <Button 
+                variant={filter === 'all' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('all')}
+                className={`text-xs sm:text-sm ${filter === 'all' ? 'bg-[#1E3A8A]' : ''}`}
               >
-                ✕
-              </button>
-            )}
+                📋 Tous ({stats.total})
+              </Button>
+              <Button 
+                variant={filter === 'contacts' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('contacts')}
+                className={`text-xs sm:text-sm ${filter === 'contacts' ? 'bg-purple-600' : ''}`}
+              >
+                <FaUserFriends className="mr-1 h-3 w-3" />
+                <span className="hidden xs:inline">Contacts</span>
+                <span className="xs:hidden">👥</span>
+                ({stats.bySource.contact})
+              </Button>
+              <Button 
+                variant={filter === 'emails' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('emails')}
+                className={`text-xs sm:text-sm ${filter === 'emails' ? 'bg-blue-600' : ''}`}
+              >
+                <FaEnvelope className="mr-1 h-3 w-3" />
+                <span className="hidden xs:inline">Emails</span>
+                <span className="xs:hidden">📧</span>
+                ({stats.bySource.email})
+              </Button>
+              <Button 
+                variant={filter === 'pending' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('pending')}
+                className={`text-xs sm:text-sm ${filter === 'pending' ? 'bg-yellow-600' : ''}`}
+              >
+                ⏳ <span className="hidden xs:inline">En attente</span>
+                <span className="xs:hidden">Attente</span>
+                ({stats.pending})
+              </Button>
+              <Button 
+                variant={filter === 'review' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('review')}
+                className={`text-xs sm:text-sm ${filter === 'review' ? 'bg-orange-600' : ''}`}
+              >
+                👀 <span className="hidden xs:inline">Relecture</span>
+                <span className="xs:hidden">Relect.</span>
+                ({stats.review})
+              </Button>
+              <Button 
+                variant={filter === 'approved' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('approved')}
+                className={`text-xs sm:text-sm ${filter === 'approved' ? 'bg-blue-600' : ''}`}
+              >
+                ✅ <span className="hidden xs:inline">Approuvés</span>
+                <span className="xs:hidden">Appr.</span>
+                ({stats.approved})
+              </Button>
+              <Button 
+                variant={filter === 'sent' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('sent')}
+                className={`text-xs sm:text-sm ${filter === 'sent' ? 'bg-green-600' : ''}`}
+              >
+                📤 <span className="hidden xs:inline">Envoyés</span>
+                <span className="xs:hidden">Env.</span>
+                ({stats.sent})
+              </Button>
+              <Button 
+                variant={filter === 'support' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('support')}
+                className={`text-xs sm:text-sm ${filter === 'support' ? 'bg-blue-600' : ''}`}
+              >
+                Support
+              </Button>
+              <Button 
+                variant={filter === 'commercial' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('commercial')}
+                className={`text-xs sm:text-sm ${filter === 'commercial' ? 'bg-orange-600' : ''}`}
+              >
+                Commercial
+              </Button>
+              <Button 
+                variant={filter === 'project' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('project')}
+                className={`text-xs sm:text-sm ${filter === 'project' ? 'bg-purple-600' : ''}`}
+              >
+                Projet
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* ============================================================
-        LISTE DES CONVERSATIONS
+        LISTE DES CONVERSATIONS - Version responsive
         ============================================================ */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FaReply className="h-5 w-5 text-[#F97316]" />
-              Réponses générées
-              <Badge variant="secondary" className="ml-2">
+          <CardHeader className="p-3 sm:p-4 md:p-6">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg md:text-xl">
+              <FaReply className="h-4 w-4 sm:h-5 sm:w-5 text-[#F97316]" />
+              <span>Réponses générées</span>
+              <Badge variant="secondary" className="text-xs">
                 {displayedConversations.length}
               </Badge>
               {refreshing && (
-                <FaSpinner className="h-4 w-4 animate-spin ml-2 text-slate-400" />
+                <FaSpinner className="h-3 w-3 sm:h-4 sm:w-4 animate-spin ml-auto text-slate-400" />
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-2 sm:p-3 md:p-6">
             {displayedConversations.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
-                <FaReply className="h-12 w-12 mx-auto text-slate-300 mb-3" />
-                <p className="text-lg font-medium">Aucune réponse générée</p>
-                <p className="text-sm">Les réponses apparaîtront ici une fois que HARVEY aura traité des emails ou des contacts.</p>
+              <div className="text-center py-8 sm:py-12 text-slate-500">
+                <FaReply className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-slate-300 mb-3" />
+                <p className="text-base sm:text-lg font-medium">Aucune réponse générée</p>
+                <p className="text-xs sm:text-sm">Les réponses apparaîtront ici une fois que HARVEY aura traité des emails ou des contacts.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {displayedConversations.map((conv) => (
-                  <div 
-                    key={conv.id}
-                    className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                      {/* Informations avec badge source */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-slate-800 truncate">
-                            {conv.contact_name || conv.from_email}
-                          </p>
+              <div className="space-y-3 sm:space-y-4">
+                {displayedConversations.map((conv) => {
+                  const isExpanded = expandedItems.has(conv.id);
+                  return (
+                    <div 
+                      key={conv.id}
+                      className="border border-slate-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition"
+                    >
+                      {/* En-tête de la conversation - toujours visible */}
+                      <div className="flex flex-col gap-2">
+                        {/* Ligne 1: Source + Statut + Actions rapides */}
+                        <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                          <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
+                            <p className="font-medium text-slate-800 text-sm sm:text-base truncate max-w-[120px] xs:max-w-[200px] sm:max-w-[300px]">
+                              {conv.contact_name || conv.from_email}
+                            </p>
+                            
+                            {conv.source === 'contact' ? (
+                              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] sm:text-xs flex-shrink-0">
+                                <FaUserFriends className="mr-1 h-2 w-2 sm:h-3 sm:w-3" />
+                                <span className="hidden xs:inline">Contact</span>
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] sm:text-xs flex-shrink-0">
+                                <FaEnvelope className="mr-1 h-2 w-2 sm:h-3 sm:w-3" />
+                                <span className="hidden xs:inline">Email</span>
+                              </Badge>
+                            )}
+                            
+                            <Badge className={`${statusColors[conv.status] || statusColors.pending} text-[10px] sm:text-xs flex-shrink-0`}>
+                              {statusLabels[conv.status] || conv.status}
+                            </Badge>
+                            
+                            {conv.requires_human_review && (
+                              <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-[10px] sm:text-xs flex-shrink-0">
+                                👤 Relecture
+                              </Badge>
+                            )}
+                          </div>
                           
-                          {/* Badge source */}
-                          {conv.source === 'contact' ? (
-                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                              <FaUserFriends className="mr-1 h-3 w-3" />
-                              Contact
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              <FaEnvelope className="mr-1 h-3 w-3" />
-                              Email
-                            </Badge>
-                          )}
-                          
-                          <Badge className={statusColors[conv.status] || statusColors.pending}>
-                            {statusLabels[conv.status] || conv.status}
-                          </Badge>
-                          {conv.requires_human_review && (
-                            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
-                              👤 Relecture
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-600 truncate">{conv.subject}</p>
-                      </div>
-
-                      {/* Badges catégorie, ton, agent */}
-                      <div className="flex flex-wrap gap-2 items-center">
-                        {conv.category && (
-                          <Badge className={categoryColors[conv.category] || categoryColors.other}>
-                            {conv.category}
-                          </Badge>
-                        )}
-                        {conv.tone && (
-                          <Badge variant="outline" className={toneColors[conv.tone] || ''}>
-                            {conv.tone}
-                          </Badge>
-                        )}
-                        {conv.suggested_agent && (
-                          <Badge className={agentColors[conv.suggested_agent] || ''}>
-                            {conv.suggested_agent}
-                          </Badge>
-                        )}
-                        <Badge variant="outline">
-                          🧠 {conv.confidence || 0}%
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {/* Aperçu de la réponse */}
-                    <div className="mt-2 text-sm text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded">
-                      {conv.agent_response || conv.message || 'Pas de réponse'}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedConversation(conv);
-                          setShowDetail(true);
-                        }}
-                      >
-                        <FaEye className="mr-1 h-3 w-3" /> Voir
-                      </Button>
-
-                      {conv.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="bg-blue-600 hover:bg-blue-700"
-                          onClick={() => approveResponse(conv.id)}
-                        >
-                          <FaCheck className="mr-1 h-3 w-3" /> Approuver
-                        </Button>
-                      )}
-
-                      {conv.status === 'approved' && (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="bg-green-600 hover:bg-green-700"
-                          onClick={() => sendResponse(conv.id)}
-                        >
-                          <FaReply className="mr-1 h-3 w-3" /> Envoyer
-                        </Button>
-                      )}
-
-                      {conv.status === 'review' && (
-                        <>
+                          {/* Bouton expand sur mobile */}
                           <Button
+                            variant="ghost"
                             size="sm"
-                            variant="default"
-                            className="bg-blue-600 hover:bg-blue-700"
-                            onClick={() => approveResponse(conv.id)}
+                            className="lg:hidden h-6 w-6 p-0"
+                            onClick={() => toggleExpand(conv.id)}
                           >
-                            <FaCheck className="mr-1 h-3 w-3" /> Approuver
+                            {isExpanded ? <FaChevronUp className="h-3 w-3" /> : <FaChevronDown className="h-3 w-3" />}
                           </Button>
+                        </div>
+
+                        {/* Ligne 2: Sujet + Catégorie/Ton/Agent (sur une ligne) */}
+                        <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                          <p className="text-xs sm:text-sm text-slate-600 truncate flex-1 min-w-0">
+                            {conv.subject}
+                          </p>
+                          <div className="flex flex-wrap gap-1 flex-shrink-0">
+                            {conv.category && (
+                              <Badge className={`${categoryColors[conv.category] || categoryColors.other} text-[8px] sm:text-[10px]`}>
+                                {conv.category}
+                              </Badge>
+                            )}
+                            {conv.tone && (
+                              <Badge variant="outline" className={`${toneColors[conv.tone] || ''} text-[8px] sm:text-[10px] hidden sm:inline-flex`}>
+                                {conv.tone}
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-[8px] sm:text-[10px]">
+                              🧠 {conv.confidence || 0}%
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Ligne 3: Aperçu de la réponse */}
+                        <div className={`text-xs sm:text-sm text-slate-600 bg-slate-50 p-2 rounded ${isExpanded ? '' : 'line-clamp-2'}`}>
+                          {conv.agent_response || conv.message || 'Pas de réponse'}
+                        </div>
+
+                        {/* Ligne 4: Actions - toujours visibles */}
+                        <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => regenerateResponse(conv.id)}
+                            className="text-xs h-7 sm:h-8"
+                            onClick={() => {
+                              setSelectedConversation(conv);
+                              setShowDetail(true);
+                            }}
                           >
-                            <FaSync className="mr-1 h-3 w-3" /> Régénérer
+                            <FaEye className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                            <span className="hidden xs:inline">Voir</span>
                           </Button>
-                        </>
-                      )}
 
-                      {!['sent', 'archived'].includes(conv.status) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => archiveResponse(conv.id)}
-                        >
-                          <FaTimes className="mr-1 h-3 w-3" /> Archiver
-                        </Button>
-                      )}
-                    </div>
+                          {conv.status === 'pending' && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="bg-blue-600 hover:bg-blue-700 text-xs h-7 sm:h-8"
+                              onClick={() => approveResponse(conv.id)}
+                            >
+                              <FaCheck className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                              <span className="hidden xs:inline">Approuver</span>
+                            </Button>
+                          )}
 
-                    {/* Métadonnées */}
-                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-400">
-                      <span>📅 {new Date(conv.created_at).toLocaleString('fr-FR')}</span>
-                      {conv.sent_at && (
-                        <span>📤 Envoyé le: {new Date(conv.sent_at).toLocaleString('fr-FR')}</span>
-                      )}
-                      {conv.actions && conv.actions.length > 0 && (
-                        <span>📌 Actions: {conv.actions.join(', ')}</span>
-                      )}
+                          {conv.status === 'approved' && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="bg-green-600 hover:bg-green-700 text-xs h-7 sm:h-8"
+                              onClick={() => sendResponse(conv.id)}
+                            >
+                              <FaReply className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                              <span className="hidden xs:inline">Envoyer</span>
+                            </Button>
+                          )}
+
+                          {conv.status === 'review' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="bg-blue-600 hover:bg-blue-700 text-xs h-7 sm:h-8"
+                                onClick={() => approveResponse(conv.id)}
+                              >
+                                <FaCheck className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                                <span className="hidden xs:inline">Approuver</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50 text-xs h-7 sm:h-8"
+                                onClick={() => regenerateResponse(conv.id)}
+                              >
+                                <FaSync className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                                <span className="hidden xs:inline">Régénérer</span>
+                              </Button>
+                            </>
+                          )}
+
+                          {!['sent', 'archived'].includes(conv.status) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 border-red-200 hover:bg-red-50 text-xs h-7 sm:h-8"
+                              onClick={() => archiveResponse(conv.id)}
+                            >
+                              <FaTimes className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                              <span className="hidden xs:inline">Archiver</span>
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Métadonnées - version compacte */}
+                        <div className="flex flex-wrap gap-2 sm:gap-4 text-[10px] sm:text-xs text-slate-400 mt-1">
+                          <span>📅 {new Date(conv.created_at).toLocaleString('fr-FR')}</span>
+                          {conv.sent_at && (
+                            <span>📤 Envoyé: {new Date(conv.sent_at).toLocaleString('fr-FR')}</span>
+                          )}
+                          {conv.actions && conv.actions.length > 0 && (
+                            <span className="hidden sm:inline">📌 Actions: {conv.actions.join(', ')}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -858,37 +921,40 @@ export default function AdminHarveyPage() {
       </div>
 
       {/* ============================================================
-      MODAL DETAIL
+      MODAL DETAIL - Version responsive
       ============================================================ */}
       {showDetail && selectedConversation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-[#1E3A8A]">Détail de la réponse</h2>
+            <div className="sticky top-0 bg-white border-b border-slate-200 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base sm:text-lg md:text-xl font-bold text-[#1E3A8A] truncate">
+                Détail de la réponse
+              </h2>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowDetail(false)}
+                className="flex-shrink-0"
               >
                 ✕
               </Button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-3 sm:p-4 md:p-6 space-y-4">
               {/* Message original */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-600 mb-2">
+                <h3 className="text-xs sm:text-sm font-semibold text-slate-600 mb-2">
                   {selectedConversation.source === 'contact' ? '📋 Message de contact' : '📧 Email original'}
                 </h3>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <p className="text-sm font-medium">{selectedConversation.subject}</p>
-                  <p className="text-xs text-slate-500">
+                <div className="bg-slate-50 rounded-lg p-3 sm:p-4">
+                  <p className="text-sm sm:text-base font-medium break-words">{selectedConversation.subject}</p>
+                  <p className="text-xs sm:text-sm text-slate-500 break-words">
                     De: {selectedConversation.contact_name || selectedConversation.from_email}
                     {selectedConversation.source === 'contact' && (
                       <span className="ml-2 text-purple-600">(Contact)</span>
                     )}
                   </p>
-                  <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">
+                  <p className="text-sm sm:text-base text-slate-700 mt-2 whitespace-pre-wrap break-words">
                     {selectedConversation.message || selectedConversation.body || 'Contenu non disponible'}
                   </p>
                 </div>
@@ -896,40 +962,40 @@ export default function AdminHarveyPage() {
 
               {/* Réponse générée */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-600 mb-2">🤖 Réponse générée</h3>
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge className={statusColors[selectedConversation.status] || statusColors.pending}>
+                <h3 className="text-xs sm:text-sm font-semibold text-slate-600 mb-2">🤖 Réponse générée</h3>
+                <div className="bg-blue-50 rounded-lg p-3 sm:p-4 border border-blue-200">
+                  <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-2">
+                    <Badge className={`${statusColors[selectedConversation.status] || statusColors.pending} text-[10px] sm:text-xs`}>
                       {statusLabels[selectedConversation.status] || selectedConversation.status}
                     </Badge>
-                    <Badge variant="outline">🧠 {selectedConversation.confidence || 0}%</Badge>
+                    <Badge variant="outline" className="text-[10px] sm:text-xs">🧠 {selectedConversation.confidence || 0}%</Badge>
                     {selectedConversation.requires_human_review && (
-                      <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                      <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-[10px] sm:text-xs">
                         👤 Relecture
                       </Badge>
                     )}
                   </div>
-                  <div className="whitespace-pre-wrap text-sm text-slate-700">
+                  <div className="whitespace-pre-wrap text-sm sm:text-base text-slate-700 break-words max-h-60 overflow-y-auto">
                     {selectedConversation.agent_response || 'Pas de réponse générée'}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 flex flex-wrap gap-1 sm:gap-2">
                     {selectedConversation.tone && (
-                      <Badge variant="outline" className={toneColors[selectedConversation.tone] || ''}>
+                      <Badge variant="outline" className={`${toneColors[selectedConversation.tone] || ''} text-[10px] sm:text-xs`}>
                         Ton: {selectedConversation.tone}
                       </Badge>
                     )}
                     {selectedConversation.suggested_agent && (
-                      <Badge className={agentColors[selectedConversation.suggested_agent] || ''}>
+                      <Badge className={`${agentColors[selectedConversation.suggested_agent] || ''} text-[10px] sm:text-xs`}>
                         Agent: {selectedConversation.suggested_agent}
                       </Badge>
                     )}
                   </div>
                   {selectedConversation.actions && selectedConversation.actions.length > 0 && (
                     <div className="mt-2">
-                      <p className="text-xs font-medium text-slate-500">📌 Actions suggérées:</p>
-                      <ul className="text-sm text-slate-600 list-disc list-inside">
+                      <p className="text-[10px] sm:text-xs font-medium text-slate-500">📌 Actions suggérées:</p>
+                      <ul className="text-xs sm:text-sm text-slate-600 list-disc list-inside">
                         {selectedConversation.actions.map((action, idx) => (
-                          <li key={idx}>{action}</li>
+                          <li key={idx} className="break-words">{action}</li>
                         ))}
                       </ul>
                     </div>
@@ -937,18 +1003,21 @@ export default function AdminHarveyPage() {
                 </div>
               </div>
 
-              {/* Actions */}
+              {/* Actions - responsive */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-200">
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={() => setShowDetail(false)}
+                  className="text-xs sm:text-sm"
                 >
                   Fermer
                 </Button>
 
                 {selectedConversation.status === 'pending' && (
                   <Button
-                    className="bg-blue-600 hover:bg-blue-700"
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
                     onClick={() => {
                       approveResponse(selectedConversation.id);
                       setShowDetail(false);
@@ -960,7 +1029,8 @@ export default function AdminHarveyPage() {
 
                 {selectedConversation.status === 'approved' && (
                   <Button
-                    className="bg-green-600 hover:bg-green-700"
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
                     onClick={() => {
                       sendResponse(selectedConversation.id);
                       setShowDetail(false);
@@ -973,7 +1043,8 @@ export default function AdminHarveyPage() {
                 {selectedConversation.status === 'review' && (
                   <>
                     <Button
-                      className="bg-blue-600 hover:bg-blue-700"
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
                       onClick={() => {
                         approveResponse(selectedConversation.id);
                         setShowDetail(false);
@@ -983,7 +1054,8 @@ export default function AdminHarveyPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                      size="sm"
+                      className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs sm:text-sm"
                       onClick={() => {
                         regenerateResponse(selectedConversation.id);
                         setShowDetail(false);
@@ -997,7 +1069,8 @@ export default function AdminHarveyPage() {
                 {!['sent', 'archived'].includes(selectedConversation.status) && (
                   <Button
                     variant="outline"
-                    className="text-red-600 border-red-200 hover:bg-red-50"
+                    size="sm"
+                    className="text-red-600 border-red-200 hover:bg-red-50 text-xs sm:text-sm"
                     onClick={() => {
                       archiveResponse(selectedConversation.id);
                       setShowDetail(false);

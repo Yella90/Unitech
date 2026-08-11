@@ -65,17 +65,18 @@ const navItems = [
   { href: "/admin/subscribers", label: "Newsletter", icon: FaEnvelope },
   { href: "/admin/analytics", label: "Analytics", icon: FaChartLine },
   { href: "/admin/logs", label: "Logs", icon: FaClock },
-{ href: "/admin/dona", label: "DONA", icon: FaRobot },
-{ href: "/admin/harvey", label: "harvey", icon: FaUserTie }, 
+  { href: "/admin/dona", label: "DONA", icon: FaRobot },
+  { href: "/admin/harvey", label: "HARVEY", icon: FaUserTie }, 
   { href: "/admin/settings", label: "Paramètres", icon: FaCog },
 ];
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // ✅ Fermé par défaut sur mobile
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const [visitorStats, setVisitorStats] = useState<VisitorStats>({
     totalVisits: 0,
     uniqueVisitors: 0,
@@ -91,13 +92,33 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     hasData: false
   });
 
+  // ✅ Détecter la taille de l'écran
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+      // ✅ Sur desktop, ouvrir le sidebar par défaut
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      } else {
+        setSidebarOpen(false);
+      }
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const isDashboardHome = pathname === '/admin' || pathname === '/admin/';
+
   const fetchVisitorStats = async () => {
+    if (!isDashboardHome) return;
+
     try {
       setVisitorStats(prev => ({ ...prev, loading: true }));
 
       console.log('📊 Début chargement statistiques...');
 
-      // ✅ Récupérer TOUTES les visites sans limite
       const { data: allVisits, error: visitsError } = await supabase
         .from('page_visits')
         .select('*')
@@ -121,15 +142,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         return;
       }
 
-      // ✅ Afficher un échantillon des données
-      console.log('📊 Premier enregistrement:', allVisits[0]);
-      console.log('📊 Dernier enregistrement:', allVisits[allVisits.length - 1]);
-
-      // 2. Statistiques
       const totalVisits = allVisits.length;
       const uniqueVisitors = new Set(allVisits.map(v => v.visitor_id).filter(id => id)).size;
 
-      // 3. Visites aujourd'hui
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayVisits = allVisits.filter(v => {
@@ -137,7 +152,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         return d >= today;
       }).length;
 
-      // 4. Visites hier
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayVisits = allVisits.filter(v => {
@@ -145,13 +159,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         return d >= yesterday && d < today;
       }).length;
 
-      // 5. Durée moyenne
       const durations = allVisits.filter(v => v.duration && v.duration > 0).map(v => v.duration);
       const avgDuration = durations.length > 0 
         ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
         : 0;
 
-      // 6. Appareils
       const deviceCounts = { desktop: 0, mobile: 0, tablet: 0 };
       allVisits.forEach(v => {
         const device = v.device_type?.toLowerCase() || 'desktop';
@@ -166,7 +178,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         }
       });
 
-      // 7. Pages populaires
       const pageCounts: Record<string, number> = {};
       allVisits.forEach(v => {
         const page = v.page || '/';
@@ -178,7 +189,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      // 8. Visites par jour (7 derniers jours)
       const visitsByDay = [];
       for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
@@ -199,14 +209,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         });
       }
 
-      // 9. Tendance
       const trend = yesterdayVisits > 0
         ? todayVisits > yesterdayVisits ? 'up' 
           : todayVisits < yesterdayVisits ? 'down' 
           : 'stable'
         : 'stable';
 
-      // 10. Taux de rebond
       const bounceVisits = allVisits.filter(v => v.duration !== null && v.duration < 5).length;
       const validDurationVisits = allVisits.filter(v => v.duration !== null).length;
       const bounceRate = validDurationVisits > 0 
@@ -259,7 +267,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         }
 
         setUser(payload.user);
-        await fetchVisitorStats();
+        
+        if (isDashboardHome) {
+          await fetchVisitorStats();
+        }
       } catch (error) {
         console.error('Erreur:', error);
         router.push('/login');
@@ -270,10 +281,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     fetchUser();
 
-    // Rafraîchir toutes les 30 secondes
-    const interval = setInterval(fetchVisitorStats, 30000);
-    return () => clearInterval(interval);
-  }, [router]);
+    let interval: NodeJS.Timeout | null = null;
+    if (isDashboardHome) {
+      interval = setInterval(fetchVisitorStats, 30000);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [router, isDashboardHome]);
 
   const handleLogout = async () => {
     try {
@@ -314,6 +332,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   };
 
+  // ✅ Fermer le sidebar sur mobile après navigation
+  const handleNavigation = () => {
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -331,11 +356,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#F5F7FB]">
-      {/* Sidebar */}
+      {/* ✅ Sidebar - Overlay avec z-index plus élevé sur mobile */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen w-64 bg-white border-r border-slate-200 transition-transform ${
+        className={`fixed top-0 left-0 z-50 h-screen w-64 bg-white border-r border-slate-200 transition-transform duration-300 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } lg:translate-x-0 lg:z-40`}
       >
         <div className="flex h-16 items-center justify-between px-4 border-b border-slate-200">
           <Link href="/admin" className="flex items-center gap-2">
@@ -343,251 +368,290 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <span className="font-bold text-[#1E3A8A]">UNITECH</span>
             <span className="text-xs text-slate-400 font-medium">admin</span>
           </Link>
-          <button className="lg:hidden p-2 rounded-lg hover:bg-slate-100" onClick={() => setSidebarOpen(false)}>
-            <FaTimes className="h-5 w-5 text-slate-600" />
-          </button>
+          {/* ✅ Bouton fermeture uniquement sur mobile */}
+          {isMobile && (
+            <button 
+              className="p-2 rounded-lg hover:bg-slate-100" 
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Fermer le menu"
+            >
+              <FaTimes className="h-5 w-5 text-slate-600" />
+            </button>
+          )}
         </div>
 
-        <nav className="p-4 space-y-1">
+        <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-8rem)]">
           {navItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + "/"));
             return (
-              <Link key={item.href} href={item.href} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${isActive ? "bg-[#1E3A8A]/10 text-[#1E3A8A]" : "text-slate-600 hover:bg-slate-100"}`}>
-                <item.icon className="h-5 w-5" /> {item.label}
+              <Link 
+                key={item.href} 
+                href={item.href} 
+                onClick={handleNavigation}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  isActive 
+                    ? "bg-[#1E3A8A]/10 text-[#1E3A8A]" 
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                <item.icon className="h-5 w-5 flex-shrink-0" /> 
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 bg-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium text-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium text-sm flex-shrink-0">
                 {user?.email?.charAt(0).toUpperCase() || "U"}
               </div>
-              <div className="text-xs">
+              <div className="text-xs overflow-hidden">
                 <p className="font-medium text-slate-700 truncate max-w-[120px]">{user?.email}</p>
                 <div className="flex items-center gap-1">
-                  <FaShieldAlt className="h-3 w-3 text-[#F97316]" />
-                  <p className="text-slate-400">{user?.role || "viewer"}</p>
+                  <FaShieldAlt className="h-3 w-3 text-[#F97316] flex-shrink-0" />
+                  <p className="text-slate-400 truncate">{user?.role || "viewer"}</p>
                 </div>
               </div>
             </div>
-            <button onClick={handleLogout} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-red-600 transition" title="Se déconnecter">
+            <button 
+              onClick={handleLogout} 
+              className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-red-600 transition flex-shrink-0" 
+              title="Se déconnecter"
+            >
               <FaSignOutAlt className="h-4 w-4" />
             </button>
           </div>
         </div>
       </aside>
 
-      {!sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(true)} />
+      {/* ✅ Overlay plus visible sur mobile avec z-index adapté */}
+      {isMobile && sidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden transition-opacity duration-300" 
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
       )}
 
-      <div className={`transition-all ${sidebarOpen ? "lg:ml-64" : "lg:ml-0"}`}>
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+      {/* ✅ Contenu principal avec marge adaptative */}
+      <div className={`transition-all duration-300 ${
+        !isMobile && sidebarOpen ? "lg:ml-64" : "lg:ml-0"
+      }`}>
+        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
           <div className="flex h-16 items-center justify-between px-4">
-            <button className="p-2 rounded-lg hover:bg-slate-100 lg:hidden" onClick={() => setSidebarOpen(true)}>
+            {/* ✅ Bouton menu burger sur mobile */}
+            <button 
+              className="p-2 rounded-lg hover:bg-slate-100 lg:hidden" 
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Ouvrir le menu"
+            >
               <FaBars className="h-5 w-5 text-slate-600" />
             </button>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 ml-auto lg:ml-0">
               <span className="text-sm text-slate-500 hidden sm:block">admin.unitech.com</span>
-              <span className="text-sm text-slate-700">{user?.first_name || user?.email}</span>
+              <span className="text-sm text-slate-700 truncate max-w-[120px] sm:max-w-none">
+                {user?.first_name || user?.email}
+              </span>
             </div>
           </div>
         </header>
 
         <main>
-          {/* Statistiques des visiteurs */}
-          <div className="p-4 border-b border-slate-200 bg-white/50">
-            <div className="mx-auto max-w-7xl">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <FaChartLine className="h-5 w-5 text-[#F97316]" />
-                  <h2 className="text-sm font-semibold text-[#1E3A8A]">Statistiques des visiteurs</h2>
-                  <Badge variant="outline" className="text-[10px]">
-                    <FaClock className="mr-1 h-3 w-3" />
-                    {hasData ? 'Temps réel' : 'Aucune donnée'}
-                  </Badge>
-                  <Button variant="ghost" size="sm" onClick={fetchVisitorStats} className="h-6 px-2">
-                    <FaSync className="h-3 w-3" />
-                  </Button>
-                </div>
-                {hasData && (
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      {visitorStats.trend === 'up' && <FaArrowUp className="h-3 w-3 text-green-500" />}
-                      {visitorStats.trend === 'down' && <FaArrowDown className="h-3 w-3 text-red-500" />}
-                      {visitorStats.trend === 'stable' && <FaMinus className="h-3 w-3 text-yellow-500" />}
-                      {visitorStats.previousDayVisits > 0 
-                        ? `${visitorStats.todayVisits > visitorStats.previousDayVisits ? '+' : ''}${Math.round(((visitorStats.todayVisits - visitorStats.previousDayVisits) / visitorStats.previousDayVisits) * 100)}% vs hier`
-                        : 'Premières données'}
-                    </span>
+          {/* Statistiques des visiteurs - UNIQUEMENT SUR LA PAGE D'ACCUEIL */}
+          {isDashboardHome && (
+            <div className="p-4 border-b border-slate-200 bg-white/50">
+              <div className="mx-auto max-w-7xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <FaChartLine className="h-5 w-5 text-[#F97316]" />
+                    <h2 className="text-sm font-semibold text-[#1E3A8A]">Statistiques des visiteurs</h2>
+                    <Badge variant="outline" className="text-[10px]">
+                      <FaClock className="mr-1 h-3 w-3" />
+                      {hasData ? 'Temps réel' : 'Aucune donnée'}
+                    </Badge>
+                    <Button variant="ghost" size="sm" onClick={fetchVisitorStats} className="h-6 px-2">
+                      <FaSync className="h-3 w-3" />
+                    </Button>
                   </div>
+                  {hasData && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        {visitorStats.trend === 'up' && <FaArrowUp className="h-3 w-3 text-green-500" />}
+                        {visitorStats.trend === 'down' && <FaArrowDown className="h-3 w-3 text-red-500" />}
+                        {visitorStats.trend === 'stable' && <FaMinus className="h-3 w-3 text-yellow-500" />}
+                        {visitorStats.previousDayVisits > 0 
+                          ? `${visitorStats.todayVisits > visitorStats.previousDayVisits ? '+' : ''}${Math.round(((visitorStats.todayVisits - visitorStats.previousDayVisits) / visitorStats.previousDayVisits) * 100)}% vs hier`
+                          : 'Premières données'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {visitorStats.loading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <FaSpinner className="h-6 w-6 animate-spin text-[#1E3A8A]" />
+                    <span className="ml-2 text-sm text-slate-500">Chargement...</span>
+                  </div>
+                ) : !hasData ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <FaEye className="h-12 w-12 mx-auto mb-2 text-slate-300" />
+                    <p>Aucune visite enregistrée</p>
+                    <p className="text-xs mt-1">Visitez le site public pour générer des données</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-4"
+                      onClick={fetchVisitorStats}
+                    >
+                      <FaSync className="mr-2 h-3 w-3" />
+                      Rafraîchir
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {/* ✅ Grille responsive avec meilleure adaptation mobile */}
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+                      <Card className="border-0 shadow-sm">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-400">Total visites</p>
+                              <p className="text-lg sm:text-xl font-bold text-[#1E3A8A]">{visitorStats.totalVisits}</p>
+                            </div>
+                            <div className="rounded-full bg-[#1E3A8A]/10 p-2">
+                              <FaEye className="h-4 w-4 text-[#1E3A8A]" />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-0 shadow-sm">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-400">Visiteurs uniques</p>
+                              <p className="text-lg sm:text-xl font-bold text-[#1E3A8A]">{visitorStats.uniqueVisitors}</p>
+                            </div>
+                            <div className="rounded-full bg-[#F97316]/10 p-2">
+                              <FaUserFriends className="h-4 w-4 text-[#F97316]" />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-0 shadow-sm">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-400">Aujourd'hui</p>
+                              <p className="text-lg sm:text-xl font-bold text-[#1E3A8A]">{visitorStats.todayVisits}</p>
+                            </div>
+                            <div className="rounded-full bg-[#10B981]/10 p-2">
+                              <FaChartLine className="h-4 w-4 text-[#10B981]" />
+                            </div>
+                          </div>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {visitorStats.todayVisits > 0 ? '🟢 Visites aujourd\'hui' : '⏳ Aucune visite'}
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-0 shadow-sm">
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-[10px] uppercase text-slate-400">Durée moyenne</p>
+                              <p className="text-lg sm:text-xl font-bold text-[#1E3A8A]">{visitorStats.avgDuration}s</p>
+                            </div>
+                            <div className="rounded-full bg-purple-500/10 p-2">
+                              <FaClock className="h-4 w-4 text-purple-500" />
+                            </div>
+                          </div>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {visitorStats.avgDuration > 60 ? '✅ Bon engagement' : visitorStats.avgDuration > 0 ? '⚠️ Court séjour' : '⏳ En attente'}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] uppercase text-slate-400">Visites des 7 derniers jours</p>
+                        <p className="text-[10px] text-slate-400">Taux de rebond: {visitorStats.bounceRate}%</p>
+                      </div>
+                      <div className="flex items-end gap-1 h-12">
+                        {visitorStats.visitsByDay.map((day, index) => {
+                          const height = maxVisits > 0 ? (day.count / maxVisits) * 100 : 0;
+                          return (
+                            <div key={index} className="flex-1 flex flex-col items-center group">
+                              <div 
+                                className="w-full rounded-sm bg-[#1E3A8A] transition-all duration-500 hover:bg-[#F97316] cursor-pointer"
+                                style={{ height: `${Math.max(height * 0.8, 2)}%` }}
+                              />
+                              <span className="mt-1 text-[8px] text-slate-400 truncate w-full text-center">
+                                {day.date}
+                              </span>
+                              <span className="text-[7px] text-slate-300 hidden group-hover:block">
+                                {day.count}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase text-slate-400 mb-1">Pages populaires</p>
+                        <div className="space-y-1">
+                          {visitorStats.visitsByPage.length > 0 ? (
+                            visitorStats.visitsByPage.slice(0, 3).map((page, index) => (
+                              <div key={index} className="flex items-center justify-between text-xs">
+                                <span className="text-slate-600 truncate">{page.page || '/'}</span>
+                                <span className="font-medium text-[#1E3A8A]">{page.count}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-slate-400">Aucune page visitée</p>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase text-slate-400 mb-1">Appareils</p>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <FaDesktop className="h-3 w-3" /> Ordinateur
+                            </span>
+                            <span className="font-medium text-[#1E3A8A]">{visitorStats.visitsByDevice.desktop}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <FaMobileAlt className="h-3 w-3" /> Mobile
+                            </span>
+                            <span className="font-medium text-[#1E3A8A]">{visitorStats.visitsByDevice.mobile}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <FaTabletAlt className="h-3 w-3" /> Tablette
+                            </span>
+                            <span className="font-medium text-[#1E3A8A]">{visitorStats.visitsByDevice.tablet}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
-
-              {visitorStats.loading ? (
-                <div className="flex items-center justify-center py-6">
-                  <FaSpinner className="h-6 w-6 animate-spin text-[#1E3A8A]" />
-                  <span className="ml-2 text-sm text-slate-500">Chargement...</span>
-                </div>
-              ) : !hasData ? (
-                <div className="text-center py-8 text-slate-400">
-                  <FaEye className="h-12 w-12 mx-auto mb-2 text-slate-300" />
-                  <p>Aucune visite enregistrée</p>
-                  <p className="text-xs mt-1">Visitez le site public pour générer des données</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="mt-4"
-                    onClick={fetchVisitorStats}
-                  >
-                    <FaSync className="mr-2 h-3 w-3" />
-                    Rafraîchir
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[10px] uppercase text-slate-400">Total visites</p>
-                            <p className="text-xl font-bold text-[#1E3A8A]">{visitorStats.totalVisits}</p>
-                          </div>
-                          <div className="rounded-full bg-[#1E3A8A]/10 p-2">
-                            <FaEye className="h-4 w-4 text-[#1E3A8A]" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[10px] uppercase text-slate-400">Visiteurs uniques</p>
-                            <p className="text-xl font-bold text-[#1E3A8A]">{visitorStats.uniqueVisitors}</p>
-                          </div>
-                          <div className="rounded-full bg-[#F97316]/10 p-2">
-                            <FaUserFriends className="h-4 w-4 text-[#F97316]" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[10px] uppercase text-slate-400">Aujourd'hui</p>
-                            <p className="text-xl font-bold text-[#1E3A8A]">{visitorStats.todayVisits}</p>
-                          </div>
-                          <div className="rounded-full bg-[#10B981]/10 p-2">
-                            <FaChartLine className="h-4 w-4 text-[#10B981]" />
-                          </div>
-                        </div>
-                        <p className="mt-1 text-[10px] text-slate-400">
-                          {visitorStats.todayVisits > 0 ? '🟢 Visites aujourd\'hui' : '⏳ Aucune visite aujourd\'hui'}
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[10px] uppercase text-slate-400">Durée moyenne</p>
-                            <p className="text-xl font-bold text-[#1E3A8A]">{visitorStats.avgDuration}s</p>
-                          </div>
-                          <div className="rounded-full bg-purple-500/10 p-2">
-                            <FaClock className="h-4 w-4 text-purple-500" />
-                          </div>
-                        </div>
-                        <p className="mt-1 text-[10px] text-slate-400">
-                          {visitorStats.avgDuration > 60 ? '✅ Bon engagement' : visitorStats.avgDuration > 0 ? '⚠️ Court séjour' : '⏳ En attente'}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Graphique */}
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[10px] uppercase text-slate-400">Visites des 7 derniers jours</p>
-                      <p className="text-[10px] text-slate-400">Taux de rebond: {visitorStats.bounceRate}%</p>
-                    </div>
-                    <div className="flex items-end gap-1 h-12">
-                      {visitorStats.visitsByDay.map((day, index) => {
-                        const height = maxVisits > 0 ? (day.count / maxVisits) * 100 : 0;
-                        return (
-                          <div key={index} className="flex-1 flex flex-col items-center group">
-                            <div 
-                              className="w-full rounded-sm bg-[#1E3A8A] transition-all duration-500 hover:bg-[#F97316] cursor-pointer"
-                              style={{ height: `${Math.max(height * 0.8, 2)}%` }}
-                            />
-                            <span className="mt-1 text-[8px] text-slate-400 truncate w-full text-center">
-                              {day.date}
-                            </span>
-                            <span className="text-[7px] text-slate-300 hidden group-hover:block">
-                              {day.count}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Pages populaires et appareils */}
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-[10px] uppercase text-slate-400 mb-1">Pages populaires</p>
-                      <div className="space-y-1">
-                        {visitorStats.visitsByPage.length > 0 ? (
-                          visitorStats.visitsByPage.slice(0, 3).map((page, index) => (
-                            <div key={index} className="flex items-center justify-between text-xs">
-                              <span className="text-slate-600 truncate">{page.page || '/'}</span>
-                              <span className="font-medium text-[#1E3A8A]">{page.count}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-xs text-slate-400">Aucune page visitée</p>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase text-slate-400 mb-1">Appareils</p>
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <FaDesktop className="h-3 w-3" /> Ordinateur
-                          </span>
-                          <span className="font-medium text-[#1E3A8A]">{visitorStats.visitsByDevice.desktop}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <FaMobileAlt className="h-3 w-3" /> Mobile
-                          </span>
-                          <span className="font-medium text-[#1E3A8A]">{visitorStats.visitsByDevice.mobile}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <FaTabletAlt className="h-3 w-3" /> Tablette
-                          </span>
-                          <span className="font-medium text-[#1E3A8A]">{visitorStats.visitsByDevice.tablet}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
-          </div>
+          )}
 
           {/* Contenu principal */}
-          {children}
+          <div className="p-4">
+            {children}
+          </div>
         </main>
       </div>
     </div>

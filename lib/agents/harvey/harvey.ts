@@ -34,6 +34,10 @@ export class Harvey {
   private knowledgeBase: any[] = [];
   private templates: any[] = [];
   private initialized = false;
+  
+  // ✅ SUIVI DES EMAILS TRAITÉS
+  private processedEmails: Set<string> = new Set();
+  private processedContacts: Set<string> = new Set();
 
   constructor(config: Partial<HarveyConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
@@ -52,6 +56,8 @@ export class Harvey {
       this.loadCompanyData(),
       this.loadKnowledgeBase(),
       this.loadTemplates(),
+      this.loadProcessedEmails(),
+      this.loadProcessedContacts(),
     ]);
 
     this.initialized = true;
@@ -217,6 +223,131 @@ export class Harvey {
     } catch (error) {
       console.error('❌ HARVEY: Erreur chargement templates');
       this.templates = [];
+    }
+  }
+
+  // ============================================================
+  // CHARGEMENT DES EMAILS DÉJÀ TRAITÉS
+  // ============================================================
+
+  private async loadProcessedEmails(): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .select('email_id')
+        .not('email_id', 'is', null);
+
+      if (error) {
+        console.warn('⚠️ HARVEY: Erreur chargement emails traités:', error);
+        return;
+      }
+
+      if (data) {
+        data.forEach(item => {
+          if (item.email_id) {
+            this.processedEmails.add(item.email_id);
+          }
+        });
+        console.log(`📚 HARVEY: ${this.processedEmails.size} emails déjà traités`);
+      }
+    } catch (error) {
+      console.warn('⚠️ HARVEY: Erreur chargement historique emails');
+    }
+  }
+
+  // ============================================================
+  // CHARGEMENT DES CONTACTS DÉJÀ TRAITÉS
+  // ============================================================
+
+  private async loadProcessedContacts(): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .select('from_email, source')
+        .eq('source', 'contact');
+
+      if (error) {
+        console.warn('⚠️ HARVEY: Erreur chargement contacts traités:', error);
+        return;
+      }
+
+      if (data) {
+        data.forEach(item => {
+          if (item.from_email) {
+            this.processedContacts.add(item.from_email);
+          }
+        });
+        console.log(`📚 HARVEY: ${this.processedContacts.size} contacts déjà traités`);
+      }
+    } catch (error) {
+      console.warn('⚠️ HARVEY: Erreur chargement historique contacts');
+    }
+  }
+
+  // ============================================================
+  // VÉRIFICATION DES DOUBLONS
+  // ============================================================
+
+  private async isEmailAlreadyProcessed(emailId: string): Promise<boolean> {
+    try {
+      // ✅ Vérifier dans la mémoire locale
+      if (this.processedEmails.has(emailId)) {
+        return true;
+      }
+
+      // ✅ Vérifier dans la base de données
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .select('email_id')
+        .eq('email_id', emailId)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('⚠️ HARVEY: Erreur vérification doublon email:', error);
+        return false;
+      }
+
+      if (data) {
+        this.processedEmails.add(emailId);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private async isContactAlreadyProcessed(contactId: string, email: string): Promise<boolean> {
+    try {
+      // ✅ Vérifier dans la mémoire locale
+      if (this.processedContacts.has(email)) {
+        return true;
+      }
+
+      // ✅ Vérifier dans la base de données
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .select('id')
+        .eq('from_email', email)
+        .eq('source', 'contact')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('⚠️ HARVEY: Erreur vérification doublon contact:', error);
+        return false;
+      }
+
+      if (data) {
+        this.processedContacts.add(email);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      return false;
     }
   }
 
@@ -648,6 +779,9 @@ L'équipe UNITECH
         return null;
       }
 
+      // ✅ Ajouter à la mémoire locale
+      this.processedEmails.add(emailId);
+
       console.log(`✅ HARVEY: Réponse stockée pour ${emailId}`);
 
       if (response.requires_human_review) {
@@ -671,9 +805,7 @@ L'équipe UNITECH
     contact: any
   ): Promise<any> {
     try {
-      // ✅ NE PAS utiliser email_id (la contrainte a été supprimée)
       const insertData: any = {
-        // ❌ Pas de email_id
         from_email: contact.email,
         to_email: 'doumbialayesoma@gmail.com',
         subject: contact.subject || 'Demande de contact',
@@ -710,6 +842,9 @@ L'équipe UNITECH
         console.error('❌ HARVEY: Erreur stockage contact:', error);
         return null;
       }
+
+      // ✅ Ajouter à la mémoire locale
+      this.processedContacts.add(contact.email);
 
       // ✅ Mettre à jour le statut du contact
       await supabase
@@ -774,6 +909,27 @@ L'équipe UNITECH
         this.companyData = this.getDefaultCompanyData();
       }
 
+      // ✅ VÉRIFICATION DES DOUBLONS
+      if (await this.isContactAlreadyProcessed(contact.id, contact.email)) {
+        console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité, ignoré`);
+        
+        await supabase
+          .from('contacts')
+          .update({
+            status: 'duplicate',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contact.id);
+        
+        return null;
+      }
+
+      // ✅ Vérifier si le contact n'a pas déjà un statut final
+      if (contact.status === 'answered' || contact.status === 'review' || contact.status === 'duplicate') {
+        console.log(`⚠️ HARVEY: Contact déjà traité (status: ${contact.status})`);
+        return null;
+      }
+
       console.log(`🦸‍♂️ HARVEY: Génération réponse contact ${contact.id}`);
 
       const emailData: EmailWithAnalysis = {
@@ -810,7 +966,7 @@ L'équipe UNITECH
       const analysis = this.analyzeResponse(responseContent, emailData);
       await this.storeContactResponse(contact.id, analysis, contact);
 
-      console.log(`✅ HARVEY: Contact ${contact.id} traité (${analysis.confidence}%)`);
+      console.log(`✅ HARVEY: Contact ${contact.id} traité (${analysis.confidence}% confiance)`);
       return analysis;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur contact:', error?.message || error);
@@ -832,6 +988,23 @@ L'équipe UNITECH
         this.companyData = this.getDefaultCompanyData();
       }
 
+      // ✅ VÉRIFICATION DES DOUBLONS
+      if (await this.isEmailAlreadyProcessed(emailId)) {
+        console.log(`⚠️ HARVEY: Email ${emailId} déjà traité, ignoré`);
+        
+        // Mettre à jour le statut pour éviter les boucles
+        await supabase
+          .from('incoming_emails')
+          .update({
+            status: 'duplicate',
+            updated_at: new Date().toISOString(),
+            processed_at: new Date().toISOString(),
+          })
+          .eq('id', emailId);
+        
+        return null;
+      }
+
       console.log(`🦸‍♂️ HARVEY: Génération réponse email ${emailId}`);
 
       const { data: email, error: emailError } = await supabase
@@ -845,6 +1018,12 @@ L'équipe UNITECH
         return null;
       }
 
+      // ✅ Si déjà traité en base, ignorer
+      if (email.status === 'answered' || email.status === 'processed' || email.status === 'review') {
+        console.log(`⚠️ HARVEY: Email déjà traité (status: ${email.status})`);
+        return null;
+      }
+
       const history = await this.getConversationHistory(email.from_email);
       const prompt = this.buildPrompt(email, history, this.companyData);
       const responseContent = await this.callLLM(prompt);
@@ -855,14 +1034,19 @@ L'équipe UNITECH
       }
 
       const analysis = this.analyzeResponse(responseContent, email);
+      
+      // ✅ Stocker la réponse
       await this.storeResponse(emailId, analysis, email);
 
+      // ✅ Mettre à jour le statut
+      const newStatus = analysis.requires_human_review ? 'review' : 'answered';
       await supabase
         .from('incoming_emails')
         .update({
-          status: analysis.requires_human_review ? 'review' : 'answered',
+          status: newStatus,
           assigned_agent: 'HARVEY',
           updated_at: new Date().toISOString(),
+          processed_at: new Date().toISOString(),
         })
         .eq('id', emailId);
 
@@ -884,6 +1068,7 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} emails`);
 
     try {
+      // ✅ Récupérer uniquement les emails en 'analyzed' (pas déjà traités)
       const { data, error } = await supabase
         .from('incoming_emails')
         .select('id')
@@ -909,6 +1094,12 @@ L'équipe UNITECH
 
       for (const email of data) {
         try {
+          // ✅ Vérifier que l'email n'est pas déjà dans processedEmails
+          if (this.processedEmails.has(email.id)) {
+            console.log(`⚠️ HARVEY: Email ${email.id} déjà traité (skip)`);
+            continue;
+          }
+
           const response = await this.generateResponse(email.id);
           if (response) {
             processed++;
@@ -941,6 +1132,7 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} contacts`);
 
     try {
+      // ✅ Récupérer uniquement les contacts en 'analyzed' (pas déjà traités)
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
@@ -964,6 +1156,12 @@ L'équipe UNITECH
 
       for (const contact of data) {
         try {
+          // ✅ Vérifier que le contact n'est pas déjà traité
+          if (this.processedContacts.has(contact.email)) {
+            console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité (skip)`);
+            continue;
+          }
+
           const response = await this.generateContactResponse(contact);
           if (response) {
             processed++;
@@ -984,6 +1182,126 @@ L'équipe UNITECH
       console.error('❌ HARVEY: Erreur fatale contacts:', error?.message || error);
       return { processed: 0, errors: 1 };
     }
+  }
+
+  // ============================================================
+  // NETTOYAGE DES DOUBLONS
+  // ============================================================
+
+  async cleanupDuplicates(): Promise<{
+    cleaned: number;
+    errors: string[];
+  }> {
+    const errors: string[] = [];
+    let cleaned = 0;
+
+    try {
+      console.log('🧹 HARVEY: Nettoyage des doublons...');
+
+      // ✅ Trouver les emails en 'analyzed' qui ont déjà une réponse
+      const { data: emails, error } = await supabase
+        .from('incoming_emails')
+        .select('id, from_email, subject, status')
+        .eq('status', 'analyzed');
+
+      if (error) {
+        throw new Error(`Erreur récupération: ${error.message}`);
+      }
+
+      if (!emails || emails.length === 0) {
+        console.log('📭 HARVEY: Aucun email à nettoyer');
+        return { cleaned: 0, errors: [] };
+      }
+
+      for (const email of emails) {
+        // ✅ Vérifier si une réponse existe déjà
+        const { data: existing, error: checkError } = await supabase
+          .from('email_conversations')
+          .select('id')
+          .eq('email_id', email.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (checkError) {
+          errors.push(`Erreur vérification ${email.id}: ${checkError.message}`);
+          continue;
+        }
+
+        if (existing) {
+          // ✅ Marquer comme duplicate
+          const { error: updateError } = await supabase
+            .from('incoming_emails')
+            .update({
+              status: 'duplicate',
+              updated_at: new Date().toISOString(),
+              processed_at: new Date().toISOString(),
+            })
+            .eq('id', email.id);
+
+          if (updateError) {
+            errors.push(`Erreur mise à jour ${email.id}: ${updateError.message}`);
+          } else {
+            cleaned++;
+            console.log(`🧹 HARVEY: Email ${email.id} marqué comme duplicate`);
+          }
+        }
+      }
+
+      console.log(`✅ HARVEY: ${cleaned} doublons nettoyés`);
+      return { cleaned, errors };
+
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur cleanupDuplicates:', error.message);
+      return { cleaned: 0, errors: [error.message] };
+    }
+  }
+
+  // ============================================================
+  // RÉINITIALISATION DU CACHE
+  // ============================================================
+
+  async refreshCache(): Promise<void> {
+    console.log('🔄 HARVEY: Rafraîchissement du cache...');
+    this.processedEmails.clear();
+    this.processedContacts.clear();
+    await this.loadProcessedEmails();
+    await this.loadProcessedContacts();
+    console.log('✅ HARVEY: Cache rafraîchi');
+  }
+
+  // ============================================================
+  // STATUTS
+  // ============================================================
+
+  getStatus(): {
+    initialized: boolean;
+    processedEmails: number;
+    processedContacts: number;
+    knowledgeBase: number;
+    templates: number;
+    config: HarveyConfig;
+  } {
+    return {
+      initialized: this.initialized,
+      processedEmails: this.processedEmails.size,
+      processedContacts: this.processedContacts.size,
+      knowledgeBase: this.knowledgeBase.length,
+      templates: this.templates.length,
+      config: this.config,
+    };
+  }
+
+  // ============================================================
+  // CONFIGURATION
+  // ============================================================
+
+  updateConfig(config: Partial<HarveyConfig>): void {
+    this.config = { ...this.config, ...config };
+    console.log('⚙️ HARVEY: Configuration mise à jour');
+  }
+
+  getConfig(): HarveyConfig {
+    return { ...this.config };
   }
 }
 
