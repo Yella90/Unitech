@@ -25,12 +25,14 @@ import {
   FaBrain,
   FaFileAlt,
   FaChartLine,
-  FaUsers
+  FaUsers,
+  FaUserFriends,
+  FaInbox
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
 // ============================================================
-// TYPES (CORRIGÉS)
+// TYPES
 // ============================================================
 type EmailConversation = {
   id: string;
@@ -40,9 +42,9 @@ type EmailConversation = {
   subject: string;
   message: string;
   body: string;
-  agent_response: string;      // ✅ Colonne correcte
-  response_tone: string;       // ✅ Colonne correcte
-  tone: string;                // ✅ Alias
+  agent_response: string;
+  response_tone: string;
+  tone: string;
   category: string;
   actions: string[];
   requires_human_review: boolean;
@@ -53,6 +55,8 @@ type EmailConversation = {
   sent_at: string | null;
   is_outgoing: boolean;
   updated_at: string;
+  source: 'email' | 'contact';
+  contact_name?: string;
 };
 
 type HarveyStats = {
@@ -65,6 +69,10 @@ type HarveyStats = {
   avgConfidence: number;
   byCategory: Record<string, number>;
   byTone: Record<string, number>;
+  bySource: {
+    email: number;
+    contact: number;
+  };
 };
 
 // ============================================================
@@ -134,7 +142,8 @@ export default function AdminHarveyPage() {
     archived: 0,
     avgConfidence: 0,
     byCategory: {},
-    byTone: {}
+    byTone: {},
+    bySource: { email: 0, contact: 0 }
   });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -180,7 +189,7 @@ export default function AdminHarveyPage() {
   }, [router, autoRefresh]);
 
   // ============================================================
-  // CHARGEMENT DES DONNÉES (CORRIGÉ)
+  // CHARGEMENT DES DONNÉES AVEC IDENTIFICATION DES CONTACTS
   // ============================================================
   const loadData = async (silent: boolean = false) => {
     if (!silent) {
@@ -188,23 +197,37 @@ export default function AdminHarveyPage() {
     }
 
     try {
-      // ✅ Charger les conversations avec les bonnes colonnes
+      // Charger les conversations
       const { data: conversationsData, error: convError } = await supabase
         .from('email_conversations')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(200);
 
       if (convError) {
         console.error('Erreur conversations:', convError);
         if (!silent) toast.error('Erreur lors du chargement des conversations');
       } else {
-        // ✅ Transformer les données pour correspondre au type
-        const transformed = (conversationsData || []).map((item: any) => ({
-          ...item,
-          agent_response: item.agent_response || item.response_content || '',
-          tone: item.tone || item.response_tone || 'professional'
-        }));
+        // Récupérer les emails des contacts pour identification
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('email, name');
+
+        const contactEmails = new Map();
+        contacts?.forEach(c => contactEmails.set(c.email, c.name));
+
+        // Transformer et identifier les sources
+        const transformed = (conversationsData || []).map((item: any) => {
+          const isContact = contactEmails.has(item.from_email);
+          return {
+            ...item,
+            agent_response: item.agent_response || item.response_content || '',
+            tone: item.tone || item.response_tone || 'professional',
+            source: isContact ? 'contact' : 'email',
+            contact_name: isContact ? contactEmails.get(item.from_email) : undefined
+          };
+        });
+        
         setConversations(transformed);
         calculateStats(transformed);
       }
@@ -239,26 +262,38 @@ export default function AdminHarveyPage() {
       archived: 0,
       avgConfidence: 0,
       byCategory: {},
-      byTone: {}
+      byTone: {},
+      bySource: { email: 0, contact: 0 }
     };
 
     let totalConfidence = 0;
 
     data.forEach(item => {
+      // Statuts
       if (item.status === 'pending') stats.pending++;
       else if (item.status === 'review') stats.review++;
       else if (item.status === 'approved') stats.approved++;
       else if (item.status === 'sent') stats.sent++;
       else if (item.status === 'archived') stats.archived++;
 
+      // Confiance
       totalConfidence += item.confidence || 0;
 
+      // Catégories
       if (item.category) {
         stats.byCategory[item.category] = (stats.byCategory[item.category] || 0) + 1;
       }
 
+      // Tons
       if (item.tone) {
         stats.byTone[item.tone] = (stats.byTone[item.tone] || 0) + 1;
+      }
+
+      // Source
+      if (item.source === 'contact') {
+        stats.bySource.contact++;
+      } else {
+        stats.bySource.email++;
       }
     });
 
@@ -342,6 +377,10 @@ export default function AdminHarveyPage() {
       filtered = filtered.filter(c => c.status === 'sent');
     } else if (filter === 'archived') {
       filtered = filtered.filter(c => c.status === 'archived');
+    } else if (filter === 'contacts') {
+      filtered = filtered.filter(c => c.source === 'contact');
+    } else if (filter === 'emails') {
+      filtered = filtered.filter(c => c.source === 'email');
     } else if (filter !== 'all') {
       filtered = filtered.filter(c => c.category === filter);
     }
@@ -350,11 +389,38 @@ export default function AdminHarveyPage() {
       filtered = filtered.filter(c => 
         (c.from_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (c.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.agent_response || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (c.agent_response || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.contact_name || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     return filtered;
+  };
+
+  // ============================================================
+  // DÉCLENCHER HARVEY
+  // ============================================================
+  const triggerHarvey = async () => {
+    try {
+      toast.info('🔄 Déclenchement du traitement HARVEY...');
+      
+      const response = await fetch('/api/harvey/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 20 })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success(`✅ ${data.result.total?.processed || data.result.emails?.processed || 0} traités`);
+        loadData(true);
+      } else {
+        toast.error(`❌ Erreur: ${data.error}`);
+      }
+    } catch (error: any) {
+      toast.error(`❌ Erreur: ${error.message}`);
+    }
   };
 
   // ============================================================
@@ -422,32 +488,10 @@ export default function AdminHarveyPage() {
             >
               {autoRefresh ? '🔄 Auto' : '⏸️ Auto'}
             </Button>
-            {/* ✅ Bouton pour déclencher HARVEY */}
             <Button
               variant="default"
               className="bg-[#F97316] hover:bg-[#E86A0A]"
-              onClick={async () => {
-                try {
-                  toast.info('🔄 Déclenchement du traitement HARVEY...');
-                  
-                  const response = await fetch('/api/harvey/trigger', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ limit: 20 })
-                  });
-                  
-                  const data = await response.json();
-                  
-                  if (data.success) {
-                    toast.success(`✅ ${data.result.total?.processed || data.result.emails?.processed || 0} traités`);
-                    loadData(true);
-                  } else {
-                    toast.error(`❌ Erreur: ${data.error}`);
-                  }
-                } catch (error: any) {
-                  toast.error(`❌ Erreur: ${error.message}`);
-                }
-              }}
+              onClick={triggerHarvey}
             >
               <FaReply className="mr-2 h-4 w-4" />
               Traiter maintenant
@@ -528,7 +572,7 @@ export default function AdminHarveyPage() {
         </div>
 
         {/* ============================================================
-        FILTRES ET RECHERCHE
+        FILTRES AVEC BOUTONS CONTACTS / EMAILS
         ============================================================ */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
           <div className="flex flex-wrap gap-2">
@@ -539,6 +583,24 @@ export default function AdminHarveyPage() {
               className={filter === 'all' ? 'bg-[#1E3A8A]' : ''}
             >
               📋 Tous ({stats.total})
+            </Button>
+            <Button 
+              variant={filter === 'contacts' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setFilter('contacts')}
+              className={filter === 'contacts' ? 'bg-purple-600' : ''}
+            >
+              <FaUserFriends className="mr-1 h-3 w-3" />
+              Contacts ({stats.bySource.contact})
+            </Button>
+            <Button 
+              variant={filter === 'emails' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setFilter('emails')}
+              className={filter === 'emails' ? 'bg-blue-600' : ''}
+            >
+              <FaEnvelope className="mr-1 h-3 w-3" />
+              Emails ({stats.bySource.email})
             </Button>
             <Button 
               variant={filter === 'pending' ? 'default' : 'outline'} 
@@ -571,6 +633,30 @@ export default function AdminHarveyPage() {
               className={filter === 'sent' ? 'bg-green-600' : ''}
             >
               📤 Envoyés ({stats.sent})
+            </Button>
+            <Button 
+              variant={filter === 'support' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setFilter('support')}
+              className={filter === 'support' ? 'bg-blue-600' : ''}
+            >
+              Support
+            </Button>
+            <Button 
+              variant={filter === 'commercial' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setFilter('commercial')}
+              className={filter === 'commercial' ? 'bg-orange-600' : ''}
+            >
+              Commercial
+            </Button>
+            <Button 
+              variant={filter === 'project' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setFilter('project')}
+              className={filter === 'project' ? 'bg-purple-600' : ''}
+            >
+              Projet
             </Button>
           </div>
 
@@ -615,7 +701,7 @@ export default function AdminHarveyPage() {
               <div className="text-center py-12 text-slate-500">
                 <FaReply className="h-12 w-12 mx-auto text-slate-300 mb-3" />
                 <p className="text-lg font-medium">Aucune réponse générée</p>
-                <p className="text-sm">Les réponses apparaîtront ici une fois que HARVEY aura traité des emails.</p>
+                <p className="text-sm">Les réponses apparaîtront ici une fois que HARVEY aura traité des emails ou des contacts.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -625,11 +711,26 @@ export default function AdminHarveyPage() {
                     className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition"
                   >
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                      {/* Informations avec badge source */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-medium text-slate-800 truncate">
-                            {conv.from_email}
+                            {conv.contact_name || conv.from_email}
                           </p>
+                          
+                          {/* Badge source */}
+                          {conv.source === 'contact' ? (
+                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                              <FaUserFriends className="mr-1 h-3 w-3" />
+                              Contact
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              <FaEnvelope className="mr-1 h-3 w-3" />
+                              Email
+                            </Badge>
+                          )}
+                          
                           <Badge className={statusColors[conv.status] || statusColors.pending}>
                             {statusLabels[conv.status] || conv.status}
                           </Badge>
@@ -642,6 +743,7 @@ export default function AdminHarveyPage() {
                         <p className="text-sm text-slate-600 truncate">{conv.subject}</p>
                       </div>
 
+                      {/* Badges catégorie, ton, agent */}
                       <div className="flex flex-wrap gap-2 items-center">
                         {conv.category && (
                           <Badge className={categoryColors[conv.category] || categoryColors.other}>
@@ -664,10 +766,12 @@ export default function AdminHarveyPage() {
                       </div>
                     </div>
 
+                    {/* Aperçu de la réponse */}
                     <div className="mt-2 text-sm text-slate-600 line-clamp-2 bg-slate-50 p-2 rounded">
                       {conv.agent_response || conv.message || 'Pas de réponse'}
                     </div>
 
+                    {/* Actions */}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button
                         size="sm"
@@ -735,6 +839,7 @@ export default function AdminHarveyPage() {
                       )}
                     </div>
 
+                    {/* Métadonnées */}
                     <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-400">
                       <span>📅 {new Date(conv.created_at).toLocaleString('fr-FR')}</span>
                       {conv.sent_at && (
@@ -753,7 +858,7 @@ export default function AdminHarveyPage() {
       </div>
 
       {/* ============================================================
-      MODAL DETAIL (CORRIGÉ)
+      MODAL DETAIL
       ============================================================ */}
       {showDetail && selectedConversation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -770,17 +875,26 @@ export default function AdminHarveyPage() {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Message original */}
               <div>
-                <h3 className="text-sm font-semibold text-slate-600 mb-2">📧 Email original</h3>
+                <h3 className="text-sm font-semibold text-slate-600 mb-2">
+                  {selectedConversation.source === 'contact' ? '📋 Message de contact' : '📧 Email original'}
+                </h3>
                 <div className="bg-slate-50 rounded-lg p-4">
                   <p className="text-sm font-medium">{selectedConversation.subject}</p>
-                  <p className="text-xs text-slate-500">De: {selectedConversation.from_email}</p>
+                  <p className="text-xs text-slate-500">
+                    De: {selectedConversation.contact_name || selectedConversation.from_email}
+                    {selectedConversation.source === 'contact' && (
+                      <span className="ml-2 text-purple-600">(Contact)</span>
+                    )}
+                  </p>
                   <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">
                     {selectedConversation.message || selectedConversation.body || 'Contenu non disponible'}
                   </p>
                 </div>
               </div>
 
+              {/* Réponse générée */}
               <div>
                 <h3 className="text-sm font-semibold text-slate-600 mb-2">🤖 Réponse générée</h3>
                 <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
@@ -823,6 +937,7 @@ export default function AdminHarveyPage() {
                 </div>
               </div>
 
+              {/* Actions */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-200">
                 <Button
                   variant="outline"

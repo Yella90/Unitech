@@ -16,12 +16,12 @@ import {
 // ============================================================
 
 const defaultConfig: HarveyConfig = {
-  maxEmailsPerRun: 5,
+  maxEmailsPerRun: 10,
   minConfidence: 60,
   requireHumanReview: true,
   defaultTone: 'professional',
-  temperature: 0.7,      // ✅ Ajouté
-  maxTokens: 800,        // ✅ Ajouté
+  temperature: 0.7,
+  maxTokens: 800,
 };
 
 // ============================================================
@@ -62,108 +62,113 @@ export class Harvey {
   // CHARGEMENT DES DONNÉES ENTREPRISE
   // ============================================================
 
- // lib/agents/harvey/harvey.ts
+  private async loadCompanyData(): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from('company_data')
+        .select('*')
+        .single();
 
-// ============================================================
-// CHARGEMENT DES DONNÉES ENTREPRISE (MODIFIÉ)
-// ============================================================
-
-private async loadCompanyData(): Promise<void> {
-  try {
-    const { data, error } = await supabase
-      .from('company_data')
-      .select('*')
-      .single();
-
-    if (error) {
-      console.warn('⚠️ HARVEY: Données entreprise par défaut utilisées');
-      this.companyData = this.getDefaultCompanyData();
-      return;
-    }
-
-    // ✅ Transformer les données JSONB en objets typés
-    this.companyData = {
-      name: data.name || 'UNITECH',
-      description: data.description || '',
-      services: data.services || [],
-      formations: data.formations || [],      // ✅ NOUVEAU
-      projects: data.projects || [],          // ✅ NOUVEAU
-      missions: data.missions || [],          // ✅ NOUVEAU
-      pricing: data.pricing || {},
-      team: data.team || [],
-      faq: data.faq || [],
-    };
-
-    console.log(`🏢 HARVEY: ${this.companyData.name} chargé`);
-    console.log(`📚 ${this.companyData.services.length} services`);
-    console.log(`🎓 ${this.companyData.formations.length} formations`);
-    console.log(`📊 ${this.companyData.projects.length} projets`);
-    console.log(`🎯 ${this.companyData.missions.length} missions`);
-  } catch (error) {
-    console.warn('⚠️ HARVEY: Erreur chargement entreprise');
-    this.companyData = this.getDefaultCompanyData();
-  }
-}
-
-// ============================================================
-// DONNÉES PAR DÉFAUT (FALLBACK)
-// ============================================================
-
-private getDefaultCompanyData(): CompanyData {
-  return {
-    name: 'UNITECH',
-    description: 'Solutions technologiques intelligentes pour l\'éducation, l\'industrie et la formation professionnelle.',
-    services: [
-      {
-        name: 'SaaS Scolaire',
-        description: 'Gestion complète des établissements scolaires',
-        features: ['Gestion des élèves', 'Notes et bulletins', 'Paiements', 'Statistiques']
-      },
-      {
-        name: 'SaaS Boutique',
-        description: 'Gestion pour commerçants locaux',
-        features: ['Gestion des stocks', 'Suivi des ventes', 'Clients', 'Facturation']
-      },
-      {
-        name: 'Domotique Énergétique',
-        description: 'Système intelligent de gestion énergétique',
-        features: ['Suivi consommation', 'Facturation automatique', 'Optimisation IA']
+      if (error) {
+        console.warn('⚠️ HARVEY: Données entreprise par défaut utilisées');
+        this.companyData = this.getDefaultCompanyData();
+        return;
       }
-    ],
-    // ✅ Formations par défaut
-    formations: [
-      { name: 'Développement Web Full Stack', duration: '6 mois', level: 'Débutant à Avancé', technologies: ['React', 'Node.js', 'MongoDB'] },
-      { name: 'Intelligence Artificielle et ML', duration: '4 mois', level: 'Intermédiaire', technologies: ['Python', 'TensorFlow', 'Scikit-learn'] },
-      { name: 'Domotique et IoT', duration: '3 mois', level: 'Intermédiaire', technologies: ['Arduino', 'ESP32', 'MQTT'] }
-    ],
-    // ✅ Projets par défaut
-    projects: [
-      { name: 'SaaS Scolaire', status: 'En développement', progress: 68, description: 'Plateforme de gestion pour écoles' },
-      { name: 'SaaS Boutique', status: 'En développement', progress: 42, description: 'Solution pour commerçants locaux' },
-      { name: 'Domotique Énergétique', status: 'En développement', progress: 55, description: 'Système de gestion énergétique intelligente' }
-    ],
-    // ✅ Missions par défaut
-    missions: [
-      { title: 'Développeur Full Stack', description: 'Conception d\'applications web et mobiles' },
-      { title: 'Ingénieur IA', description: 'Développement de modèles d\'intelligence artificielle' },
-      { title: 'Expert Domotique', description: 'Installation et configuration de systèmes domotiques' }
-    ],
-    pricing: {
-      base: 'Sur devis',
-      consultation: 'Gratuite',
-      details: 'Nous proposons des solutions adaptées à vos besoins avec des tarifs compétitifs.'
-    },
-    team: [
-      { name: 'Laye Soma', role: 'Fondateur & CEO', email: 'laye@unitech.com' },
-      { name: 'Équipe TECH', role: 'Développement', email: 'tech@unitech.com' }
-    ],
-    faq: [
-      { question: 'Quels sont vos services ?', answer: 'Nous proposons des solutions SaaS, formations et missions' },
-      { question: 'Comment obtenir un devis ?', answer: 'Contactez-nous via le formulaire de contact ou par email.' }
-    ]
-  };
-}
 
+      this.companyData = {
+        name: data.name || 'UNITECH',
+        description: data.description || '',
+        services: data.services || [],
+        formations: data.formations || [],
+        projects: data.projects || [],
+        missions: data.missions || [],
+        pricing: data.pricing || {},
+        team: data.team || [],
+        faq: data.faq || [],
+      };
+
+      console.log(`🏢 HARVEY: ${this.companyData.name} chargé`);
+    } catch (error) {
+      console.warn('⚠️ HARVEY: Erreur chargement entreprise');
+      this.companyData = this.getDefaultCompanyData();
+    }
+  }
+
+  private getDefaultCompanyData(): CompanyData {
+    return {
+      name: 'UNITECH',
+      description:
+        "Solutions technologiques intelligentes pour l'éducation, l'industrie et la formation professionnelle.",
+      services: [
+        {
+          name: 'SaaS Scolaire',
+          description: 'Gestion complète des établissements scolaires',
+          features: ['Gestion des élèves', 'Notes et bulletins', 'Paiements', 'Statistiques'],
+        },
+        {
+          name: 'SaaS Boutique',
+          description: 'Gestion pour commerçants locaux',
+          features: ['Gestion des stocks', 'Suivi des ventes', 'Clients', 'Facturation'],
+        },
+        {
+          name: 'Domotique Énergétique',
+          description: 'Système intelligent de gestion énergétique',
+          features: ['Suivi consommation', 'Facturation automatique', 'Optimisation IA'],
+        },
+      ],
+      formations: [
+        {
+          name: 'Développement Web Full Stack',
+          duration: '6 mois',
+          level: 'Débutant à Avancé',
+          technologies: ['React', 'Node.js', 'MongoDB'],
+        },
+        {
+          name: 'Intelligence Artificielle et ML',
+          duration: '4 mois',
+          level: 'Intermédiaire',
+          technologies: ['Python', 'TensorFlow', 'Scikit-learn'],
+        },
+      ],
+      projects: [
+        {
+          name: 'SaaS Scolaire',
+          status: 'En développement',
+          progress: 68,
+          description: 'Plateforme de gestion pour écoles',
+        },
+        {
+          name: 'SaaS Boutique',
+          status: 'En développement',
+          progress: 42,
+          description: 'Solution pour commerçants locaux',
+        },
+      ],
+      missions: [
+        { title: 'Développeur Full Stack', description: "Conception d'applications web et mobiles" },
+        { title: 'Ingénieur IA', description: "Développement de modèles d'intelligence artificielle" },
+      ],
+      pricing: {
+        base: 'Sur devis',
+        consultation: 'Gratuite',
+        details: 'Solutions adaptées à vos besoins',
+      },
+      team: [
+        { name: 'Laye Soma', role: 'Fondateur & CEO', email: 'laye@unitech.com' },
+        { name: 'Équipe TECH', role: 'Développement', email: 'tech@unitech.com' },
+      ],
+      faq: [
+        {
+          question: 'Quels sont vos services ?',
+          answer: 'Nous proposons des solutions SaaS, formations et missions',
+        },
+        {
+          question: 'Comment obtenir un devis ?',
+          answer: 'Contactez-nous via le formulaire de contact ou par email.',
+        },
+      ],
+    };
+  }
 
   // ============================================================
   // CHARGEMENT BASE DE CONNAISSANCES
@@ -264,15 +269,38 @@ private getDefaultCompanyData(): CompanyData {
   // CONSTRUCTION DU PROMPT
   // ============================================================
 
-  // lib/agents/harvey/harvey.ts - buildPrompt()
+  private buildPrompt(
+    email: EmailWithAnalysis,
+    history: ConversationHistory[],
+    companyData: CompanyData
+  ): string {
+    const safeBody = email.body?.substring(0, 3000) || '';
 
-private buildPrompt(
-  email: EmailWithAnalysis,
-  history: ConversationHistory[],
-  companyData: CompanyData
-): string {
-  let prompt = `
-Tu es HARVEY, l'assistant IA professionnel de ${companyData.name}.
+    let prompt = `
+Tu es un consultant professionnel pour ${companyData.name}.
+
+## OBJECTIF
+
+Rédige une réponse directe et professionnelle comme le ferait un consultant de ${companyData.name}.
+
+## STYLE
+
+- Sois confiant et assuré
+- Réponds avec clarté et précision
+- Utilise un ton professionnel et courtois
+- Sois direct, ne tourne pas autour du pot
+- Montre que tu maîtrises le sujet
+
+## RÈGLES
+
+1. Sois professionnel, direct et confiant
+2. Réponds dans la même langue que le client
+3. Ne fabrique aucune information
+4. Si tu ne sais pas, dis : "Je vérifie et je reviens vers vous"
+5. Propose une action concrète
+6. **Ne mentionne JAMAIS que tu es une IA, un assistant ou HARVEY**
+7. **Ne mentionne jamais d'API, de modèle, de prompt ou de LLM**
+8. **Signe uniquement par : L'équipe ${companyData.name}**
 
 ## ENTREPRISE
 
@@ -281,31 +309,19 @@ Description : ${companyData.description}
 
 ## SERVICES
 
-${companyData.services.map(s => `- ${s.name}: ${s.description}`).join('\n')}
+${companyData.services.map((s) => `- ${s.name}: ${s.description}`).join('\n')}
 
-## FORMATIONS PROPOSÉES
+## FORMATIONS
 
-${companyData.formations.map(f => 
-  `- ${f.name}: ${f.duration} (${f.level}) - Technologies: ${f.technologies.join(', ')}`
-).join('\n')}
+${companyData.formations.map((f) => `- ${f.name}: ${f.duration} (${f.level})`).join('\n')}
 
-## PROJETS EN COURS
+## PROJETS
 
-${companyData.projects.map(p => 
-  `- ${p.name}: ${p.status} (${p.progress}%) - ${p.description}`
-).join('\n')}
-
-## MISSIONS DE L'ENTREPRISE
-
-${companyData.missions.map(m => `- ${m.title}: ${m.description}`).join('\n')}
+${companyData.projects.map((p) => `- ${p.name}: ${p.status} (${p.progress}%)`).join('\n')}
 
 ## TARIFS
 
 ${JSON.stringify(companyData.pricing, null, 2)}
-
-## FAQ
-
-${companyData.faq.map(f => `- ${f.question}: ${f.answer}`).join('\n')}
 
 ## EMAIL DU CLIENT
 
@@ -313,16 +329,83 @@ De : ${email.from_email}
 Sujet : ${email.subject}
 Catégorie : ${email.category}
 Priorité : ${email.priority}
-Message : ${email.body.substring(0, 1500)}...
+
+Message :
+${safeBody}
+
+## ANALYSE
+
+Confiance : ${email.ai_analysis?.confidence || 0}%
+Mots-clés : ${email.ai_analysis?.matched_keywords?.join(', ') || 'Aucun'}
+`;
+
+    if (history && history.length > 0) {
+      prompt += `
+      
+## HISTORIQUE RÉCENT
+
+`;
+      history.slice(0, 5).forEach((conv, index) => {
+        prompt += `
+### Conversation ${index + 1}
+
+Sujet : ${conv.subject}
+Message : ${conv.body?.substring(0, 500) || ''}
+Réponse précédente : ${conv.agent_response?.substring(0, 500) || ''}
+`;
+      });
+    }
+
+    if (this.knowledgeBase && this.knowledgeBase.length > 0) {
+      const emailText = `${email.subject || ''} ${email.body || ''}`.toLowerCase();
+      const relevant = this.knowledgeBase
+        .filter((kb: any) => {
+          if (!kb?.keyword) return false;
+          return emailText.includes(String(kb.keyword).toLowerCase());
+        })
+        .slice(0, 5);
+
+      if (relevant.length > 0) {
+        prompt += `
+        
+## INFORMATIONS PERTINENTES
+
+`;
+        relevant.forEach((kb: any) => {
+          prompt += `
+Question : ${kb.question || ''}
+Réponse : ${kb.answer || ''}
+`;
+        });
+      }
+    }
+
+    prompt += `
 
 ## INSTRUCTION FINALE
 
-Rédige une réponse professionnelle et utile.
-Termine par : L'équipe ${companyData.name}
+Rédige maintenant la réponse complète au client.
+
+La réponse doit être directe, professionnelle et utile.
+
+Longueur recommandée : 150 à 400 mots.
+
+**Ne mets pas :**
+- "Réponse proposée"
+- "Voici une réponse"
+- "En tant qu'IA"
+- "Je suis HARVEY"
+- "Je suis un assistant"
+- une explication de ton raisonnement
+- un ton trop automatique
+
+**Donne directement le texte de l'email comme si un consultant de UNITECH l'écrivait.**
+
+Signature : L'équipe ${companyData.name}
 `;
 
-  return prompt;
-}
+    return prompt.trim();
+  }
 
   // ============================================================
   // APPEL À L'API LLM AVEC FALLBACK
@@ -332,32 +415,41 @@ Termine par : L'équipe ${companyData.name}
     try {
       console.log('🤖 HARVEY: Appel du LLM avec fallback...');
 
-      // ✅ Utilisation de maxTokens (correct) au lieu de max_tokens
       const result = await generateWithFallback({
         messages: [
           {
             role: 'system',
-            content: `Tu es HARVEY, Associe Gérant  de UNITECH.
+            content: `Tu es un consultant professionnel pour UNITECH.
 
-Tu es spécialisé dans :
-- les solutions SaaS
-- l'éducation
-- le commerce
-- la domotique
-- la gestion d'entreprise
+## PERSONNALITÉ
+- Confiant et direct
+- Intelligent et pragmatique
+- Charismatique et persuasif
+- Professionnel mais accessible
+- Ne tourne pas autour du pot
 
-Tu réponds toujours :
-- clairement
-- professionnellement
-- honnêtement
-- dans la langue du client
+## STYLE DE COMMUNICATION
+- Réponds avec assurance
+- Sois concis mais complet
+- Utilise un ton professionnel et courtois
+- Montre que tu maîtrises le sujet
 
-Tu ne dois jamais inventer une information.
+## RÈGLES
+1. Sois professionnel, direct et confiant
+2. Réponds dans la même langue que le client
+3. Si tu ne connais pas une information, dis : "Je vérifie et je reviens vers vous"
+4. **Ne mentionne JAMAIS que tu es une IA, un assistant ou HARVEY**
+5. **Ne mentionne jamais d'API, de modèle, de prompt ou de LLM**
+6. **Signe uniquement par : L'équipe UNITECH**
 
-Si tu ne connais pas une information, indique-le clairement.
+## SPÉCIALITÉS
+- Solutions SaaS
+- Éducation
+- Commerce local
+- Domotique
+- Gestion d'entreprise
 
-Signature :
-L'équipe UNITECH`,
+Signature : L'équipe UNITECH`,
           },
           {
             role: 'user',
@@ -365,7 +457,7 @@ L'équipe UNITECH`,
           },
         ],
         temperature: this.config.temperature,
-         max_tokens: this.config.maxTokens,  // ✅ Correction : max_tokens
+        max_tokens: this.config.maxTokens,
       });
 
       if (!result.content) {
@@ -373,7 +465,6 @@ L'équipe UNITECH`,
       }
 
       console.log(`✅ HARVEY: Réponse reçue (provider: ${result.provider})`);
-
       return result.content;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur LLM:', error.message);
@@ -412,38 +503,26 @@ L'équipe UNITECH
     const readingTime = Math.max(1, Math.ceil(wordCount / 200));
     const lower = content.toLowerCase();
 
-    // ==========================================================
-    // TON
-    // ==========================================================
-
     let tone: HarveyResponse['tone'] = this.config.defaultTone;
 
     if (lower.includes('merci') || lower.includes('bonjour') || lower.includes('cordialement')) {
       tone = 'professional';
     }
-
     if (lower.includes('technique') || lower.includes('solution') || lower.includes('code')) {
       tone = 'technical';
     }
-
     if (lower.includes(' :)') || lower.includes(';)')) {
       tone = 'friendly';
     }
-
     if (wordCount < 100) {
       tone = 'concise';
     }
-
-    // ==========================================================
-    // ACTIONS
-    // ==========================================================
 
     const actions: string[] = [];
     const lines = content.split('\n');
 
     for (const line of lines) {
       const normalized = line.toLowerCase();
-
       if (
         normalized.includes('propose') ||
         normalized.includes('suggère') ||
@@ -459,10 +538,6 @@ L'équipe UNITECH
       }
     }
 
-    // ==========================================================
-    // RELECTURE HUMAINE
-    // ==========================================================
-
     const requiresHumanReview =
       lower.includes('une personne') ||
       lower.includes('un humain') ||
@@ -473,33 +548,21 @@ L'équipe UNITECH
       email.priority === 'high' ||
       wordCount > 500;
 
-    // ==========================================================
-    // CONFIANCE
-    // ==========================================================
-
     let confidence = 70;
 
     if (email.ai_analysis?.confidence && email.ai_analysis.confidence > 60) {
       confidence += 15;
     }
-
     if (wordCount > 150) {
       confidence += 10;
     }
-
     if (content.split('\n\n').length > 2) {
       confidence += 5;
     }
-
     if (requiresHumanReview) {
       confidence = Math.min(confidence, 65);
     }
-
     confidence = Math.min(confidence, 100);
-
-    // ==========================================================
-    // SENTIMENT
-    // ==========================================================
 
     let sentiment: HarveyResponse['metadata']['sentiment'] = 'neutral';
 
@@ -511,14 +574,9 @@ L'équipe UNITECH
     ) {
       sentiment = 'positive';
     }
-
     if (lower.includes('désolé') || lower.includes('désolée') || lower.includes('probleme') || lower.includes('problème')) {
       sentiment = 'negative';
     }
-
-    // ==========================================================
-    // AGENT RECOMMANDÉ
-    // ==========================================================
 
     let suggestedAgent: HarveyResponse['suggested_agent'] = 'HUMAN';
     const category = String(email.category || '').toLowerCase();
@@ -575,6 +633,7 @@ L'équipe UNITECH
         suggested_agent: response.suggested_agent,
         is_outgoing: true,
         category: email.category || 'information',
+        source: 'email',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -603,6 +662,74 @@ L'équipe UNITECH
   }
 
   // ============================================================
+  // STOCKER RÉPONSE CONTACT (SANS EMAIL_ID)
+  // ============================================================
+
+  private async storeContactResponse(
+    contactId: string,
+    response: HarveyResponse,
+    contact: any
+  ): Promise<any> {
+    try {
+      // ✅ NE PAS utiliser email_id (la contrainte a été supprimée)
+      const insertData: any = {
+        // ❌ Pas de email_id
+        from_email: contact.email,
+        to_email: 'doumbialayesoma@gmail.com',
+        subject: contact.subject || 'Demande de contact',
+        message: contact.message || '',
+        body: contact.message || '',
+        agent_response: response.content,
+        response_tone: response.tone,
+        tone: response.tone,
+        confidence: response.confidence,
+        actions: response.actions,
+        status: response.requires_human_review ? 'review' : 'pending',
+        requires_human_review: response.requires_human_review,
+        suggested_agent: response.suggested_agent,
+        is_outgoing: true,
+        category: contact.category || 'information',
+        source: 'contact',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log(`📝 Insertion contact dans email_conversations:`, {
+        from_email: insertData.from_email,
+        subject: insertData.subject,
+        agent_response_length: insertData.agent_response?.length || 0,
+        status: insertData.status
+      });
+
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .insert(insertData)
+        .select();
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur stockage contact:', error);
+        return null;
+      }
+
+      // ✅ Mettre à jour le statut du contact
+      await supabase
+        .from('contacts')
+        .update({
+          status: response.requires_human_review ? 'review' : 'answered',
+          assigned_agent: 'HARVEY',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contactId);
+
+      console.log(`✅ HARVEY: Réponse contact stockée pour ${contactId}`);
+      return data;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur stockage contact:', error?.message || error);
+      return null;
+    }
+  }
+
+  // ============================================================
   // NOTIFICATION DE RELECTURE
   // ============================================================
 
@@ -623,7 +750,6 @@ L'équipe UNITECH
           console.log('⚠️ HARVEY: Notification ignorée à cause des règles RLS');
           return;
         }
-
         console.error('❌ HARVEY: Erreur notification:', error);
         return;
       }
@@ -650,10 +776,6 @@ L'équipe UNITECH
 
       console.log(`🦸‍♂️ HARVEY: Génération réponse contact ${contact.id}`);
 
-      // ========================================================
-      // CONSTRUIRE EMAIL
-      // ========================================================
-
       const emailData: EmailWithAnalysis = {
         id: contact.id,
         from_email: contact.email,
@@ -676,22 +798,8 @@ L'équipe UNITECH
         status: contact.status || 'pending',
       };
 
-      // ========================================================
-      // HISTORIQUE
-      // ========================================================
-
       const history = await this.getConversationHistory(contact.email);
-
-      // ========================================================
-      // PROMPT
-      // ========================================================
-
       const prompt = this.buildPrompt(emailData, history, this.companyData);
-
-      // ========================================================
-      // LLM
-      // ========================================================
-
       const responseContent = await this.callLLM(prompt);
 
       if (!responseContent) {
@@ -699,33 +807,10 @@ L'équipe UNITECH
         return null;
       }
 
-      // ========================================================
-      // ANALYSE
-      // ========================================================
-
       const analysis = this.analyzeResponse(responseContent, emailData);
-
-      // ========================================================
-      // STOCKAGE
-      // ========================================================
-
       await this.storeContactResponse(contact.id, analysis, contact);
 
-      // ========================================================
-      // MISE À JOUR CONTACT
-      // ========================================================
-
-      await supabase
-        .from('contacts')
-        .update({
-          status: analysis.requires_human_review ? 'review' : 'answered',
-          assigned_agent: 'HARVEY',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', contact.id);
-
       console.log(`✅ HARVEY: Contact ${contact.id} traité (${analysis.confidence}%)`);
-
       return analysis;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur contact:', error?.message || error);
@@ -734,61 +819,7 @@ L'équipe UNITECH
   }
 
   // ============================================================
-  // STOCKER RÉPONSE CONTACT
-  // ============================================================
-
-  private async storeContactResponse(
-    contactId: string,
-    response: HarveyResponse,
-    contact: any
-  ): Promise<any> {
-    try {
-      const insertData: any = {
-        email_id: contactId,
-        from_email: contact.email,
-        to_email: 'doumbialayesoma@gmail.com',
-        subject: contact.subject || 'Demande de contact',
-        message: contact.message || '',
-        body: contact.message || '',
-        agent_response: response.content,
-        response_tone: response.tone,
-        tone: response.tone,
-        confidence: response.confidence,
-        actions: response.actions,
-        status: response.requires_human_review ? 'review' : 'pending',
-        requires_human_review: response.requires_human_review,
-        suggested_agent: response.suggested_agent,
-        is_outgoing: true,
-        category: contact.category || 'information',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data, error } = await supabase
-        .from('email_conversations')
-        .insert(insertData)
-        .select();
-
-      if (error) {
-        console.error('❌ HARVEY: Erreur stockage contact:', error);
-        return null;
-      }
-
-      console.log(`✅ HARVEY: Réponse contact stockée pour ${contactId}`);
-
-      if (response.requires_human_review) {
-        await this.createReviewNotification(contactId, response);
-      }
-
-      return data;
-    } catch (error: any) {
-      console.error('❌ HARVEY: Erreur stockage contact:', error?.message || error);
-      return null;
-    }
-  }
-
-  // ============================================================
-  // MÉTHODE PRINCIPALE
+  // MÉTHODE PRINCIPALE - GÉNÉRER UNE RÉPONSE POUR UN EMAIL
   // ============================================================
 
   async generateResponse(emailId: string): Promise<HarveyResponse | null> {
@@ -803,10 +834,6 @@ L'équipe UNITECH
 
       console.log(`🦸‍♂️ HARVEY: Génération réponse email ${emailId}`);
 
-      // ========================================================
-      // RÉCUPÉRATION EMAIL
-      // ========================================================
-
       const { data: email, error: emailError } = await supabase
         .from('incoming_emails')
         .select('*')
@@ -818,22 +845,8 @@ L'équipe UNITECH
         return null;
       }
 
-      // ========================================================
-      // HISTORIQUE
-      // ========================================================
-
       const history = await this.getConversationHistory(email.from_email);
-
-      // ========================================================
-      // PROMPT
-      // ========================================================
-
       const prompt = this.buildPrompt(email, history, this.companyData);
-
-      // ========================================================
-      // IA
-      // ========================================================
-
       const responseContent = await this.callLLM(prompt);
 
       if (!responseContent) {
@@ -841,21 +854,8 @@ L'équipe UNITECH
         return null;
       }
 
-      // ========================================================
-      // ANALYSE
-      // ========================================================
-
       const analysis = this.analyzeResponse(responseContent, email);
-
-      // ========================================================
-      // STOCKAGE
-      // ========================================================
-
       await this.storeResponse(emailId, analysis, email);
-
-      // ========================================================
-      // MISE À JOUR EMAIL
-      // ========================================================
 
       await supabase
         .from('incoming_emails')
@@ -867,7 +867,6 @@ L'équipe UNITECH
         .eq('id', emailId);
 
       console.log(`✅ HARVEY: Email ${emailId} traité (${analysis.confidence}% confiance)`);
-
       return analysis;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur génération:', error?.message || error);
@@ -911,7 +910,6 @@ L'équipe UNITECH
       for (const email of data) {
         try {
           const response = await this.generateResponse(email.id);
-
           if (response) {
             processed++;
             console.log(`✅ HARVEY: Email ${email.id} traité`);
@@ -926,7 +924,6 @@ L'équipe UNITECH
       }
 
       console.log(`📊 HARVEY: ${processed} traités, ${errors} erreurs`);
-
       return { processed, errors };
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur fatale:', error?.message || error);
@@ -947,7 +944,7 @@ L'équipe UNITECH
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .eq('status', 'pending')
+        .eq('status', 'analyzed')
         .limit(limit);
 
       if (error) {
@@ -968,7 +965,6 @@ L'équipe UNITECH
       for (const contact of data) {
         try {
           const response = await this.generateContactResponse(contact);
-
           if (response) {
             processed++;
             console.log(`✅ HARVEY: Contact ${contact.id} traité`);
@@ -983,7 +979,6 @@ L'équipe UNITECH
       }
 
       console.log(`📊 HARVEY: ${processed} contacts traités, ${errors} erreurs`);
-
       return { processed, errors };
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur fatale contacts:', error?.message || error);

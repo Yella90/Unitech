@@ -22,7 +22,8 @@ import {
   FaChartBar,
   FaEye,
   FaTrash,
-  FaReply
+  FaReply,
+  FaPlay
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -59,19 +60,37 @@ type Email = {
   ai_analysis: any;
 };
 
+type Conversation = {
+  id: string;
+  from_email: string;
+  subject: string;
+  agent_response: string;
+  status: string;
+  confidence: number;
+  created_at: string;
+};
+
 type DonaStats = {
   contacts: {
     total: number;
     processed: number;
     pending: number;
+    analyzed: number;
     rate: number;
   };
   emails: {
     total: number;
     processed: number;
     pending: number;
+    analyzed: number;
     ignored: number;
     rate: number;
+  };
+  conversations: {
+    total: number;
+    pending: number;
+    review: number;
+    sent: number;
   };
 };
 
@@ -104,6 +123,9 @@ const statusColors: Record<string, string> = {
   read: 'bg-blue-100 text-blue-700',
   ignored: 'bg-gray-100 text-gray-500',
   error: 'bg-red-100 text-red-700',
+  answered: 'bg-green-100 text-green-700',
+  review: 'bg-orange-100 text-orange-700',
+  sent: 'bg-emerald-100 text-emerald-700',
 };
 
 // ============================================================
@@ -115,6 +137,7 @@ export default function AdminDonaPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [filter, setFilter] = useState('all');
   const [emailFilter, setEmailFilter] = useState('all');
@@ -124,8 +147,9 @@ export default function AdminDonaPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeTab, setActiveTab] = useState('contacts');
   const [stats, setStats] = useState<DonaStats>({
-    contacts: { total: 0, processed: 0, pending: 0, rate: 0 },
-    emails: { total: 0, processed: 0, pending: 0, ignored: 0, rate: 0 }
+    contacts: { total: 0, processed: 0, pending: 0, analyzed: 0, rate: 0 },
+    emails: { total: 0, processed: 0, pending: 0, analyzed: 0, ignored: 0, rate: 0 },
+    conversations: { total: 0, pending: 0, review: 0, sent: 0 }
   });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -157,7 +181,6 @@ export default function AdminDonaPage() {
 
     fetchData();
 
-    // Auto-raffraîchissement
     if (autoRefresh) {
       intervalRef.current = setInterval(() => {
         loadData(true);
@@ -210,8 +233,20 @@ export default function AdminDonaPage() {
         setEmails(emailsData || []);
       }
 
-      // Mettre à jour les statistiques
-      updateStats(contactsData || [], emailsData || []);
+      // Charger les conversations (réponses)
+      const { data: conversationsData, error: convError } = await supabase
+        .from('email_conversations')
+        .select('id, from_email, subject, agent_response, status, confidence, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (convError) {
+        console.error('Erreur conversations:', convError);
+      } else {
+        setConversations(conversationsData || []);
+      }
+
+      updateStats(contactsData || [], emailsData || [], conversationsData || []);
 
       setLastUpdate(new Date());
       if (!silent) {
@@ -231,29 +266,61 @@ export default function AdminDonaPage() {
   };
 
   // ============================================================
-  // STATISTIQUES
+  // STATISTIQUES (CORRIGÉ)
   // ============================================================
-  const updateStats = (contactsData: Contact[], emailsData: Email[]) => {
-    const processedContacts = contactsData.filter(c => c.status === 'processed' || c.status === 'read').length;
-    const pendingContacts = contactsData.filter(c => c.status === 'pending').length;
+  const updateStats = (contactsData: Contact[], emailsData: Email[], conversationsData: Conversation[]) => {
+    // ✅ Contacts traités = processed + read + analyzed + answered + review + sent
+    const processedContacts = contactsData.filter(c => 
+      c.status === 'processed' || 
+      c.status === 'read' || 
+      c.status === 'analyzed' ||
+      c.status === 'answered' ||
+      c.status === 'review' ||
+      c.status === 'sent'
+    ).length;
     
-    const processedEmails = emailsData.filter(e => e.status === 'processed' || e.status === 'analyzed').length;
+    const pendingContacts = contactsData.filter(c => c.status === 'pending').length;
+    const analyzedContacts = contactsData.filter(c => c.status === 'analyzed').length;
+    
+    // ✅ Emails traités = processed + analyzed + answered + review + sent
+    const processedEmails = emailsData.filter(e => 
+      e.status === 'processed' || 
+      e.status === 'analyzed' ||
+      e.status === 'answered' ||
+      e.status === 'review' ||
+      e.status === 'sent'
+    ).length;
+    
     const pendingEmails = emailsData.filter(e => e.status === 'pending').length;
+    const analyzedEmails = emailsData.filter(e => e.status === 'analyzed').length;
     const ignoredEmails = emailsData.filter(e => e.status === 'ignored' || e.status === 'spam').length;
+
+    const totalConv = conversationsData.length;
+    const pendingConv = conversationsData.filter(c => c.status === 'pending').length;
+    const reviewConv = conversationsData.filter(c => c.status === 'review').length;
+    const sentConv = conversationsData.filter(c => c.status === 'sent').length;
 
     setStats({
       contacts: {
         total: contactsData.length,
         processed: processedContacts,
         pending: pendingContacts,
+        analyzed: analyzedContacts,
         rate: contactsData.length > 0 ? Math.round((processedContacts / contactsData.length) * 100) : 0
       },
       emails: {
         total: emailsData.length,
         processed: processedEmails,
         pending: pendingEmails,
+        analyzed: analyzedEmails,
         ignored: ignoredEmails,
         rate: emailsData.length > 0 ? Math.round((processedEmails / emailsData.length) * 100) : 0
+      },
+      conversations: {
+        total: totalConv,
+        pending: pendingConv,
+        review: reviewConv,
+        sent: sentConv
       }
     });
   };
@@ -264,7 +331,6 @@ export default function AdminDonaPage() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    // Contacts
     const contactsChannel = supabase
       .channel('contacts-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => {
@@ -272,7 +338,6 @@ export default function AdminDonaPage() {
       })
       .subscribe();
 
-    // Emails
     const emailsChannel = supabase
       .channel('emails-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_emails' }, () => {
@@ -280,22 +345,40 @@ export default function AdminDonaPage() {
       })
       .subscribe();
 
+    const convChannel = supabase
+      .channel('conversations-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'email_conversations' }, () => {
+        loadData(true);
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(contactsChannel);
       supabase.removeChannel(emailsChannel);
+      supabase.removeChannel(convChannel);
     };
   }, [isAdmin]);
 
   // ============================================================
-  // FILTRES ET RECHERCHE
+  // FILTRES (CORRIGÉS)
   // ============================================================
   const getFilteredContacts = () => {
     let filtered = contacts;
     
     if (filter === 'processed') {
-      filtered = filtered.filter(c => c.status === 'processed' || c.status === 'read');
+      // ✅ Traités = processed + read + analyzed + answered + review + sent
+      filtered = filtered.filter(c => 
+        c.status === 'processed' || 
+        c.status === 'read' || 
+        c.status === 'analyzed' ||
+        c.status === 'answered' ||
+        c.status === 'review' ||
+        c.status === 'sent'
+      );
     } else if (filter === 'pending') {
       filtered = filtered.filter(c => c.status === 'pending');
+    } else if (filter === 'analyzed') {
+      filtered = filtered.filter(c => c.status === 'analyzed');
     } else if (filter !== 'all') {
       filtered = filtered.filter(c => c.category === filter);
     }
@@ -315,9 +398,18 @@ export default function AdminDonaPage() {
     let filtered = emails;
     
     if (emailFilter === 'processed') {
-      filtered = filtered.filter(e => e.status === 'processed' || e.status === 'analyzed');
+      // ✅ Traités = processed + analyzed + answered + review + sent
+      filtered = filtered.filter(e => 
+        e.status === 'processed' || 
+        e.status === 'analyzed' ||
+        e.status === 'answered' ||
+        e.status === 'review' ||
+        e.status === 'sent'
+      );
     } else if (emailFilter === 'pending') {
       filtered = filtered.filter(e => e.status === 'pending');
+    } else if (emailFilter === 'analyzed') {
+      filtered = filtered.filter(e => e.status === 'analyzed');
     } else if (emailFilter === 'ignored') {
       filtered = filtered.filter(e => e.status === 'ignored' || e.status === 'spam');
     } else if (emailFilter !== 'all') {
@@ -332,6 +424,32 @@ export default function AdminDonaPage() {
     }
 
     return filtered;
+  };
+
+  // ============================================================
+  // DÉCLENCHER DONA
+  // ============================================================
+  const triggerDona = async () => {
+    try {
+      toast.info('🔄 Déclenchement du traitement DONA...');
+      
+      const response = await fetch('/api/dona/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 20 })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success(`✅ ${data.result?.processed || 0} éléments traités`);
+        loadData(true);
+      } else {
+        toast.error(`❌ Erreur: ${data.error}`);
+      }
+    } catch (error: any) {
+      toast.error(`❌ Erreur: ${error.message}`);
+    }
   };
 
   // ============================================================
@@ -400,6 +518,14 @@ export default function AdminDonaPage() {
             >
               {autoRefresh ? '🔄 Auto' : '⏸️ Auto'}
             </Button>
+            <Button
+              variant="default"
+              className="bg-[#F97316] hover:bg-[#E86A0A]"
+              onClick={triggerDona}
+            >
+              <FaPlay className="mr-2 h-4 w-4" />
+              Traiter maintenant
+            </Button>
           </div>
         </div>
 
@@ -433,10 +559,10 @@ export default function AdminDonaPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Total emails</p>
-                  <p className="text-2xl font-bold text-[#1E3A8A]">{stats.emails.total}</p>
+                  <p className="text-xs text-slate-500">En attente</p>
+                  <p className="text-2xl font-bold text-yellow-600">{stats.contacts.pending}</p>
                 </div>
-                <FaEnvelope className="h-8 w-8 text-[#F97316]" />
+                <FaClock className="h-8 w-8 text-yellow-500" />
               </div>
             </CardContent>
           </Card>
@@ -444,10 +570,10 @@ export default function AdminDonaPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-slate-500">Emails traités</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.emails.processed}</p>
+                  <p className="text-xs text-slate-500">Analysés</p>
+                  <p className="text-2xl font-bold text-blue-600">{stats.contacts.analyzed}</p>
                 </div>
-                <FaCheckCircle className="h-8 w-8 text-green-500" />
+                <FaEye className="h-8 w-8 text-blue-500" />
               </div>
             </CardContent>
           </Card>
@@ -518,6 +644,14 @@ export default function AdminDonaPage() {
                       className={filter === 'pending' ? 'bg-yellow-600' : ''}
                     >
                       ⏳ En attente ({stats.contacts.pending})
+                    </Button>
+                    <Button 
+                      variant={filter === 'analyzed' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setFilter('analyzed')}
+                      className={filter === 'analyzed' ? 'bg-blue-600' : ''}
+                    >
+                      🔍 Analysés ({stats.contacts.analyzed})
                     </Button>
                     <Button 
                       variant={filter === 'support' ? 'default' : 'outline'} 
@@ -671,6 +805,14 @@ export default function AdminDonaPage() {
                       className={emailFilter === 'pending' ? 'bg-yellow-600' : ''}
                     >
                       ⏳ En attente ({stats.emails.pending})
+                    </Button>
+                    <Button 
+                      variant={emailFilter === 'analyzed' ? 'default' : 'outline'} 
+                      size="sm"
+                      onClick={() => setEmailFilter('analyzed')}
+                      className={emailFilter === 'analyzed' ? 'bg-blue-600' : ''}
+                    >
+                      🔍 Analysés ({stats.emails.analyzed})
                     </Button>
                     <Button 
                       variant={emailFilter === 'ignored' ? 'default' : 'outline'} 
