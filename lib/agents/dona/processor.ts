@@ -7,7 +7,12 @@ import {
   ContactData,
   ProcessEmailResult,
   ProcessContactResult,
-  DonaConfig
+  DonaConfig,
+  DonaStatus,
+  ProcessOptions,
+  BatchProcessResult,
+  CleanupResult,
+  IDona
 } from './types';
 
 // ============================================================
@@ -15,6 +20,9 @@ import {
 // ============================================================
 const defaultConfig: DonaConfig = {
   maxEmailsPerRun: 50,
+  enableDeduplication: true,
+  enableNewsletterAutoSubscribe: true,
+  debug: false,
   defaultCategories: [
     { 
       id: 'default-commercial', 
@@ -93,10 +101,11 @@ const defaultConfig: DonaConfig = {
 // ============================================================
 // CLASSE DONA
 // ============================================================
-export class Dona {
+export class Dona implements IDona {
   private keywordConfigs: KeywordConfig[] = [];
   private config: DonaConfig;
   private initialized: boolean = false;
+  private processedEmails: Set<string> = new Set();
 
   constructor(config: Partial<DonaConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
@@ -110,8 +119,35 @@ export class Dona {
 
     console.log('🤖 DONA: Initialisation...');
     await this.loadConfig();
+    await this.loadProcessedEmails();
     this.initialized = true;
     console.log(`✅ DONA: ${this.keywordConfigs.length} catégories chargées`);
+    console.log(`📚 DONA: ${this.processedEmails.size} emails déjà traités`);
+  }
+
+  // ============================================================
+  // CHARGEMENT DES EMAILS DÉJÀ TRAITÉS
+  // ============================================================
+  private async loadProcessedEmails(): Promise<void> {
+    try {
+      const { data, error } = await supabase
+        .from('incoming_emails')
+        .select('id')
+        .neq('status', 'pending');
+
+      if (error) {
+        console.warn('⚠️ DONA: Erreur chargement emails traités:', error);
+        return;
+      }
+
+      if (data) {
+        data.forEach(item => {
+          this.processedEmails.add(item.id);
+        });
+      }
+    } catch (error) {
+      console.warn('⚠️ DONA: Erreur chargement historique:', error);
+    }
   }
 
   // ============================================================
@@ -234,9 +270,38 @@ export class Dona {
   }
 
   // ============================================================
-  // PROCESS EMAIL (VERSION COMPLÈTE CORRIGÉE)
+  // VÉRIFICATION DES DOUBLONS
+  // ============================================================
+  private async isDuplicateEmail(fromEmail: string, subject: string): Promise<boolean> {
+    if (!this.config.enableDeduplication) return false;
+
+    try {
+      const { data, error } = await supabase
+        .from('incoming_emails')
+        .select('id, status')
+        .eq('from_email', fromEmail)
+        .eq('subject', subject)
+        .neq('status', 'pending')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('⚠️ DONA: Erreur vérification doublon:', error);
+        return false;
+      }
+
+      return !!data;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // ============================================================
+  // PROCESS EMAIL
   // ============================================================
   async processEmail(emailData: EmailData): Promise<ProcessEmailResult> {
+    const startTime = Date.now();
+
     try {
       if (!this.initialized) {
         await this.init();
@@ -244,6 +309,29 @@ export class Dona {
 
       console.log(`📧 DONA: Analyse email de ${emailData.from}`);
       
+      if (emailData.id && this.processedEmails.has(emailData.id)) {
+        console.log(`⚠️ DONA: Email ${emailData.id} déjà traité (cache)`);
+        return { action: 'ignored', reason: 'duplicate' };
+      }
+
+      const isDuplicate = await this.isDuplicateEmail(emailData.from, emailData.subject);
+      if (isDuplicate) {
+        console.log(`⚠️ DONA: Email déjà traité: ${emailData.from} - ${emailData.subject}`);
+        
+        await supabase
+          .from('incoming_emails')
+          .update({
+            status: 'duplicate',
+            processed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('from_email', emailData.from)
+          .eq('subject', emailData.subject)
+          .eq('status', 'pending');
+
+        return { action: 'ignored', reason: 'duplicate' };
+      }
+
       const analysis = await this.analyze({
         from: emailData.from,
         subject: emailData.subject,
@@ -253,7 +341,6 @@ export class Dona {
       
       console.log(`📊 DONA: ${analysis.category} (${analysis.confidence}%)`);
 
-      // ✅ Récupérer l'email en attente avec gestion d'erreur
       const { data: emailToUpdate, error: findError } = await supabase
         .from('incoming_emails')
         .select('id, status')
@@ -269,7 +356,6 @@ export class Dona {
       }
 
       if (!emailToUpdate) {
-        // ✅ Si aucun email en 'pending', vérifier s'il a déjà été traité
         const { data: existing } = await supabase
           .from('incoming_emails')
           .select('id, status')
@@ -280,18 +366,39 @@ export class Dona {
 
         if (existing) {
           console.log(`⚠️ DONA: Email déjà traité (status: ${existing.status})`);
+          this.processedEmails.add(existing.id);
           return { action: 'stored', email_id: existing.id, analysis };
         }
 
-        console.log('⚠️ DONA: Aucun email en attente trouvé');
-        return { action: 'error', error: new Error('No pending email found') };
+        const { data: newEmail, error: insertError } = await supabase
+          .from('incoming_emails')
+          .insert({
+            from_email: emailData.from,
+            subject: emailData.subject,
+            body: emailData.body,
+            status: 'pending',
+            received_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('❌ DONA: Erreur création email:', insertError);
+          return { action: 'error', error: new Error(insertError.message) };
+        }
+
+        return await this.processEmail({
+          ...emailData,
+          id: newEmail.id
+        });
       }
 
-      // ✅ SPAM → Ignorer
       if (analysis.category === 'spam') {
         console.log(`🚫 DONA: Email ignoré (spam)`);
         
-        const { error } = await supabase
+        await supabase
           .from('incoming_emails')
           .update({
             category: analysis.category,
@@ -304,18 +411,14 @@ export class Dona {
           })
           .eq('id', emailToUpdate.id);
 
-        if (error) {
-          console.error('❌ DONA: Erreur spam:', error);
-          return { action: 'error', error: new Error(error.message) };
-        }
+        this.processedEmails.add(emailToUpdate.id);
         return { action: 'ignored', reason: 'spam' };
       }
 
-      // ✅ NEWSLETTER → Ajouter à la liste et marquer comme traité
-      if (analysis.category === 'newsletter') {
+      if (analysis.category === 'newsletter' && this.config.enableNewsletterAutoSubscribe) {
         await this.handleNewsletter(emailData);
         
-        const { error } = await supabase
+        await supabase
           .from('incoming_emails')
           .update({
             category: analysis.category,
@@ -328,21 +431,17 @@ export class Dona {
           })
           .eq('id', emailToUpdate.id);
 
-        if (error) {
-          console.error('❌ DONA: Erreur newsletter:', error);
-          return { action: 'error', error: new Error(error.message) };
-        }
+        this.processedEmails.add(emailToUpdate.id);
         return { action: 'newsletter', analysis };
       }
 
-      // ✅ AUTRES CATÉGORIES → 'analyzed' pour HARVEY
       const { data, error } = await supabase
         .from('incoming_emails')
         .update({
           category: analysis.category,
           priority: analysis.priority,
           assigned_agent: analysis.assigned_agent,
-          status: 'analyzed',  // ✅ HARVEY cherche ce statut
+          status: 'processed',
           ai_analysis: analysis,
           updated_at: new Date().toISOString(),
           processed_at: new Date().toISOString(),
@@ -356,8 +455,18 @@ export class Dona {
         return { action: 'error', error: new Error(error.message) };
       }
 
+      this.processedEmails.add(emailToUpdate.id);
       console.log(`✅ DONA: Email ${data.id} classé: ${analysis.category}`);
-      return { action: 'stored', email_id: data.id, analysis };
+      
+      return { 
+        action: 'stored', 
+        email_id: data.id, 
+        analysis,
+        metadata: {
+          processed_at: new Date().toISOString(),
+          duration: Date.now() - startTime,
+        }
+      };
 
     } catch (error: any) {
       console.error('❌ DONA: Erreur processEmail:', error.message);
@@ -369,6 +478,8 @@ export class Dona {
   // PROCESS CONTACT
   // ============================================================
   async processContact(contactData: ContactData): Promise<ProcessContactResult> {
+    const startTime = Date.now();
+
     try {
       if (!this.initialized) {
         await this.init();
@@ -376,6 +487,22 @@ export class Dona {
 
       console.log(`📧 DONA: Analyse contact de ${contactData.name}`);
       
+      const isDuplicate = await this.isDuplicateEmail(contactData.email, contactData.subject);
+      if (isDuplicate) {
+        console.log(`⚠️ DONA: Contact déjà traité: ${contactData.email} - ${contactData.subject}`);
+        
+        await supabase
+          .from('contacts')
+          .update({
+            status: 'duplicate',
+            processed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', contactData.id);
+
+        return { action: 'ignored', reason: 'duplicate' };
+      }
+
       const analysis = await this.analyze({
         from: contactData.email,
         subject: contactData.subject,
@@ -385,10 +512,10 @@ export class Dona {
       
       console.log(`📊 DONA: ${analysis.category} (${analysis.confidence}%)`);
 
-      const { error } = await supabase
+      const { error: contactError } = await supabase
         .from('contacts')
         .update({
-          status: 'analyzed',
+          status: 'processed',
           category: analysis.category,
           assigned_agent: analysis.assigned_agent,
           priority: analysis.priority,
@@ -397,13 +524,68 @@ export class Dona {
         })
         .eq('id', contactData.id);
 
-      if (error) {
-        console.error('❌ DONA: Erreur contact:', error);
-        return { action: 'error', error: new Error(error.message) };
+      if (contactError) {
+        console.error('❌ DONA: Erreur contact:', contactError);
+        return { action: 'error', error: new Error(contactError.message) };
+      }
+
+      const { data: existingEmail } = await supabase
+        .from('incoming_emails')
+        .select('id, status')
+        .eq('from_email', contactData.email)
+        .eq('subject', contactData.subject)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingEmail) {
+        await supabase
+          .from('incoming_emails')
+          .update({
+            status: 'processed',
+            category: analysis.category,
+            assigned_agent: analysis.assigned_agent,
+            priority: analysis.priority,
+            processed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingEmail.id);
+      } else {
+        await supabase
+          .from('incoming_emails')
+          .insert({
+            from_email: contactData.email,
+            subject: contactData.subject,
+            body: contactData.message,
+            status: 'processed',
+            category: analysis.category,
+            assigned_agent: analysis.assigned_agent,
+            priority: analysis.priority,
+            ai_analysis: analysis,
+            received_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            processed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+      }
+
+      if (analysis.category === 'newsletter' && this.config.enableNewsletterAutoSubscribe) {
+        await this.handleNewsletter({
+          from: contactData.email,
+          subject: contactData.subject,
+          body: contactData.message,
+        });
       }
 
       console.log(`✅ DONA: Contact ${contactData.id} classé: ${analysis.category}`);
-      return { action: 'updated', analysis };
+      
+      return { 
+        action: 'updated', 
+        analysis,
+        metadata: {
+          processed_at: new Date().toISOString(),
+          duration: Date.now() - startTime,
+        }
+      };
 
     } catch (error: any) {
       console.error('❌ DONA: Erreur processContact:', error.message);
@@ -416,7 +598,6 @@ export class Dona {
   // ============================================================
   private async handleNewsletter(emailData: EmailData): Promise<void> {
     try {
-      // Vérifier si l'email existe déjà
       const { data: existing } = await supabase
         .from('newsletter_subscribers')
         .select('id')
@@ -428,8 +609,7 @@ export class Dona {
         return;
       }
 
-      // Ajouter à la newsletter
-      const { error } = await supabase
+      await supabase
         .from('newsletter_subscribers')
         .insert({
           email: emailData.from,
@@ -439,14 +619,178 @@ export class Dona {
           created_at: new Date().toISOString()
         });
 
-      if (error) {
-        console.error('❌ DONA: Erreur insertion newsletter:', error);
-      } else {
-        console.log(`📬 DONA: ${emailData.from} ajouté à la newsletter`);
-      }
+      console.log(`📬 DONA: ${emailData.from} ajouté à la newsletter`);
     } catch (error: any) {
       console.error('❌ DONA: Erreur newsletter:', error.message);
     }
+  }
+
+  // ============================================================
+  // TRAITEMENT EN LOT
+  // ============================================================
+  async processBatch(options: ProcessOptions = {}): Promise<BatchProcessResult> {
+    const startTime = Date.now();
+    const errors: string[] = [];
+    let processed = 0;
+    let ignored = 0;
+
+    try {
+      if (!this.initialized) {
+        await this.init();
+      }
+
+      const maxEmails = options.maxEmails || this.config.maxEmailsPerRun || 50;
+
+      const { data: emails, error } = await supabase
+        .from('incoming_emails')
+        .select('*')
+        .eq('status', 'pending')
+        .limit(maxEmails);
+
+      if (error) {
+        throw new Error(`Erreur récupération emails: ${error.message}`);
+      }
+
+      if (!emails || emails.length === 0) {
+        console.log('📭 DONA: Aucun email à traiter');
+        return { processed: 0, ignored: 0, errors: [], total: 0, duration: Date.now() - startTime };
+      }
+
+      console.log(`📨 DONA: Traitement de ${emails.length} emails`);
+
+      for (const email of emails) {
+        try {
+          const result = await this.processEmail({
+            id: email.id,
+            from: email.from_email,
+            subject: email.subject || '',
+            body: email.body || '',
+          });
+
+          if (result.action === 'error') {
+            errors.push(`Email ${email.id}: ${result.error?.message}`);
+          } else if (result.action === 'ignored') {
+            ignored++;
+          } else {
+            processed++;
+          }
+        } catch (err: any) {
+          errors.push(`Email ${email.id}: ${err.message}`);
+        }
+      }
+
+      return { processed, ignored, errors, total: emails.length, duration: Date.now() - startTime };
+
+    } catch (error: any) {
+      console.error('❌ DONA: Erreur processBatch:', error.message);
+      return { processed: 0, ignored: 0, errors: [error.message], total: 0, duration: Date.now() - startTime };
+    }
+  }
+
+  // ============================================================
+  // NETTOYAGE DES DOUBLONS
+  // ============================================================
+  async cleanupDuplicates(): Promise<CleanupResult> {
+    const errors: string[] = [];
+    const duplicates: CleanupResult['duplicates'] = [];
+    let cleaned = 0;
+
+    try {
+      const { data: emails, error } = await supabase
+        .from('incoming_emails')
+        .select('from_email, subject, id, status, created_at')
+        .order('from_email')
+        .order('created_at');
+
+      if (error) {
+        throw new Error(`Erreur récupération: ${error.message}`);
+      }
+
+      const grouped = new Map<string, any[]>();
+      emails.forEach(email => {
+        const key = `${email.from_email}|${email.subject}`;
+        if (!grouped.has(key)) {
+          grouped.set(key, []);
+        }
+        grouped.get(key)!.push(email);
+      });
+
+      for (const [key, items] of grouped) {
+        if (items.length > 1) {
+          const sorted = items.sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          
+          const [keep, ...removed] = sorted;
+          
+          duplicates.push({
+            key,
+            count: items.length,
+            kept: keep.id,
+            removed: removed.map(r => r.id)
+          });
+          
+          for (const dup of removed) {
+            if (dup.status !== 'duplicate') {
+              const { error: updateError } = await supabase
+                .from('incoming_emails')
+                .update({
+                  status: 'duplicate',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', dup.id);
+
+              if (updateError) {
+                errors.push(`Erreur nettoyage ${dup.id}: ${updateError.message}`);
+              } else {
+                cleaned++;
+                this.processedEmails.add(dup.id);
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`🧹 DONA: ${cleaned} doublons nettoyés`);
+      return { cleaned, errors, duplicates };
+
+    } catch (error: any) {
+      console.error('❌ DONA: Erreur cleanupDuplicates:', error.message);
+      return { cleaned: 0, errors: [error.message], duplicates: [] };
+    }
+  }
+
+  // ============================================================
+  // RAFRAÎCHIR LE CACHE
+  // ============================================================
+  async refreshCache(): Promise<void> {
+    console.log('🔄 DONA: Rafraîchissement du cache...');
+    this.processedEmails.clear();
+    await this.loadProcessedEmails();
+    console.log(`✅ DONA: Cache rafraîchi (${this.processedEmails.size} emails)`);
+  }
+
+  // ============================================================
+  // STATUTS - VERSION CORRIGÉE AVEC TOUS LES CHAMPS REQUIS
+  // ============================================================
+  getStatus(): DonaStatus {
+    return {
+      initialized: this.initialized,
+      processedEmails: this.processedEmails.size,
+      keywordConfigs: this.keywordConfigs.length,
+      pendingEmails: 0, // ✅ REQUIS - sera calculé si besoin
+      config: this.config, // ✅ REQUIS - configuration complète
+      lastRun: undefined, // ✅ OPTIONNEL
+      totalProcessed: this.processedEmails.size, // ✅ OPTIONNEL
+    };
+  }
+
+  // ============================================================
+  // CONFIGURATION
+  // ============================================================
+  updateConfig(config: Partial<DonaConfig>): void {
+    this.config = { ...this.config, ...config };
+    console.log('⚙️ DONA: Configuration mise à jour');
   }
 }
 

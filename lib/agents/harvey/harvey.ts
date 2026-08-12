@@ -35,7 +35,6 @@ export class Harvey {
   private templates: any[] = [];
   private initialized = false;
   
-  // ✅ SUIVI DES EMAILS TRAITÉS
   private processedEmails: Set<string> = new Set();
   private processedContacts: Set<string> = new Set();
 
@@ -160,7 +159,7 @@ export class Harvey {
         details: 'Solutions adaptées à vos besoins',
       },
       team: [
-        { name: 'Laye Soma', role: 'Fondateur & CEO', email: 'laye@unitech.com' },
+        { name: 'Laye Soma', role: 'Fondateur & CEO', email: 'doumbialaesoma@gmail.com' },
         { name: 'Équipe TECH', role: 'Développement', email: 'tech@unitech.com' },
       ],
       faq: [
@@ -256,15 +255,15 @@ export class Harvey {
   }
 
   // ============================================================
-  // CHARGEMENT DES CONTACTS DÉJÀ TRAITÉS
+  // CHARGEMENT DES CONTACTS DÉJÀ TRAITÉS (CORRIGÉ - SANS source)
   // ============================================================
 
   private async loadProcessedContacts(): Promise<void> {
     try {
       const { data, error } = await supabase
         .from('email_conversations')
-        .select('from_email, source')
-        .eq('source', 'contact');
+        .select('from_email')
+        .not('from_email', 'is', null);
 
       if (error) {
         console.warn('⚠️ HARVEY: Erreur chargement contacts traités:', error);
@@ -290,12 +289,10 @@ export class Harvey {
 
   private async isEmailAlreadyProcessed(emailId: string): Promise<boolean> {
     try {
-      // ✅ Vérifier dans la mémoire locale
       if (this.processedEmails.has(emailId)) {
         return true;
       }
 
-      // ✅ Vérifier dans la base de données
       const { data, error } = await supabase
         .from('email_conversations')
         .select('email_id')
@@ -319,19 +316,20 @@ export class Harvey {
     }
   }
 
+  // ============================================================
+  // VÉRIFICATION DES DOUBLONS CONTACT (CORRIGÉ - SANS source)
+  // ============================================================
+
   private async isContactAlreadyProcessed(contactId: string, email: string): Promise<boolean> {
     try {
-      // ✅ Vérifier dans la mémoire locale
       if (this.processedContacts.has(email)) {
         return true;
       }
 
-      // ✅ Vérifier dans la base de données
       const { data, error } = await supabase
         .from('email_conversations')
         .select('id')
         .eq('from_email', email)
-        .eq('source', 'contact')
         .limit(1)
         .maybeSingle();
 
@@ -448,7 +446,7 @@ ${companyData.formations.map((f) => `- ${f.name}: ${f.duration} (${f.level})`).j
 
 ## PROJETS
 
-${companyData.projects.map((p) => `- ${p.name}: ${p.status} (${p.progress}%)`).join('\n')}
+${companyData.projects.map((p) => `- ${p.name}: ${p.status} ${p.description} (${p.progress}%)`).join('\n')}
 
 ## TARIFS
 
@@ -579,7 +577,6 @@ Signature : L'équipe ${companyData.name}
 - Commerce local
 - Domotique
 - Gestion d'entreprise
--Le site web : https://unitech-qvgo.onrender.com/
 
 Signature : L'équipe UNITECH`,
           },
@@ -739,7 +736,7 @@ L'équipe UNITECH
   }
 
   // ============================================================
-  // STOCKAGE DE LA RÉPONSE EMAIL
+  // STOCKAGE DE LA RÉPONSE EMAIL (CORRIGÉ - SANS source)
   // ============================================================
 
   private async storeResponse(
@@ -765,7 +762,6 @@ L'équipe UNITECH
         suggested_agent: response.suggested_agent,
         is_outgoing: true,
         category: email.category || 'information',
-        source: 'email',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -780,7 +776,6 @@ L'équipe UNITECH
         return null;
       }
 
-      // ✅ Ajouter à la mémoire locale
       this.processedEmails.add(emailId);
 
       console.log(`✅ HARVEY: Réponse stockée pour ${emailId}`);
@@ -797,7 +792,7 @@ L'équipe UNITECH
   }
 
   // ============================================================
-  // STOCKER RÉPONSE CONTACT (SANS EMAIL_ID)
+  // STOCKER RÉPONSE CONTACT (CORRIGÉ - SANS source)
   // ============================================================
 
   private async storeContactResponse(
@@ -807,6 +802,7 @@ L'équipe UNITECH
   ): Promise<any> {
     try {
       const insertData: any = {
+        contact_id: contactId,
         from_email: contact.email,
         to_email: 'doumbialayesoma@gmail.com',
         subject: contact.subject || 'Demande de contact',
@@ -822,12 +818,12 @@ L'équipe UNITECH
         suggested_agent: response.suggested_agent,
         is_outgoing: true,
         category: contact.category || 'information',
-        source: 'contact',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
       console.log(`📝 Insertion contact dans email_conversations:`, {
+        contact_id: insertData.contact_id,
         from_email: insertData.from_email,
         subject: insertData.subject,
         agent_response_length: insertData.agent_response?.length || 0,
@@ -844,10 +840,8 @@ L'équipe UNITECH
         return null;
       }
 
-      // ✅ Ajouter à la mémoire locale
       this.processedContacts.add(contact.email);
 
-      // ✅ Mettre à jour le statut du contact
       await supabase
         .from('contacts')
         .update({
@@ -910,7 +904,6 @@ L'équipe UNITECH
         this.companyData = this.getDefaultCompanyData();
       }
 
-      // ✅ VÉRIFICATION DES DOUBLONS
       if (await this.isContactAlreadyProcessed(contact.id, contact.email)) {
         console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité, ignoré`);
         
@@ -925,7 +918,6 @@ L'équipe UNITECH
         return null;
       }
 
-      // ✅ Vérifier si le contact n'a pas déjà un statut final
       if (contact.status === 'answered' || contact.status === 'review' || contact.status === 'duplicate') {
         console.log(`⚠️ HARVEY: Contact déjà traité (status: ${contact.status})`);
         return null;
@@ -989,11 +981,9 @@ L'équipe UNITECH
         this.companyData = this.getDefaultCompanyData();
       }
 
-      // ✅ VÉRIFICATION DES DOUBLONS
       if (await this.isEmailAlreadyProcessed(emailId)) {
         console.log(`⚠️ HARVEY: Email ${emailId} déjà traité, ignoré`);
         
-        // Mettre à jour le statut pour éviter les boucles
         await supabase
           .from('incoming_emails')
           .update({
@@ -1019,7 +1009,6 @@ L'équipe UNITECH
         return null;
       }
 
-      // ✅ Si déjà traité en base, ignorer
       if (email.status === 'answered' || email.status === 'processed' || email.status === 'review') {
         console.log(`⚠️ HARVEY: Email déjà traité (status: ${email.status})`);
         return null;
@@ -1036,10 +1025,8 @@ L'équipe UNITECH
 
       const analysis = this.analyzeResponse(responseContent, email);
       
-      // ✅ Stocker la réponse
       await this.storeResponse(emailId, analysis, email);
 
-      // ✅ Mettre à jour le statut
       const newStatus = analysis.requires_human_review ? 'review' : 'answered';
       await supabase
         .from('incoming_emails')
@@ -1069,7 +1056,6 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} emails`);
 
     try {
-      // ✅ Récupérer uniquement les emails en 'analyzed' (pas déjà traités)
       const { data, error } = await supabase
         .from('incoming_emails')
         .select('id')
@@ -1095,7 +1081,6 @@ L'équipe UNITECH
 
       for (const email of data) {
         try {
-          // ✅ Vérifier que l'email n'est pas déjà dans processedEmails
           if (this.processedEmails.has(email.id)) {
             console.log(`⚠️ HARVEY: Email ${email.id} déjà traité (skip)`);
             continue;
@@ -1133,7 +1118,6 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} contacts`);
 
     try {
-      // ✅ Récupérer uniquement les contacts en 'analyzed' (pas déjà traités)
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
@@ -1157,7 +1141,6 @@ L'équipe UNITECH
 
       for (const contact of data) {
         try {
-          // ✅ Vérifier que le contact n'est pas déjà traité
           if (this.processedContacts.has(contact.email)) {
             console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité (skip)`);
             continue;
@@ -1199,7 +1182,6 @@ L'équipe UNITECH
     try {
       console.log('🧹 HARVEY: Nettoyage des doublons...');
 
-      // ✅ Trouver les emails en 'analyzed' qui ont déjà une réponse
       const { data: emails, error } = await supabase
         .from('incoming_emails')
         .select('id, from_email, subject, status')
@@ -1215,7 +1197,6 @@ L'équipe UNITECH
       }
 
       for (const email of emails) {
-        // ✅ Vérifier si une réponse existe déjà
         const { data: existing, error: checkError } = await supabase
           .from('email_conversations')
           .select('id')
@@ -1229,7 +1210,6 @@ L'équipe UNITECH
         }
 
         if (existing) {
-          // ✅ Marquer comme duplicate
           const { error: updateError } = await supabase
             .from('incoming_emails')
             .update({

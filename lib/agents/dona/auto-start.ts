@@ -1,10 +1,13 @@
-// agents/dona/auto-start.ts
+// lib/agents/dona/auto-start.ts
 import { startDonaService, DonaServiceHandle } from './processor-service';
 
 let isStarted = false;
 let stopServiceFn: (() => void) | null = null;
 let serviceHandle: DonaServiceHandle | null = null;
 
+// ============================================================
+// INITIALISATION
+// ============================================================
 export function initDonaService(options?: {
   interval?: number;
   onError?: (error: Error) => void;
@@ -21,6 +24,7 @@ export function initDonaService(options?: {
     };
   }
 
+  // ✅ Vérification côté serveur (pas de window)
   if (typeof window !== 'undefined') {
     console.log('⚠️ DONA ne s\'exécute que côté serveur');
     return null;
@@ -30,10 +34,8 @@ export function initDonaService(options?: {
     console.log('🚀 Initialisation DONA...');
     const interval = options?.interval || 60000;
     
-    // ✅ Récupérer le handle du service
     serviceHandle = startDonaService(interval);
     
-    // ✅ Stocker la fonction stop
     stopServiceFn = serviceHandle.stop;
     isStarted = true;
     
@@ -55,12 +57,16 @@ export function initDonaService(options?: {
   }
 }
 
-// ✅ Fonction exportée pour vérifier l'état
+// ============================================================
+// VÉRIFIER L'ÉTAT
+// ============================================================
 export function isDonaRunning(): boolean {
   return isStarted;
 }
 
-// ✅ Fonction pour redémarrer
+// ============================================================
+// REDÉMARRER
+// ============================================================
 export function restartDonaService(options?: {
   interval?: number;
   onError?: (error: Error) => void;
@@ -75,4 +81,29 @@ export function restartDonaService(options?: {
   }
   
   return initDonaService(options);
+}
+
+// ============================================================
+// ARRÊTER
+// ============================================================
+export function stopDonaService(): void {
+  if (stopServiceFn) {
+    stopServiceFn();
+    isStarted = false;
+    stopServiceFn = null;
+    serviceHandle = null;
+    console.log('✅ DONA Service arrêté');
+  } else {
+    console.log('⚠️ DONA: Service déjà arrêté');
+  }
+}
+
+// ============================================================
+// STATUT DÉTAILLÉ
+// ============================================================
+export function getDonaStatus() {
+  if (serviceHandle) {
+    return serviceHandle.getStatus();
+  }
+  return null;
 }

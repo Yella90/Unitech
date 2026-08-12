@@ -6,7 +6,7 @@ import Training from "@/components/sections/Training";
 import Stats from "@/components/sections/Stats";
 import OurValues from "@/components/sections/OurValues";
 import TechStack from "@/components/sections/TechStack";
-import Partners from "@/components/sections/Partners";
+import Partners from "@/components/public/sections/Partners";
 import ProjectsGrid from "@/components/sections/ProjectsGrid";
 import Newsletter from "@/components/sections/Newsletter";
 import { supabase } from '@/lib/supabase';
@@ -21,6 +21,29 @@ export default async function HomePage() {
   if (error) {
     console.error('Erreur Supabase:', error);
   }
+
+  // ✅ Récupération des collaborations côté serveur
+async function getCollaborations() {
+  try {
+    const { data, error } = await supabase
+      .from('collaborations')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Erreur récupération collaborations:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('❌ Erreur:', error);
+    return [];
+  }
+}
+const collaborations = await getCollaborations();
+
   return (
     <>
       <Hero />
@@ -29,7 +52,7 @@ export default async function HomePage() {
       <Stats />
       <OurValues />
       <TechStack />
-      <Partners />
+       <Partners initialCollaborations={collaborations} />
        <ProjectsGrid projects={projects || []} />
       <Newsletter />
     </>
