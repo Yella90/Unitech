@@ -2,6 +2,9 @@
 
 import { AnalysisResult } from '../dona/types';
 
+// ============================================================
+// EMAIL AVEC ANALYSE
+// ============================================================
 export type EmailWithAnalysis = {
   id: string;
   from_email: string;
@@ -16,57 +19,90 @@ export type EmailWithAnalysis = {
   status: string;
 };
 
-// lib/agents/harvey/types.ts
-
+// ============================================================
+// DONNÉES DE L'ENTREPRISE
+// ============================================================
 export type CompanyData = {
   name: string;
   description: string;
   services: Service[];
-  formations: Formation[];    // ✅ NOUVEAU
-  projects: Project[];        // ✅ NOUVEAU
-  missions: Mission[];        // ✅ NOUVEAU
-  pricing: any;
+  formations: Formation[];
+  projects: Project[];
+  missions: Mission[];
+  pricing: Pricing;
   team: TeamMember[];
   faq: FAQ[];
 };
 
+// ============================================================
+// SERVICES
+// ============================================================
 export type Service = {
   name: string;
   description: string;
   features?: string[];
 };
 
-export type Formation = {     // ✅ NOUVEAU
+// ============================================================
+// FORMATIONS
+// ============================================================
+export type Formation = {
   name: string;
   duration: string;
   level: string;
   technologies: string[];
 };
 
-export type Project = {       // ✅ NOUVEAU
+// ============================================================
+// PROJETS
+// ============================================================
+export type Project = {
   name: string;
   status: string;
   progress: number;
   description: string;
+  slug?: string;  // ✅ Pour les liens vers les projets
 };
 
-export type Mission = {       // ✅ NOUVEAU
+// ============================================================
+// MISSIONS
+// ============================================================
+export type Mission = {
   title: string;
   description: string;
 };
 
+// ============================================================
+// TARIFS
+// ============================================================
+export type Pricing = {
+  base: string;
+  consultation: string;
+  details: string;
+  [key: string]: string; // Pour d'autres champs
+};
+
+// ============================================================
+// MEMBRES DE L'ÉQUIPE
+// ============================================================
 export type TeamMember = {
   name: string;
   role: string;
   email?: string;
 };
 
+// ============================================================
+// FAQ
+// ============================================================
 export type FAQ = {
   question: string;
   answer: string;
   keyword?: string;
 };
 
+// ============================================================
+// HISTORIQUE DES CONVERSATIONS
+// ============================================================
 export type ConversationHistory = {
   id: string;
   from_email: string;
@@ -79,6 +115,9 @@ export type ConversationHistory = {
   confidence?: number;
 };
 
+// ============================================================
+// RÉPONSE DE HARVEY
+// ============================================================
 export type HarveyResponse = {
   content: string;
   tone: 'professional' | 'friendly' | 'technical' | 'concise';
@@ -93,13 +132,42 @@ export type HarveyResponse = {
   };
 };
 
-// ✅ Configuration avec tous les champs
+// ============================================================
+// CONFIGURATION DE HARVEY
+// ============================================================
 export type HarveyConfig = {
   maxEmailsPerRun: number;
   minConfidence: number;
   requireHumanReview: boolean;
   defaultTone: 'professional' | 'friendly' | 'technical' | 'concise';
-  temperature: number;      // ✅ Ajouté
-  maxTokens: number;        // ✅ Ajouté
-  providerPriority?: string[]; // ✅ Optionnel
+  temperature: number;
+  maxTokens: number;
+  providerPriority?: string[];
+};
+
+// ============================================================
+// STATUT DE HARVEY
+// ============================================================
+export type HarveyStatus = {
+  initialized: boolean;
+  processedEmails: number;
+  processedContacts: number;
+  knowledgeBase: number;
+  templates: number;
+  config: HarveyConfig;
+  lastRun?: Date;
+};
+
+// ============================================================
+// RÉSULTAT DE TRAITEMENT EN LOT
+// ============================================================
+export type HarveyBatchResult = {
+  processed: number;
+  errors: number;
+  total: number;
+  duration: number;
+  details?: {
+    emails?: { processed: number; errors: number };
+    contacts?: { processed: number; errors: number };
+  };
 };

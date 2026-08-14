@@ -111,12 +111,8 @@ export class Dona implements IDona {
     this.config = { ...defaultConfig, ...config };
   }
 
-  // ============================================================
-  // INITIALISATION
-  // ============================================================
   async init(): Promise<void> {
     if (this.initialized) return;
-
     console.log('🤖 DONA: Initialisation...');
     await this.loadConfig();
     await this.loadProcessedEmails();
@@ -125,9 +121,6 @@ export class Dona implements IDona {
     console.log(`📚 DONA: ${this.processedEmails.size} emails déjà traités`);
   }
 
-  // ============================================================
-  // CHARGEMENT DES EMAILS DÉJÀ TRAITÉS
-  // ============================================================
   private async loadProcessedEmails(): Promise<void> {
     try {
       const { data, error } = await supabase
@@ -150,9 +143,6 @@ export class Dona implements IDona {
     }
   }
 
-  // ============================================================
-  // CHARGEMENT DE LA CONFIGURATION
-  // ============================================================
   async loadConfig(): Promise<void> {
     try {
       const { data, error } = await supabase
@@ -180,9 +170,6 @@ export class Dona implements IDona {
     }
   }
 
-  // ============================================================
-  // ANALYSE DU TEXTE
-  // ============================================================
   async analyze(input: {
     from?: string;
     subject?: string;
@@ -240,9 +227,6 @@ export class Dona implements IDona {
     };
   }
 
-  // ============================================================
-  // MAPPINGS
-  // ============================================================
   private getPriority(category: string): 'high' | 'medium' | 'low' {
     const map: Record<string, 'high' | 'medium' | 'low'> = {
       support: 'high',
@@ -269,9 +253,6 @@ export class Dona implements IDona {
     return map[category] || 'HUMAN';
   }
 
-  // ============================================================
-  // VÉRIFICATION DES DOUBLONS
-  // ============================================================
   private async isDuplicateEmail(fromEmail: string, subject: string): Promise<boolean> {
     if (!this.config.enableDeduplication) return false;
 
@@ -297,7 +278,7 @@ export class Dona implements IDona {
   }
 
   // ============================================================
-  // PROCESS EMAIL
+  // PROCESS EMAIL - CORRIGÉ AVEC STATUT 'analyzed'
   // ============================================================
   async processEmail(emailData: EmailData): Promise<ProcessEmailResult> {
     const startTime = Date.now();
@@ -395,6 +376,7 @@ export class Dona implements IDona {
         });
       }
 
+      // ✅ SPAM → Ignorer
       if (analysis.category === 'spam') {
         console.log(`🚫 DONA: Email ignoré (spam)`);
         
@@ -415,6 +397,7 @@ export class Dona implements IDona {
         return { action: 'ignored', reason: 'spam' };
       }
 
+      // ✅ NEWSLETTER → Ajouter à la liste et marquer comme traité
       if (analysis.category === 'newsletter' && this.config.enableNewsletterAutoSubscribe) {
         await this.handleNewsletter(emailData);
         
@@ -424,7 +407,7 @@ export class Dona implements IDona {
             category: analysis.category,
             priority: analysis.priority,
             assigned_agent: 'NEWSLETTER',
-            status: 'processed',
+            status: 'analyzed', // ✅ CHANGEMENT: analyzed au lieu de processed
             ai_analysis: analysis,
             updated_at: new Date().toISOString(),
             processed_at: new Date().toISOString(),
@@ -435,13 +418,14 @@ export class Dona implements IDona {
         return { action: 'newsletter', analysis };
       }
 
+      // ✅ AUTRES CATÉGORIES → 'analyzed' pour HARVEY
       const { data, error } = await supabase
         .from('incoming_emails')
         .update({
           category: analysis.category,
           priority: analysis.priority,
           assigned_agent: analysis.assigned_agent,
-          status: 'processed',
+          status: 'analyzed', // ✅ CHANGEMENT: analyzed au lieu de processed
           ai_analysis: analysis,
           updated_at: new Date().toISOString(),
           processed_at: new Date().toISOString(),
@@ -475,7 +459,7 @@ export class Dona implements IDona {
   }
 
   // ============================================================
-  // PROCESS CONTACT
+  // PROCESS CONTACT - CORRIGÉ AVEC STATUT 'analyzed'
   // ============================================================
   async processContact(contactData: ContactData): Promise<ProcessContactResult> {
     const startTime = Date.now();
@@ -512,10 +496,11 @@ export class Dona implements IDona {
       
       console.log(`📊 DONA: ${analysis.category} (${analysis.confidence}%)`);
 
+      // ✅ Marquer le contact comme 'analyzed' pour HARVEY
       const { error: contactError } = await supabase
         .from('contacts')
         .update({
-          status: 'processed',
+          status: 'analyzed', // ✅ CHANGEMENT: analyzed au lieu de processed
           category: analysis.category,
           assigned_agent: analysis.assigned_agent,
           priority: analysis.priority,
@@ -529,6 +514,7 @@ export class Dona implements IDona {
         return { action: 'error', error: new Error(contactError.message) };
       }
 
+      // ✅ Créer ou mettre à jour l'email correspondant dans incoming_emails
       const { data: existingEmail } = await supabase
         .from('incoming_emails')
         .select('id, status')
@@ -541,10 +527,11 @@ export class Dona implements IDona {
         await supabase
           .from('incoming_emails')
           .update({
-            status: 'processed',
+            status: 'analyzed', // ✅ CHANGEMENT: analyzed
             category: analysis.category,
             assigned_agent: analysis.assigned_agent,
             priority: analysis.priority,
+            ai_analysis: analysis,
             processed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -556,7 +543,7 @@ export class Dona implements IDona {
             from_email: contactData.email,
             subject: contactData.subject,
             body: contactData.message,
-            status: 'processed',
+            status: 'analyzed', // ✅ CHANGEMENT: analyzed
             category: analysis.category,
             assigned_agent: analysis.assigned_agent,
             priority: analysis.priority,
@@ -593,9 +580,6 @@ export class Dona implements IDona {
     }
   }
 
-  // ============================================================
-  // NEWSLETTER
-  // ============================================================
   private async handleNewsletter(emailData: EmailData): Promise<void> {
     try {
       const { data: existing } = await supabase
@@ -625,9 +609,6 @@ export class Dona implements IDona {
     }
   }
 
-  // ============================================================
-  // TRAITEMENT EN LOT
-  // ============================================================
   async processBatch(options: ProcessOptions = {}): Promise<BatchProcessResult> {
     const startTime = Date.now();
     const errors: string[] = [];
@@ -687,9 +668,6 @@ export class Dona implements IDona {
     }
   }
 
-  // ============================================================
-  // NETTOYAGE DES DOUBLONS
-  // ============================================================
   async cleanupDuplicates(): Promise<CleanupResult> {
     const errors: string[] = [];
     const duplicates: CleanupResult['duplicates'] = [];
@@ -760,9 +738,6 @@ export class Dona implements IDona {
     }
   }
 
-  // ============================================================
-  // RAFRAÎCHIR LE CACHE
-  // ============================================================
   async refreshCache(): Promise<void> {
     console.log('🔄 DONA: Rafraîchissement du cache...');
     this.processedEmails.clear();
@@ -770,31 +745,22 @@ export class Dona implements IDona {
     console.log(`✅ DONA: Cache rafraîchi (${this.processedEmails.size} emails)`);
   }
 
-  // ============================================================
-  // STATUTS - VERSION CORRIGÉE AVEC TOUS LES CHAMPS REQUIS
-  // ============================================================
   getStatus(): DonaStatus {
     return {
       initialized: this.initialized,
       processedEmails: this.processedEmails.size,
       keywordConfigs: this.keywordConfigs.length,
-      pendingEmails: 0, // ✅ REQUIS - sera calculé si besoin
-      config: this.config, // ✅ REQUIS - configuration complète
-      lastRun: undefined, // ✅ OPTIONNEL
-      totalProcessed: this.processedEmails.size, // ✅ OPTIONNEL
+      pendingEmails: 0,
+      config: this.config,
+      lastRun: undefined,
+      totalProcessed: this.processedEmails.size,
     };
   }
 
-  // ============================================================
-  // CONFIGURATION
-  // ============================================================
   updateConfig(config: Partial<DonaConfig>): void {
     this.config = { ...this.config, ...config };
     console.log('⚙️ DONA: Configuration mise à jour');
   }
 }
 
-// ============================================================
-// EXPORT DE L'INSTANCE
-// ============================================================
 export const dona = new Dona();

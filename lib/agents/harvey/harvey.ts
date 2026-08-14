@@ -141,12 +141,21 @@ export class Harvey {
           status: 'En développement',
           progress: 68,
           description: 'Plateforme de gestion pour écoles',
+          slug: 'school-saas'
         },
         {
           name: 'SaaS Boutique',
           status: 'En développement',
           progress: 42,
           description: 'Solution pour commerçants locaux',
+          slug: 'shop-saas'
+        },
+        {
+          name: 'Domotique Énergétique',
+          status: 'En développement',
+          progress: 35,
+          description: 'Système de gestion énergétique intelligent',
+          slug: 'energy-domotic'
         },
       ],
       missions: [
@@ -159,8 +168,8 @@ export class Harvey {
         details: 'Solutions adaptées à vos besoins',
       },
       team: [
-        { name: 'Laye Soma', role: 'Fondateur & CEO', email: 'doumbialaesoma@gmail.com' },
-        { name: 'Équipe TECH', role: 'Développement', email: 'tech@unitech.com' },
+        { name: 'Laye Soma', role: 'Fondateur & CEO' },
+        { name: 'Équipe TECH', role: 'Développement' },
       ],
       faq: [
         {
@@ -169,7 +178,7 @@ export class Harvey {
         },
         {
           question: 'Comment obtenir un devis ?',
-          answer: 'Contactez-nous via le formulaire de contact ou par email.',
+          answer: 'Contactez-nous via le formulaire de contact sur notre site.',
         },
       ],
     };
@@ -255,7 +264,7 @@ export class Harvey {
   }
 
   // ============================================================
-  // CHARGEMENT DES CONTACTS DÉJÀ TRAITÉS (CORRIGÉ - SANS source)
+  // CHARGEMENT DES CONTACTS DÉJÀ TRAITÉS
   // ============================================================
 
   private async loadProcessedContacts(): Promise<void> {
@@ -315,10 +324,6 @@ export class Harvey {
       return false;
     }
   }
-
-  // ============================================================
-  // VÉRIFICATION DES DOUBLONS CONTACT (CORRIGÉ - SANS source)
-  // ============================================================
 
   private async isContactAlreadyProcessed(contactId: string, email: string): Promise<boolean> {
     try {
@@ -395,7 +400,7 @@ export class Harvey {
   }
 
   // ============================================================
-  // CONSTRUCTION DU PROMPT
+  // CONSTRUCTION DU PROMPT - Version corrigée
   // ============================================================
 
   private buildPrompt(
@@ -420,21 +425,36 @@ Rédige une réponse directe et professionnelle comme le ferait un consultant de
 - Sois direct, ne tourne pas autour du pot
 - Montre que tu maîtrises le sujet
 
-## RÈGLES
+## RÈGLES IMPORTANTES
 
-1. Sois professionnel, direct et confiant
-2. Réponds dans la même langue que le client
-3. Ne fabrique aucune information
-4. Si tu ne sais pas, dis : "Je vérifie et je reviens vers vous"
-5. Propose une action concrète
-6. **Ne mentionne JAMAIS que tu es une IA, un assistant ou HARVEY**
-7. **Ne mentionne jamais d'API, de modèle, de prompt ou de LLM**
-8. **Signe uniquement par : L'équipe ${companyData.name}**
+1. **Tu es un consultant humain de UNITECH, PAS une IA ou un assistant**
+2. **Ne mentionne JAMAIS que tu es une IA, un assistant, HARVEY ou un chatbot**
+3. **Ne mentionne jamais d'API, de modèle, de prompt ou de LLM**
+4. **Signe uniquement par : L'équipe UNITECH**
+5. Sois professionnel, direct et confiant
+6. Réponds dans la même langue que le client
+7. Ne fabrique aucune information
+8. Si tu ne sais pas, dis : "Je vérifie et je reviens vers vous"
+9. Propose une action concrète
+
+## LIENS ET CONTACTS
+
+- **Site web** : https://unitech-qvgo.onrender.com/
+- **Contact** : https://unitech-qvgo.onrender.com/contact
+- **Lien vers un projet spécifique** : https://unitech-qvgo.onrender.com/projects/[slug-du-projet]
+- **Accès au système** : https://unitech-qvgo.onrender.com/system/[slug-du-projet] (si disponible)
+
+⚠️ **Si un utilisateur demande un lien vers un projet ou une solution, donne le lien direct vers https://unitech-qvgo.onrender.com/projects/**
+
+## PROJETS DISPONIBLES
+
+${companyData.projects.map((p) => `- ${p.name}: https://unitech-qvgo.onrender.com/projects/${p.slug || p.name.toLowerCase().replace(/\s+/g, '-')}`).join('\n')}
 
 ## ENTREPRISE
 
 Nom : ${companyData.name}
 Description : ${companyData.description}
+Site web : https://unitech-qvgo.onrender.com/
 
 ## SERVICES
 
@@ -517,6 +537,13 @@ Rédige maintenant la réponse complète au client.
 
 La réponse doit être directe, professionnelle et utile.
 
+**IMPORTANT - LIENS ET CONTACTS :**
+- Pour le site web : https://unitech-qvgo.onrender.com/
+- Pour les projets : https://unitech-qvgo.onrender.com/projects/[slug]
+- Pour le système : https://unitech-qvgo.onrender.com/system/[slug] (si disponible)
+- Utilise https://unitech-qvgo.onrender.com/contact pour le contact
+- **N'utilise PAS mailto: pour les liens de contact**
+
 Longueur recommandée : 150 à 400 mots.
 
 **Ne mets pas :**
@@ -537,7 +564,7 @@ Signature : L'équipe ${companyData.name}
   }
 
   // ============================================================
-  // APPEL À L'API LLM AVEC FALLBACK
+  // APPEL À L'API LLM AVEC FALLBACK - Système mis à jour
   // ============================================================
 
   private async callLLM(prompt: string): Promise<string> {
@@ -551,14 +578,20 @@ Signature : L'équipe ${companyData.name}
             content: `Tu es un consultant professionnel pour UNITECH.
 
 ## PERSONNALITÉ
-- Confiant et direct
+- Confiant et direct, comme un consultant humain
 - Intelligent et pragmatique
 - Charismatique et persuasif
 - Professionnel mais accessible
 - Ne tourne pas autour du pot
 
+## IDENTITÉ - TRÈS IMPORTANT
+- Tu es un **consultant humain de UNITECH**
+- Tu N'ES PAS une IA, un assistant, un chatbot ou HARVEY
+- Tu ne parles JAMAIS de toi en tant qu'IA
+- Tu n'utilises JAMAIS les mots "IA", "assistant", "algorithme", "modèle", "prompt"
+
 ## STYLE DE COMMUNICATION
-- Réponds avec assurance
+- Réponds avec assurance comme un expert
 - Sois concis mais complet
 - Utilise un ton professionnel et courtois
 - Montre que tu maîtrises le sujet
@@ -570,6 +603,12 @@ Signature : L'équipe ${companyData.name}
 4. **Ne mentionne JAMAIS que tu es une IA, un assistant ou HARVEY**
 5. **Ne mentionne jamais d'API, de modèle, de prompt ou de LLM**
 6. **Signe uniquement par : L'équipe UNITECH**
+7. **Pour le contact, utilise toujours le lien du site web, pas mailto:**
+
+## LIENS À UTILISER
+- Site web : https://unitech-qvgo.onrender.com/
+- Contact : https://unitech-qvgo.onrender.com/contact
+- Projets : https://unitech-qvgo.onrender.com/projects/[slug]
 
 ## SPÉCIALITÉS
 - Solutions SaaS
@@ -615,7 +654,7 @@ Notre équipe examine actuellement votre demande afin de vous apporter une répo
 
 Nous reviendrons vers vous dans les plus brefs délais.
 
-Si votre demande concerne un problème technique, merci de nous communiquer les détails du problème ainsi que, si possible, une capture d'écran ou toute information utile.
+Pour plus d'informations, vous pouvez consulter notre site web : https://unitech-qvgo.onrender.com/
 
 Nous vous remercions pour votre confiance.
 
@@ -736,7 +775,7 @@ L'équipe UNITECH
   }
 
   // ============================================================
-  // STOCKAGE DE LA RÉPONSE EMAIL (CORRIGÉ - SANS source)
+  // STOCKAGE DE LA RÉPONSE EMAIL
   // ============================================================
 
   private async storeResponse(
@@ -792,7 +831,7 @@ L'équipe UNITECH
   }
 
   // ============================================================
-  // STOCKER RÉPONSE CONTACT (CORRIGÉ - SANS source)
+  // STOCKER RÉPONSE CONTACT
   // ============================================================
 
   private async storeContactResponse(
@@ -1009,8 +1048,14 @@ L'équipe UNITECH
         return null;
       }
 
-      if (email.status === 'answered' || email.status === 'processed' || email.status === 'review') {
+      // ✅ Accepter les emails avec status 'analyzed' (DONA) ou 'processed' (compatibilité)
+      if (email.status === 'answered' || email.status === 'review' || email.status === 'duplicate') {
         console.log(`⚠️ HARVEY: Email déjà traité (status: ${email.status})`);
+        return null;
+      }
+
+      if (email.status !== 'analyzed' && email.status !== 'processed') {
+        console.log(`⚠️ HARVEY: Email non analysé (status: ${email.status})`);
         return null;
       }
 
@@ -1056,10 +1101,11 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} emails`);
 
     try {
+      // ✅ Récupérer les emails en 'analyzed' (DONA) ou 'processed' (compatibilité)
       const { data, error } = await supabase
         .from('incoming_emails')
         .select('id')
-        .eq('status', 'analyzed')
+        .in('status', ['analyzed', 'processed'])
         .neq('category', 'spam')
         .neq('category', 'newsletter')
         .limit(limit);
@@ -1118,10 +1164,11 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} contacts`);
 
     try {
+      // ✅ Récupérer les contacts en 'analyzed' (DONA) ou 'processed' (compatibilité)
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .eq('status', 'analyzed')
+        .in('status', ['analyzed', 'processed'])
         .limit(limit);
 
       if (error) {
@@ -1185,7 +1232,7 @@ L'équipe UNITECH
       const { data: emails, error } = await supabase
         .from('incoming_emails')
         .select('id, from_email, subject, status')
-        .eq('status', 'analyzed');
+        .in('status', ['analyzed', 'processed']);
 
       if (error) {
         throw new Error(`Erreur récupération: ${error.message}`);
@@ -1285,9 +1332,5 @@ L'équipe UNITECH
     return { ...this.config };
   }
 }
-
-// ============================================================
-// INSTANCE HARVEY
-// ============================================================
 
 export const harvey = new Harvey();
