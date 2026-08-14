@@ -17,6 +17,13 @@ export type EmailWithAnalysis = {
   ai_analysis: AnalysisResult;
   received_at: string;
   status: string;
+  // ✅ Champs pour les projets
+  project_id?: string;
+  project_slug?: string;
+  project_name?: string;
+  project_description?: string;
+  project_progress?: number;
+  project_status?: string;
 };
 
 // ============================================================
@@ -61,7 +68,7 @@ export type Project = {
   status: string;
   progress: number;
   description: string;
-  slug?: string;  // ✅ Pour les liens vers les projets
+  slug?: string;
 };
 
 // ============================================================
@@ -79,7 +86,7 @@ export type Pricing = {
   base: string;
   consultation: string;
   details: string;
-  [key: string]: string; // Pour d'autres champs
+  [key: string]: string;
 };
 
 // ============================================================
@@ -156,18 +163,4 @@ export type HarveyStatus = {
   templates: number;
   config: HarveyConfig;
   lastRun?: Date;
-};
-
-// ============================================================
-// RÉSULTAT DE TRAITEMENT EN LOT
-// ============================================================
-export type HarveyBatchResult = {
-  processed: number;
-  errors: number;
-  total: number;
-  duration: number;
-  details?: {
-    emails?: { processed: number; errors: number };
-    contacts?: { processed: number; errors: number };
-  };
 };

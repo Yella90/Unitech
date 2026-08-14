@@ -2,7 +2,6 @@
 
 import { supabase } from '@/lib/supabase';
 import { generateWithFallback } from '@/lib/config/llm';
-
 import {
   EmailWithAnalysis,
   CompanyData,
@@ -23,6 +22,168 @@ const defaultConfig: HarveyConfig = {
   temperature: 0.7,
   maxTokens: 800,
 };
+
+// ============================================================
+// TEMPLATES D'EMAILS
+// ============================================================
+
+function getEmailTemplate(data: {
+  companyName: string;
+  userName: string;
+  subject: string;
+  message: string;
+  category: string;
+  signature: string;
+  logoUrl?: string;
+  projectImages?: string[];
+  projectName?: string;
+  projectSlug?: string;
+  projectDescription?: string;
+  projectProgress?: number;
+  projectStatus?: string;
+  links?: {
+    website: string;
+    contact: string;
+    projects: string;
+  };
+}): string {
+  const categoryColors: Record<string, string> = {
+    support: '#3b82f6',
+    commercial: '#f59e0b',
+    project: '#22c55e',
+    newsletter: '#a855f7',
+    information: '#64748b',
+  };
+
+  const categoryIcons: Record<string, string> = {
+    support: '🛠️',
+    commercial: '💼',
+    project: '🚀',
+    newsletter: '📬',
+    information: 'ℹ️',
+  };
+
+  const color = categoryColors[data.category] || '#64748b';
+  const icon = categoryIcons[data.category] || '📌';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${data.subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f7f9;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f7f9;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:600px;width:100%;">
+          
+          <!-- HEADER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1E3A8A,#1E40AF);padding:32px 40px;text-align:center;">
+              ${data.logoUrl ? `
+                <img src="${data.logoUrl}" alt="${data.companyName}" style="max-height:60px;width:auto;margin-bottom:12px;" />
+              ` : `
+                <h1 style="color:#ffffff;font-size:24px;font-weight:700;margin:0;">${data.companyName}</h1>
+              `}
+              <p style="color:rgba(255,255,255,0.8);font-size:14px;margin:8px 0 0 0;">Solutions technologiques innovantes</p>
+            </td>
+          </tr>
+          
+          <!-- CATEGORY HEADER -->
+          <tr>
+            <td style="background:${color}15;padding:12px 40px;text-align:center;border-bottom:2px solid ${color};">
+              <span style="color:${color};font-weight:600;font-size:14px;">${icon} ${data.category.charAt(0).toUpperCase() + data.category.slice(1)}</span>
+            </td>
+          </tr>
+          
+          <!-- CONTENT -->
+          <tr>
+            <td style="padding:40px;">
+              <!-- Message du client -->
+              <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
+                <p style="color:#64748b;font-size:12px;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:0.5px;">Votre demande</p>
+                <p style="color:#0f172a;font-size:14px;margin:0;font-style:italic;">"${data.message}"</p>
+              </div>
+              
+              <!-- Réponse -->
+              <div style="margin-bottom:24px;">
+                <p style="color:#1e293b;font-size:15px;line-height:1.6;margin:0 0 16px 0;">
+                  Bonjour <strong>${data.userName}</strong>,
+                </p>
+                <div style="color:#1e293b;font-size:14px;line-height:1.8;margin:0 0 16px 0;">
+                  ${data.message}
+                </div>
+              </div>
+              
+              <!-- PROJET -->
+              ${data.projectName ? `
+                <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:12px;padding:20px;margin-bottom:24px;">
+                  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;">
+                      <h3 style="color:#166534;font-size:16px;margin:0 0 4px 0;">${data.projectName}</h3>
+                      ${data.projectDescription ? `<p style="color:#15803d;font-size:13px;margin:0 0 8px 0;">${data.projectDescription}</p>` : ''}
+                      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        ${data.projectStatus ? `<span style="background:#22c55e;color:white;padding:2px 12px;border-radius:12px;font-size:11px;">${data.projectStatus}</span>` : ''}
+                        ${data.projectProgress !== undefined ? `<span style="color:#15803d;font-size:13px;">Progression: ${data.projectProgress}%</span>` : ''}
+                        ${data.projectSlug ? `
+                          <a href="${data.links?.projects || '#'}/${data.projectSlug}" style="background:#1E3A8A;color:white;padding:6px 16px;border-radius:6px;text-decoration:none;font-size:12px;display:inline-block;">
+                            Voir le projet →
+                          </a>
+                        ` : ''}
+                      </div>
+                    </div>
+                    ${data.projectImages && data.projectImages.length > 0 ? `
+                      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        ${data.projectImages.slice(0, 3).map(img => `
+                          <img src="${img}" style="width:80px;height:60px;object-fit:cover;border-radius:8px;border:1px solid #86efac;" />
+                        `).join('')}
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              ` : ''}
+              
+              <!-- SIGNATURE -->
+              <div style="margin-top:24px;padding-top:20px;border-top:1px solid #e2e8f0;">
+                <p style="color:#1e293b;font-size:14px;margin:0 0 4px 0;">
+                  Cordialement,
+                </p>
+                <p style="color:#1e293b;font-size:14px;margin:0;">
+                  <strong>${data.signature}</strong>
+                </p>
+              </div>
+            </td>
+          </tr>
+          
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color:#f8fafc;padding:24px 40px;border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="color:#64748b;font-size:13px;margin:0 0 8px 0;">
+                ${data.companyName} · Solutions technologiques
+              </p>
+              <p style="color:#94a3b8;font-size:12px;margin:0;">
+                <a href="${data.links?.website || '#'}" style="color:#1E3A8A;text-decoration:none;margin:0 8px;">Site web</a>
+                ·
+                <a href="${data.links?.contact || '#'}" style="color:#1E3A8A;text-decoration:none;margin:0 8px;">Contact</a>
+                ·
+                <a href="${data.links?.projects || '#'}" style="color:#1E3A8A;text-decoration:none;margin:0 8px;">Projets</a>
+              </p>
+              <p style="color:#94a3b8;font-size:11px;margin:8px 0 0 0;">
+                Cet email a été généré automatiquement. Pour toute question, contactez-nous.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
 
 // ============================================================
 // CLASSE HARVEY
@@ -102,8 +263,7 @@ export class Harvey {
   private getDefaultCompanyData(): CompanyData {
     return {
       name: 'UNITECH',
-      description:
-        "Solutions technologiques intelligentes pour l'éducation, l'industrie et la formation professionnelle.",
+      description: "Solutions technologiques intelligentes pour l'éducation, l'industrie et la formation professionnelle.",
       services: [
         {
           name: 'SaaS Scolaire',
@@ -141,21 +301,21 @@ export class Harvey {
           status: 'En développement',
           progress: 68,
           description: 'Plateforme de gestion pour écoles',
-          slug: 'school-saas'
+          slug: 'school-saas',
         },
         {
           name: 'SaaS Boutique',
           status: 'En développement',
           progress: 42,
           description: 'Solution pour commerçants locaux',
-          slug: 'shop-saas'
+          slug: 'shop-saas',
         },
         {
           name: 'Domotique Énergétique',
           status: 'En développement',
           progress: 35,
           description: 'Système de gestion énergétique intelligent',
-          slug: 'energy-domotic'
+          slug: 'energy-domotic',
         },
       ],
       missions: [
@@ -355,6 +515,94 @@ export class Harvey {
   }
 
   // ============================================================
+  // RÉCUPÉRER LES IMAGES D'UN PROJET
+  // ============================================================
+
+  private async getProjectImages(projectId: string | null): Promise<string[]> {
+    if (!projectId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('gallery')
+        .eq('id', projectId)
+        .single();
+
+      if (error || !data) {
+        return [];
+      }
+
+      if (Array.isArray(data.gallery)) {
+        return data.gallery.slice(0, 3);
+      }
+
+      return [];
+    } catch (error) {
+      console.error('❌ HARVEY: Erreur récupération images projet:', error);
+      return [];
+    }
+  }
+
+  // ============================================================
+  // RÉCUPÉRER LE LOGO DE L'ENTREPRISE
+  // ============================================================
+
+  private async getCompanyLogo(): Promise<string | undefined> {
+    try {
+      const { data, error } = await supabase
+        .from('company_data')
+        .select('logo_url')
+        .single();
+
+      if (error || !data) {
+        return undefined;
+      }
+
+      return data.logo_url;
+    } catch (error) {
+      return undefined;
+    }
+  }
+
+  // ============================================================
+  // GÉNÉRER L'EMAIL HTML AVEC TEMPLATE
+  // ============================================================
+
+  private async generateEmailHtml(
+    response: HarveyResponse,
+    email: EmailWithAnalysis,
+    projectData?: any
+  ): Promise<string> {
+    let projectImages: string[] = [];
+    if (projectData?.id) {
+      projectImages = await this.getProjectImages(projectData.id);
+    }
+
+    const logoUrl = await this.getCompanyLogo();
+
+    return getEmailTemplate({
+      companyName: this.companyData?.name || 'UNITECH',
+      userName: email.from_email?.split('@')[0] || 'Client',
+      subject: email.subject,
+      message: response.content,
+      category: email.category || 'information',
+      signature: `L'équipe ${this.companyData?.name || 'UNITECH'}`,
+      logoUrl: logoUrl,
+      projectImages: projectImages,
+      projectName: projectData?.name,
+      projectSlug: projectData?.slug,
+      projectDescription: projectData?.description,
+      projectProgress: projectData?.progress,
+      projectStatus: projectData?.status,
+      links: {
+        website: 'https://unitech-qvgo.onrender.com',
+        contact: 'https://unitech-qvgo.onrender.com/contact',
+        projects: 'https://unitech-qvgo.onrender.com/projects',
+      },
+    });
+  }
+
+  // ============================================================
   // HISTORIQUE DES CONVERSATIONS
   // ============================================================
 
@@ -400,7 +648,7 @@ export class Harvey {
   }
 
   // ============================================================
-  // CONSTRUCTION DU PROMPT - Version corrigée
+  // CONSTRUCTION DU PROMPT
   // ============================================================
 
   private buildPrompt(
@@ -442,19 +690,11 @@ Rédige une réponse directe et professionnelle comme le ferait un consultant de
 - **Site web** : https://unitech-qvgo.onrender.com/
 - **Contact** : https://unitech-qvgo.onrender.com/contact
 - **Lien vers un projet spécifique** : https://unitech-qvgo.onrender.com/projects/[slug-du-projet]
-- **Accès au système** : https://unitech-qvgo.onrender.com/system/[slug-du-projet] (si disponible)
-
-⚠️ **Si un utilisateur demande un lien vers un projet ou une solution, donne le lien direct vers https://unitech-qvgo.onrender.com/projects/**
-
-## PROJETS DISPONIBLES
-
-${companyData.projects.map((p) => `- ${p.name}: https://unitech-qvgo.onrender.com/projects/${p.slug || p.name.toLowerCase().replace(/\s+/g, '-')}`).join('\n')}
 
 ## ENTREPRISE
 
 Nom : ${companyData.name}
 Description : ${companyData.description}
-Site web : https://unitech-qvgo.onrender.com/
 
 ## SERVICES
 
@@ -466,7 +706,7 @@ ${companyData.formations.map((f) => `- ${f.name}: ${f.duration} (${f.level})`).j
 
 ## PROJETS
 
-${companyData.projects.map((p) => `- ${p.name}: ${p.status} ${p.description} (${p.progress}%)`).join('\n')}
+${companyData.projects.map((p) => `- ${p.name}: ${p.status} (${p.progress}%)`).join('\n')}
 
 ## TARIFS
 
@@ -537,13 +777,6 @@ Rédige maintenant la réponse complète au client.
 
 La réponse doit être directe, professionnelle et utile.
 
-**IMPORTANT - LIENS ET CONTACTS :**
-- Pour le site web : https://unitech-qvgo.onrender.com/
-- Pour les projets : https://unitech-qvgo.onrender.com/projects/[slug]
-- Pour le système : https://unitech-qvgo.onrender.com/system/[slug] (si disponible)
-- Utilise https://unitech-qvgo.onrender.com/contact pour le contact
-- **N'utilise PAS mailto: pour les liens de contact**
-
 Longueur recommandée : 150 à 400 mots.
 
 **Ne mets pas :**
@@ -564,7 +797,7 @@ Signature : L'équipe ${companyData.name}
   }
 
   // ============================================================
-  // APPEL À L'API LLM AVEC FALLBACK - Système mis à jour
+  // APPEL À L'API LLM AVEC FALLBACK
   // ============================================================
 
   private async callLLM(prompt: string): Promise<string> {
@@ -603,12 +836,6 @@ Signature : L'équipe ${companyData.name}
 4. **Ne mentionne JAMAIS que tu es une IA, un assistant ou HARVEY**
 5. **Ne mentionne jamais d'API, de modèle, de prompt ou de LLM**
 6. **Signe uniquement par : L'équipe UNITECH**
-7. **Pour le contact, utilise toujours le lien du site web, pas mailto:**
-
-## LIENS À UTILISER
-- Site web : https://unitech-qvgo.onrender.com/
-- Contact : https://unitech-qvgo.onrender.com/contact
-- Projets : https://unitech-qvgo.onrender.com/projects/[slug]
 
 ## SPÉCIALITÉS
 - Solutions SaaS
@@ -775,15 +1002,18 @@ L'équipe UNITECH
   }
 
   // ============================================================
-  // STOCKAGE DE LA RÉPONSE EMAIL
+  // STOCKAGE DE LA RÉPONSE EMAIL - AVEC TEMPLATE ET IMAGES
   // ============================================================
 
   private async storeResponse(
     emailId: string,
     response: HarveyResponse,
-    email: EmailWithAnalysis
+    email: EmailWithAnalysis,
+    projectData?: any
   ): Promise<any> {
     try {
+      const emailHtml = await this.generateEmailHtml(response, email, projectData);
+
       const insertData: any = {
         email_id: emailId,
         from_email: email.from_email,
@@ -792,6 +1022,7 @@ L'équipe UNITECH
         message: email.body,
         body: email.body,
         agent_response: response.content,
+        agent_response_html: emailHtml,
         response_tone: response.tone,
         tone: response.tone,
         confidence: response.confidence,
@@ -817,7 +1048,7 @@ L'équipe UNITECH
 
       this.processedEmails.add(emailId);
 
-      console.log(`✅ HARVEY: Réponse stockée pour ${emailId}`);
+      console.log(`✅ HARVEY: Réponse stockée pour ${emailId} (avec template HTML)`);
 
       if (response.requires_human_review) {
         await this.createReviewNotification(emailId, response);
@@ -826,20 +1057,99 @@ L'équipe UNITECH
       return data;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur stockage:', error?.message || error);
+      return this.storeResponseFallback(emailId, response, email);
+    }
+  }
+
+  // ============================================================
+  // STOCKAGE RÉPONSE SIMPLE (FALLBACK)
+  // ============================================================
+
+  private async storeResponseFallback(
+    emailId: string,
+    response: HarveyResponse,
+    email: EmailWithAnalysis
+  ): Promise<any> {
+    try {
+      const insertData: any = {
+        email_id: emailId,
+        from_email: email.from_email,
+        to_email: email.to_email || 'doumbialayesoma@gmail.com',
+        subject: email.subject,
+        message: email.body,
+        body: email.body,
+        agent_response: response.content,
+        agent_response_html: null,
+        response_tone: response.tone,
+        tone: response.tone,
+        confidence: response.confidence,
+        actions: response.actions,
+        status: response.requires_human_review ? 'review' : 'pending',
+        requires_human_review: response.requires_human_review,
+        suggested_agent: response.suggested_agent,
+        is_outgoing: true,
+        category: email.category || 'information',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .insert(insertData)
+        .select();
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur stockage fallback:', error);
+        return null;
+      }
+
+      console.log(`✅ HARVEY: Réponse stockée pour ${emailId} (fallback)`);
+      return data;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur stockage fallback:', error?.message || error);
       return null;
     }
   }
 
   // ============================================================
-  // STOCKER RÉPONSE CONTACT
+  // STOCKER RÉPONSE CONTACT - AVEC TEMPLATE ET IMAGES
   // ============================================================
 
   private async storeContactResponse(
     contactId: string,
     response: HarveyResponse,
-    contact: any
+    contact: any,
+    projectData?: any
   ): Promise<any> {
     try {
+      let projectImages: string[] = [];
+      if (projectData?.id) {
+        projectImages = await this.getProjectImages(projectData.id);
+      }
+
+      const logoUrl = await this.getCompanyLogo();
+
+      const emailHtml = getEmailTemplate({
+        companyName: this.companyData?.name || 'UNITECH',
+        userName: contact.name || contact.email?.split('@')[0] || 'Client',
+        subject: contact.subject || 'Demande de contact',
+        message: response.content,
+        category: contact.category || 'information',
+        signature: `L'équipe ${this.companyData?.name || 'UNITECH'}`,
+        logoUrl: logoUrl,
+        projectImages: projectImages,
+        projectName: projectData?.name,
+        projectSlug: projectData?.slug,
+        projectDescription: projectData?.description,
+        projectProgress: projectData?.progress,
+        projectStatus: projectData?.status,
+        links: {
+          website: 'https://unitech-qvgo.onrender.com',
+          contact: 'https://unitech-qvgo.onrender.com/contact',
+          projects: 'https://unitech-qvgo.onrender.com/projects',
+        },
+      });
+
       const insertData: any = {
         contact_id: contactId,
         from_email: contact.email,
@@ -848,6 +1158,7 @@ L'équipe UNITECH
         message: contact.message || '',
         body: contact.message || '',
         agent_response: response.content,
+        agent_response_html: emailHtml,
         response_tone: response.tone,
         tone: response.tone,
         confidence: response.confidence,
@@ -866,6 +1177,7 @@ L'équipe UNITECH
         from_email: insertData.from_email,
         subject: insertData.subject,
         agent_response_length: insertData.agent_response?.length || 0,
+        has_template: !!insertData.agent_response_html,
         status: insertData.status
       });
 
@@ -890,10 +1202,71 @@ L'équipe UNITECH
         })
         .eq('id', contactId);
 
-      console.log(`✅ HARVEY: Réponse contact stockée pour ${contactId}`);
+      console.log(`✅ HARVEY: Réponse contact stockée pour ${contactId} (avec template)`);
       return data;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur stockage contact:', error?.message || error);
+      return this.storeContactResponseFallback(contactId, response, contact);
+    }
+  }
+
+  // ============================================================
+  // STOCKER RÉPONSE CONTACT SIMPLE (FALLBACK)
+  // ============================================================
+
+  private async storeContactResponseFallback(
+    contactId: string,
+    response: HarveyResponse,
+    contact: any
+  ): Promise<any> {
+    try {
+      const insertData: any = {
+        contact_id: contactId,
+        from_email: contact.email,
+        to_email: 'doumbialayesoma@gmail.com',
+        subject: contact.subject || 'Demande de contact',
+        message: contact.message || '',
+        body: contact.message || '',
+        agent_response: response.content,
+        agent_response_html: null,
+        response_tone: response.tone,
+        tone: response.tone,
+        confidence: response.confidence,
+        actions: response.actions,
+        status: response.requires_human_review ? 'review' : 'pending',
+        requires_human_review: response.requires_human_review,
+        suggested_agent: response.suggested_agent,
+        is_outgoing: true,
+        category: contact.category || 'information',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .insert(insertData)
+        .select();
+
+      if (error) {
+        console.error('❌ HARVEY: Erreur stockage contact fallback:', error);
+        return null;
+      }
+
+      this.processedContacts.add(contact.email);
+
+      await supabase
+        .from('contacts')
+        .update({
+          status: response.requires_human_review ? 'review' : 'answered',
+          assigned_agent: 'HARVEY',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contactId);
+
+      console.log(`✅ HARVEY: Réponse contact stockée pour ${contactId} (fallback)`);
+      return data;
+    } catch (error: any) {
+      console.error('❌ HARVEY: Erreur stockage contact fallback:', error?.message || error);
       return null;
     }
   }
@@ -964,6 +1337,17 @@ L'équipe UNITECH
 
       console.log(`🦸‍♂️ HARVEY: Génération réponse contact ${contact.id}`);
 
+      // Récupérer le projet associé
+      let projectData = null;
+      if (contact.project_id) {
+        const { data } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', contact.project_id)
+          .single();
+        projectData = data;
+      }
+
       const emailData: EmailWithAnalysis = {
         id: contact.id,
         from_email: contact.email,
@@ -984,6 +1368,12 @@ L'équipe UNITECH
         },
         received_at: contact.created_at || new Date().toISOString(),
         status: contact.status || 'pending',
+        project_id: contact.project_id,
+        project_slug: projectData?.slug,
+        project_name: projectData?.name,
+        project_description: projectData?.description,
+        project_progress: projectData?.progress,
+        project_status: projectData?.status,
       };
 
       const history = await this.getConversationHistory(contact.email);
@@ -996,7 +1386,7 @@ L'équipe UNITECH
       }
 
       const analysis = this.analyzeResponse(responseContent, emailData);
-      await this.storeContactResponse(contact.id, analysis, contact);
+      await this.storeContactResponse(contact.id, analysis, contact, projectData);
 
       console.log(`✅ HARVEY: Contact ${contact.id} traité (${analysis.confidence}% confiance)`);
       return analysis;
@@ -1048,7 +1438,6 @@ L'équipe UNITECH
         return null;
       }
 
-      // ✅ Accepter les emails avec status 'analyzed' (DONA) ou 'processed' (compatibilité)
       if (email.status === 'answered' || email.status === 'review' || email.status === 'duplicate') {
         console.log(`⚠️ HARVEY: Email déjà traité (status: ${email.status})`);
         return null;
@@ -1057,6 +1446,17 @@ L'équipe UNITECH
       if (email.status !== 'analyzed' && email.status !== 'processed') {
         console.log(`⚠️ HARVEY: Email non analysé (status: ${email.status})`);
         return null;
+      }
+
+      // Récupérer le projet associé
+      let projectData = null;
+      if (email.project_id) {
+        const { data } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', email.project_id)
+          .single();
+        projectData = data;
       }
 
       const history = await this.getConversationHistory(email.from_email);
@@ -1070,7 +1470,7 @@ L'équipe UNITECH
 
       const analysis = this.analyzeResponse(responseContent, email);
       
-      await this.storeResponse(emailId, analysis, email);
+      await this.storeResponse(emailId, analysis, email, projectData);
 
       const newStatus = analysis.requires_human_review ? 'review' : 'answered';
       await supabase
@@ -1101,7 +1501,6 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} emails`);
 
     try {
-      // ✅ Récupérer les emails en 'analyzed' (DONA) ou 'processed' (compatibilité)
       const { data, error } = await supabase
         .from('incoming_emails')
         .select('id')
@@ -1164,7 +1563,6 @@ L'équipe UNITECH
     console.log(`🦸‍♂️ HARVEY: Traitement de ${limit} contacts`);
 
     try {
-      // ✅ Récupérer les contacts en 'analyzed' (DONA) ou 'processed' (compatibilité)
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
@@ -1332,5 +1730,9 @@ L'équipe UNITECH
     return { ...this.config };
   }
 }
+
+// ============================================================
+// INSTANCE HARVEY
+// ============================================================
 
 export const harvey = new Harvey();
