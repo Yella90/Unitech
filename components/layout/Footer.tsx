@@ -59,7 +59,9 @@ export default function Footer() {
             <div className="mt-2 flex flex-col gap-1 text-xs text-slate-500">
               <a href="/projects" className="hover:text-[#1E3A8A] transition">Projets</a>
               <a href="/contact" className="hover:text-[#1E3A8A] transition">Contact</a>
-              <a href="#newsletter" className="hover:text-[#1E3A8A] transition">Newsletter</a>
+              <a href="/training" className="hover:text-[#1E3A8A] transition">Formation</a>
+              <a href="/services" className="hover:text-[#1E3A8A] transition">Services</a>
+             
             </div>
           </div>
         </div>

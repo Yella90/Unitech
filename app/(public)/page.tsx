@@ -5,6 +5,10 @@ import OurSolutions from "@/components/public/sections/OurSolutions";
 import Training from "@/components/public/sections/Training";
 import Stats from "@/components/public/sections/Stats";
 import OurValues from "@/components/public/sections/OurValues";
+import OurServices from "@/components/public/sections/OurServices";
+
+
+
 import TechStack from "@/components/public/sections/TechStack";
 import Partners from "@/components/public/sections/Partners";
 import ProjectsGrid from "@/components/public/sections/ProjectsGrid";
@@ -98,6 +102,7 @@ export default async function HomePage() {
       <Hero />
       <OurSolutions />
       <Training />
+      <OurServices />
       <Stats />
       <OurValues />
       <TechStack />

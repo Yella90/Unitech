@@ -46,6 +46,10 @@ export default function Footer() {
               <a href="/projects" className="hover:text-[#1E3A8A] transition">Projets</a>
               <a href="/training" className="hover:text-[#1E3A8A] transition">Formation</a>
               <a href="/contact" className="hover:text-[#1E3A8A] transition">Contact</a>
+             
+              <a href="/services" className="hover:text-[#1E3A8A] transition">Services</a>
+              <a href="/about" className="hover:text-[#1E3A8A] transition">À propos</a>
+              <a href="/privacy-policy" className="hover:text-[#1E3A8A] transition">Politique de confidentialité</a>
               <a href="#newsletter" className="hover:text-[#1E3A8A] transition">Newsletter</a>
             </div>
           </div>

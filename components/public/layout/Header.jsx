@@ -57,6 +57,11 @@ export default function Header() {
               Contact
             </Button>
           </Link>
+          <Link href="/services">
+            <Button variant="ghost" className="text-sm font-medium text-slate-700 hover:text-[#1E3A8A]">
+              Services
+            </Button>
+          </Link>
           
           {isAuthenticated && (
             <Link href="/admin">

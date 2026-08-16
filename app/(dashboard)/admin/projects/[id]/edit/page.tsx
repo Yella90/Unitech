@@ -21,7 +21,11 @@ import {
   FaEye,
   FaSpinner,
   FaChevronDown,
-  FaChevronUp
+  FaChevronUp,
+  FaTasks,
+  FaCheckCircle,
+  FaClock,
+  FaCircle
 } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -54,6 +58,20 @@ const icons = [
   '🚀', '💡', '🔧', '📊', '🎨', '📈', '🔬', '🧪', '⚙️', '📋'
 ];
 
+// ✅ Statuts pour les étapes (correspond à la colonne `status` de la table)
+const stageStatuses = [
+  { value: 'pending', label: 'En attente', icon: <FaCircle className="h-3 w-3 text-slate-400" /> },
+  { value: 'in-progress', label: 'En cours', icon: <FaClock className="h-3 w-3 text-yellow-500" /> },
+  { value: 'completed', label: 'Terminé', icon: <FaCheckCircle className="h-3 w-3 text-green-500" /> },
+];
+
+// ✅ Type Stage correspondant à la table
+type Stage = {
+  id: string;
+  name: string;
+  status: 'pending' | 'in-progress' | 'completed';
+};
+
 export default function EditProjectPage({ params }: EditProjectPageProps) {
   const router = useRouter();
   const { id: projectId } = use(params);
@@ -62,13 +80,16 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [benefitInput, setBenefitInput] = useState('');
+  const [stageInput, setStageInput] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showIconPicker, setShowIconPicker] = useState(false);
+  const [stages, setStages] = useState<Stage[]>([]);
   const [expandedSections, setExpandedSections] = useState({
     general: true,
     tracking: true,
     problem: true,
     benefits: true,
+    stages: true,
     gallery: true
   });
   
@@ -86,6 +107,31 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
     benefits: [] as string[],
     gallery: [] as string[],
   });
+
+  // ✅ Récupérer les étapes du projet
+  const fetchStages = async () => {
+    try {
+      console.log('🔍 Récupération des étapes pour le projet:', projectId);
+      
+      const { data, error } = await supabase
+        .from('project_stages')
+        .select('id, name, status')  // ✅ Sélectionner uniquement les colonnes existantes
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });  // ✅ Utiliser created_at pour l'ordre
+
+      if (error) {
+        console.error('❌ Erreur chargement étapes:', error);
+        setStages([]);
+        return;
+      }
+
+      console.log(`✅ ${data?.length || 0} étapes chargées`);
+      setStages(data || []);
+    } catch (error) {
+      console.error('❌ Erreur chargement étapes:', error);
+      setStages([]);
+    }
+  };
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -118,8 +164,12 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
             gallery: data.gallery || [],
           });
         }
+
+        // ✅ Récupérer les étapes
+        await fetchStages();
+
       } catch (error) {
-        console.error('Erreur:', error);
+        console.error('❌ Erreur chargement projet:', error);
         toast.error('Erreur lors du chargement du projet');
       } finally {
         setLoading(false);
@@ -170,7 +220,44 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
     }));
   };
 
-  // Upload d'image vers Supabase Storage
+  // ✅ Gestion des étapes
+  const addStage = () => {
+    if (stageInput.trim()) {
+      const newStage: Stage = {
+        id: `temp-${Date.now()}`,
+        name: stageInput.trim(),
+        status: 'pending',
+      };
+      setStages([...stages, newStage]);
+      setStageInput('');
+    }
+  };
+
+  const removeStage = (index: number) => {
+    setStages(stages.filter((_, i) => i !== index));
+  };
+
+  const updateStageStatus = (index: number, status: 'pending' | 'in-progress' | 'completed') => {
+    const updated = [...stages];
+    updated[index].status = status;
+    setStages(updated);
+  };
+
+  const moveStageUp = (index: number) => {
+    if (index === 0) return;
+    const updated = [...stages];
+    [updated[index], updated[index - 1]] = [updated[index - 1], updated[index]];
+    setStages(updated);
+  };
+
+  const moveStageDown = (index: number) => {
+    if (index === stages.length - 1) return;
+    const updated = [...stages];
+    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+    setStages(updated);
+  };
+
+  // Upload d'image
   const uploadImage = async (file: File) => {
     try {
       setUploading(true);
@@ -266,12 +353,14 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
     }
   };
 
+  // ✅ Sauvegarde
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
 
     try {
-      const { error } = await supabase
+      // 1. Mettre à jour le projet
+      const { error: projectError } = await supabase
         .from('projects')
         .update({
           name: formData.name,
@@ -290,14 +379,40 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
         })
         .eq('id', projectId);
 
-      if (error) throw error;
+      if (projectError) throw projectError;
+
+      // 2. Gérer les étapes
+      // Supprimer les anciennes étapes
+      const { error: deleteError } = await supabase
+        .from('project_stages')
+        .delete()
+        .eq('project_id', projectId);
+
+      if (deleteError) throw deleteError;
+
+      // Insérer les nouvelles étapes
+      if (stages.length > 0) {
+        const stagesToInsert = stages.map((stage) => ({
+          project_id: projectId,
+          name: stage.name,
+          status: stage.status,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+
+        const { error: insertError } = await supabase
+          .from('project_stages')
+          .insert(stagesToInsert);
+
+        if (insertError) throw insertError;
+      }
 
       toast.success('✅ Projet mis à jour avec succès !');
       setTimeout(() => {
         router.push('/admin/projects');
       }, 1000);
     } catch (error: any) {
-      console.error('Erreur:', error);
+      console.error('❌ Erreur:', error);
       toast.error(error.message || 'Erreur lors de la mise à jour');
     } finally {
       setSaving(false);
@@ -317,7 +432,7 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
       <Toaster position="top-right" richColors />
 
       <div className="mx-auto max-w-3xl">
-        {/* En-tête responsive */}
+        {/* En-tête */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
           <Link
             href="/admin/projects"
@@ -640,6 +755,125 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
               </div>
 
               {/* ============================================ */}
+              {/* ÉTAPES DU PROJET - CORRIGÉ */}
+              {/* ============================================ */}
+              <div className="border-b border-slate-200 pb-4 sm:pb-6">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('stages')}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <FaTasks className="h-5 w-5 text-[#F97316]" />
+                    <h3 className="text-base sm:text-lg font-semibold text-[#1E3A8A]">Étapes du projet</h3>
+                    <span className="text-xs sm:text-sm text-slate-500">
+                      ({stages.length})
+                    </span>
+                  </div>
+                  <span className="text-slate-400">
+                    {expandedSections.stages ? <FaChevronUp /> : <FaChevronDown />}
+                  </span>
+                </button>
+                
+                {expandedSections.stages && (
+                  <div className="mt-4">
+                    {/* Ajouter une étape */}
+                    <div className="flex gap-2">
+                      <Input
+                        value={stageInput}
+                        onChange={(e) => setStageInput(e.target.value)}
+                        placeholder="Nom de l'étape"
+                        className="text-sm"
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addStage())}
+                      />
+                      <Button type="button" onClick={addStage} variant="outline" size="sm">
+                        <FaPlus className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden xs:inline ml-1">Ajouter</span>
+                      </Button>
+                    </div>
+
+                    {/* Liste des étapes */}
+                    <div className="mt-3 space-y-2">
+                      {stages.length === 0 ? (
+                        <p className="text-xs sm:text-sm text-slate-400">Aucune étape définie</p>
+                      ) : (
+                        stages.map((stage, index) => {
+                          const statusConfig = stageStatuses.find(s => s.value === stage.status) || stageStatuses[0];
+                          return (
+                            <div
+                              key={stage.id}
+                              className="flex flex-wrap items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200"
+                            >
+                              {/* Ordre */}
+                              <span className="text-xs font-medium text-slate-400 w-6 text-center">
+                                {index + 1}
+                              </span>
+
+                              {/* Nom */}
+                              <span className="flex-1 text-sm font-medium text-slate-700 min-w-[120px]">
+                                {stage.name}
+                              </span>
+
+                              {/* Statut */}
+                              <select
+                                value={stage.status}
+                                onChange={(e) => updateStageStatus(index, e.target.value as any)}
+                                className="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                              >
+                                {stageStatuses.map((s) => (
+                                  <option key={s.value} value={s.value}>
+                                    {s.label}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* Statut visuel */}
+                              <span className="flex items-center gap-1 text-xs">
+                                {statusConfig.icon}
+                              </span>
+
+                              {/* Actions */}
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => moveStageUp(index)}
+                                  disabled={index === 0}
+                                  className="h-6 w-6 p-0 text-slate-400 hover:text-[#1E3A8A]"
+                                >
+                                  ↑
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => moveStageDown(index)}
+                                  disabled={index === stages.length - 1}
+                                  className="h-6 w-6 p-0 text-slate-400 hover:text-[#1E3A8A]"
+                                >
+                                  ↓
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeStage(index)}
+                                  className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
+                                >
+                                  <FaTimes className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ============================================ */}
               {/* GALERIE D'IMAGES */}
               {/* ============================================ */}
               <div className="border-2 border-dashed border-[#F97316] rounded-lg p-3 sm:p-4 bg-orange-50/30">
@@ -698,7 +932,6 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
                         )}
                       </div>
 
-                      {/* Liste des images */}
                       {formData.gallery.length > 0 && (
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mt-2">
                           {formData.gallery.map((image, index) => (
@@ -775,7 +1008,7 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
                 </div>
               )}
 
-              {/* Boutons - responsive */}
+              {/* Boutons */}
               <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-200">
                 <Button
                   type="submit"

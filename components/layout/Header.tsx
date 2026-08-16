@@ -40,6 +40,12 @@ export default function Header() {
               Contact
             </Button>
           </Link>
+          <Link href="/services">
+            <Button variant="ghost" className="text-sm font-medium text-slate-700 hover:text-[#1E3A8A]">
+              Services
+            </Button>
+          </Link>
+          
           <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" asChild>
             <a href="#newsletter">Suivre</a>
           </Button>

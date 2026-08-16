@@ -61,6 +61,8 @@ const navItems = [
   { href: "/admin", label: "Tableau de bord", icon: FaHome },
   { href: "/admin/projects", label: "Projets", icon: FaProjectDiagram },
   { href: "/admin/trainings", label: "Formations", icon: FaGraduationCap },
+   { href: "/admin/services", label: "Services", icon: FaCog },
+
   { href: "/admin/users", label: "Utilisateurs", icon: FaUsers },
   { href: "/admin/subscribers", label: "Newsletter", icon: FaEnvelope },
   { href: "/admin/analytics", label: "Analytics", icon: FaChartLine },

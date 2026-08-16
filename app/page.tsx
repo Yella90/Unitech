@@ -9,6 +9,8 @@ import TechStack from "@/components/sections/TechStack";
 import Partners from "@/components/public/sections/Partners";
 import ProjectsGrid from "@/components/sections/ProjectsGrid";
 import Newsletter from "@/components/sections/Newsletter";
+import OurServices from "@/components/public/sections/OurServices";
+
 import { supabase } from '@/lib/supabase';
 
 export default async function HomePage() {
@@ -49,6 +51,7 @@ const collaborations = await getCollaborations();
       <Hero />
       <OurSolutions />
       <Training />          {/* ← Nouvelle section */}
+      <OurServices />      {/* ← Nouvelle section */}
       <Stats />
       <OurValues />
       <TechStack />
