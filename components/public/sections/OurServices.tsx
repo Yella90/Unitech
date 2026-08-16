@@ -143,16 +143,19 @@ const colorMap: Record<string, ColorConfig> = {
 // ============================================================
 interface OurServicesProps {
   limit?: number;
+  initialServices?: Service[];
 }
 
-export default function OurServices({ limit = 4 }: OurServicesProps) {
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [showAll, setShowAll] = useState<boolean>(false);
+export default function OurServices({ limit = 4, initialServices = [] }: OurServicesProps) {
+  const [services, setServices] = useState<Service[]>(initialServices || []);
+  const [loading, setLoading] = useState(!initialServices || initialServices.length === 0);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    loadServices();
-  }, []);
+    if (!initialServices || initialServices.length === 0) {
+      loadServices();
+    }
+  }, [initialServices]);
 
   const loadServices = async (): Promise<void> => {
     try {
@@ -190,8 +193,10 @@ export default function OurServices({ limit = 4 }: OurServicesProps) {
     return colorMap[color]?.border || 'border-blue-200';
   };
 
-  // ✅ Limiter l'affichage
-  const displayedServices = showAll ? services : services.slice(0, limit);
+  const displayedServices = services.length > 0 
+    ? (showAll ? services : services.slice(0, limit))
+    : [];
+  
   const hasMore = services.length > limit;
 
   if (loading) {
@@ -229,7 +234,7 @@ export default function OurServices({ limit = 4 }: OurServicesProps) {
         </motion.div>
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {displayedServices.map((service: Service, index: number) => (
+          {displayedServices.map((service, index) => (
             <motion.div
               key={service.id}
               initial={{ opacity: 0, y: 30 }}
@@ -251,7 +256,7 @@ export default function OurServices({ limit = 4 }: OurServicesProps) {
                     
                     {service.features && service.features.length > 0 && (
                       <ul className="mt-4 space-y-1">
-                        {service.features.slice(0, 3).map((feature: string, idx: number) => (
+                        {service.features.slice(0, 3).map((feature, idx) => (
                           <li key={idx} className="flex items-center gap-2 text-sm text-slate-600">
                             <span className="h-1.5 w-1.5 rounded-full bg-[#1E3A8A]" />
                             {feature}
@@ -276,7 +281,6 @@ export default function OurServices({ limit = 4 }: OurServicesProps) {
           ))}
         </div>
 
-        {/* ✅ Bouton "Voir plus" */}
         {hasMore && !showAll && (
           <div className="text-center mt-8">
             <button
@@ -289,7 +293,6 @@ export default function OurServices({ limit = 4 }: OurServicesProps) {
           </div>
         )}
 
-        {/* ✅ Bouton "Voir moins" */}
         {showAll && (
           <div className="text-center mt-8">
             <button

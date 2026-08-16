@@ -34,7 +34,8 @@ import {
   FaSync,
   FaHistory,
   FaRobot,
-  FaUserTie
+  FaUserTie,
+  FaHandshake
 } from "react-icons/fa";
 import { toast } from "sonner";
 
@@ -62,6 +63,9 @@ const navItems = [
   { href: "/admin/projects", label: "Projets", icon: FaProjectDiagram },
   { href: "/admin/trainings", label: "Formations", icon: FaGraduationCap },
    { href: "/admin/services", label: "Services", icon: FaCog },
+    { href: "/admin/collaborations", label: "Collaborations", icon: FaHandshake },
+    
+
 
   { href: "/admin/users", label: "Utilisateurs", icon: FaUsers },
   { href: "/admin/subscribers", label: "Newsletter", icon: FaEnvelope },

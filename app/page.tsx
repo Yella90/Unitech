@@ -11,13 +11,79 @@ import Partners from "@/components/public/sections/Partners";
 import ProjectsGrid from "@/components/public/sections/ProjectsGrid";
 import Newsletter from "@/components/public/sections/Newsletter";
 
+// ✅ Récupérer les collaborations actives
+async function getCollaborations() {
+  try {
+    const { data, error } = await supabase
+      .from('collaborations')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Erreur chargement collaborations:', error);
+      return [];
+    }
+    
+    console.log('✅ Collaborations chargées:', data?.length || 0);
+    console.log('📦 Données collaborations:', data);
+    return data || [];
+  } catch (error) {
+    console.error('❌ Erreur chargement collaborations:', error);
+    return [];
+  }
+}
+
+// ✅ Récupérer les services
+async function getServices() {
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .select('*')
+      .eq('is_active', true)
+      .order('order_index', { ascending: true })
+      .limit(3);
+
+    if (error) {
+      console.error('❌ Erreur chargement services:', error);
+      return [];
+    }
+    return data || [];
+  } catch (error) {
+    console.error('❌ Erreur chargement services:', error);
+    return [];
+  }
+}
+
+// ✅ Récupérer les solutions
+async function getSolutions() {
+  try {
+    const { data, error } = await supabase
+      .from('solutions')
+      .select('*')
+      .eq('is_active', true)
+      .order('order_index', { ascending: true })
+      .limit(3);
+
+    if (error) {
+      console.error('❌ Erreur chargement solutions:', error);
+      return [];
+    }
+    return data || [];
+  } catch (error) {
+    console.error('❌ Erreur chargement solutions:', error);
+    return [];
+  }
+}
+
 // ✅ Récupérer les formations
 async function getTrainings() {
   try {
     const { data, error } = await supabase
       .from('trainings')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(3);
 
     if (error) {
       console.error('❌ Erreur chargement formations:', error);
@@ -36,7 +102,8 @@ async function getProjects() {
     const { data, error } = await supabase
       .from('projects')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(3);
 
     if (error) {
       console.error('❌ Erreur chargement projets:', error);
@@ -50,23 +117,34 @@ async function getProjects() {
 }
 
 export default async function HomePage() {
-  // ✅ Charger les données en parallèle
-  const [trainings, projects] = await Promise.all([
+  // ✅ Charger toutes les données en parallèle
+  const [services, solutions, trainings, projects, collaborations] = await Promise.all([
+    getServices(),
+    getSolutions(),
     getTrainings(),
-    getProjects()
+    getProjects(),
+    getCollaborations()
   ]);
+
+  console.log('📊 Résumé des données chargées:', {
+    services: services.length,
+    solutions: solutions.length,
+    trainings: trainings.length,
+    projects: projects.length,
+    collaborations: collaborations.length
+  });
 
   return (
     <>
       <Hero />
-      <OurServices limit={3} />
-      <OurSolutions limit={3} />
-      <Training limit={3} initialTrainings={trainings} />
+      <OurServices initialServices={services} limit={3} />
+      <OurSolutions initialSolutions={solutions} limit={3} />
+      <Training initialTrainings={trainings} limit={3} />
       <Stats />
       <OurValues />
       <TechStack />
-      <Partners />
-      <ProjectsGrid limit={3} initialProjects={projects} />
+      <Partners initialCollaborations={collaborations} limit={3} />
+      <ProjectsGrid initialProjects={projects} limit={3} />
       <Newsletter />
     </>
   );

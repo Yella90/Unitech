@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FaArrowRight, FaClock, FaCalendarAlt, FaMapMarkerAlt, FaGraduationCap, FaUsers, FaCertificate, FaChalkboardTeacher } from "react-icons/fa";
+import { FaArrowRight, FaClock, FaCalendarAlt, FaMapMarkerAlt, FaGraduationCap, FaUsers, FaCertificate, FaChalkboardTeacher, FaUserPlus } from "react-icons/fa";
 import Link from "next/link";
 
 export const metadata = {
@@ -20,6 +20,13 @@ const colorMap: Record<string, string> = {
   red: "from-red-50 to-red-100 border-red-200",
 };
 
+const levelColors: Record<string, string> = {
+  'Débutant': 'bg-green-100 text-green-700',
+  'Intermédiaire': 'bg-blue-100 text-blue-700',
+  'Avancé': 'bg-red-100 text-red-700',
+  'Expert': 'bg-purple-100 text-purple-700',
+};
+
 export default async function TrainingPage() {
   // ✅ Récupérer les formations
   const { data: trainings, error } = await supabase
@@ -27,8 +34,10 @@ export default async function TrainingPage() {
     .select("*")
     .order("created_at", { ascending: true });
 
-  // ✅ Afficher les formations même s'il y a une erreur de console
-  // La page s'affiche si trainings existe, même avec une erreur de log
+  if (error) {
+    console.error('❌ Erreur chargement formations:', error);
+  }
+
   if (!trainings || trainings.length === 0) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-16">
@@ -79,76 +88,97 @@ export default async function TrainingPage() {
           Des programmes adaptés à tous les niveaux, de débutant à avancé.
         </p>
         <div className="mt-6 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {trainings.map((training) => (
-            <Card
-              key={training.id}
-              className={`border-2 bg-gradient-to-br ${
-                colorMap[training.color] || colorMap.blue
-              } hover:shadow-xl transition-all h-full`}
-            >
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="text-3xl">{training.icon}</div>
-                  <div>
-                    <Badge variant="secondary" className="text-xs">
-                      {training.duration}
-                    </Badge>
-                    <p className="text-xs text-slate-500">{training.level}</p>
+          {trainings.map((training) => {
+            const levelColor = levelColors[training.level] || 'bg-gray-100 text-gray-700';
+            
+            return (
+              <Card
+                key={training.id}
+                className={`border-2 bg-gradient-to-br ${
+                  colorMap[training.color] || colorMap.blue
+                } hover:shadow-xl transition-all h-full`}
+              >
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl">{training.icon || '📚'}</div>
+                    <div>
+                      <Badge className={levelColor}>
+                        {training.level || 'Débutant'}
+                      </Badge>
+                      <p className="text-xs text-slate-500 mt-1">{training.duration}</p>
+                    </div>
                   </div>
-                </div>
-                <CardTitle className="text-xl font-bold text-slate-800 mt-2">
-                  {training.title}
-                </CardTitle>
-                <CardDescription className="text-sm text-slate-600">
-                  {training.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <FaClock className="h-4 w-4 text-[#1E3A8A]" />
-                    <span>{training.schedule}</span>
+                  <CardTitle className="text-xl font-bold text-slate-800 mt-2">
+                    {training.title}
+                  </CardTitle>
+                  <CardDescription className="text-sm text-slate-600">
+                    {training.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    {training.schedule && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <FaCalendarAlt className="h-4 w-4 text-[#1E3A8A]" />
+                        <span>{training.schedule}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <FaClock className="h-4 w-4 text-[#1E3A8A]" />
+                      <span>{training.duration}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <FaMapMarkerAlt className="h-4 w-4 text-[#1E3A8A]" />
+                      <span>Bamako, Mali</span>
+                    </div>
+                    {training.price && (
+                      <div className="mt-3">
+                        <p className="font-semibold text-[#1E3A8A]">{training.price}</p>
+                      </div>
+                    )}
+                    {training.modules && training.modules.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-medium text-slate-500">Modules inclus :</p>
+                        <ul className="mt-1 space-y-1 text-xs text-slate-600">
+                          {training.modules.slice(0, 3).map((module: string) => (
+                            <li key={module} className="flex items-start gap-2">
+                              <span className="text-[#1E3A8A]">•</span>
+                              {module}
+                            </li>
+                          ))}
+                          {training.modules.length > 3 && (
+                            <li className="text-[#1E3A8A] font-medium">
+                              +{training.modules.length - 3} autres modules
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <FaCalendarAlt className="h-4 w-4 text-[#1E3A8A]" />
-                    <span>{training.duration}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-600">
-                    <FaMapMarkerAlt className="h-4 w-4 text-[#1E3A8A]" />
-                    <span>Bamako, Mali</span>
-                  </div>
-                  <div className="mt-3">
-                    <p className="font-semibold text-[#1E3A8A]">{training.price}</p>
-                  </div>
-                  <div className="mt-3">
-                    <p className="text-xs font-medium text-slate-500">Modules inclus :</p>
-                    <ul className="mt-1 space-y-1 text-xs text-slate-600">
-                      {training.modules?.slice(0, 3).map((module: string) => (
-                        <li key={module} className="flex items-start gap-2">
-                          <span className="text-[#1E3A8A]">•</span>
-                          {module}
-                        </li>
-                      ))}
-                      {training.modules?.length > 3 && (
-                        <li className="text-[#1E3A8A] font-medium">
-                          +{training.modules.length - 3} autres modules
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-                <Button
-                  className="mt-4 w-full bg-[#F97316] hover:bg-[#ea580c] text-white"
-                  asChild
-                >
-                  <Link href="/contact">
-                    S'inscrire
-                    <FaArrowRight className="ml-2 h-4 w-4" />
+                  
+                  {/* ✅ Bouton d'inscription avec lien vers la page d'inscription */}
+                  <Button
+                    className="mt-4 w-full bg-[#F97316] hover:bg-[#ea580c] text-white"
+                    asChild
+                  >
+                    <Link href={`/training/${training.slug}/register`}>
+                      <FaUserPlus className="mr-2 h-4 w-4" />
+                      S'inscrire
+                      <FaArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  
+                  {/* ✅ Lien vers la page de détail */}
+                  <Link 
+                    href={`/training/${training.slug}`}
+                    className="mt-2 block text-center text-xs text-slate-500 hover:text-[#1E3A8A] transition"
+                  >
+                    En savoir plus sur la formation
                   </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
 

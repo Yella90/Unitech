@@ -70,12 +70,16 @@ type Collaboration = {
 
 interface PartnersProps {
   initialCollaborations?: Collaboration[];
+  limit?: number;
 }
 
-export default function Partners({ initialCollaborations = [] }: PartnersProps) {
-  const collaborations = initialCollaborations;
+export default function Partners({ initialCollaborations = [], limit = 3 }: PartnersProps) {
+  // ✅ Utiliser les données passées en props
+  const collaborations = initialCollaborations || [];
 
-  // ✅ Si pas de données, afficher un message
+  // ✅ Ajouter un log pour déboguer
+  //console.log('🔍 Partners - collaborations reçues:', collaborations.length);
+
   if (!collaborations || collaborations.length === 0) {
     return (
       <section className="mx-auto max-w-7xl px-4 py-16">
@@ -212,7 +216,7 @@ export default function Partners({ initialCollaborations = [] }: PartnersProps) 
 
       {/* Grille */}
       <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {collaborations.map((collab, index) => {
+        {collaborations.slice(0, limit).map((collab, index) => {
           const typeConfig = getTypeConfig(collab.type);
           const statusConfig = getStatusConfig(collab.status);
           

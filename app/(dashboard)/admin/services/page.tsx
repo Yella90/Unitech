@@ -17,9 +17,12 @@ import {
   FaSpinner,
   FaSearch,
   FaFilter,
-  FaTimesCircle
+  FaTimesCircle,
+  FaEyeSlash,
+  FaSync
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
+import DeleteConfirmModal from '@/components/ui/DeleteConfirmModal';
 
 type Service = {
   id: string;
@@ -41,6 +44,8 @@ const colorMap: Record<string, string> = {
   purple: 'bg-purple-100 text-purple-700 border-purple-200',
   red: 'bg-red-100 text-red-700 border-red-200',
   teal: 'bg-teal-100 text-teal-700 border-teal-200',
+  yellow: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  indigo: 'bg-indigo-100 text-indigo-700 border-indigo-200',
 };
 
 export default function AdminServicesPage() {
@@ -51,6 +56,15 @@ export default function AdminServicesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // ✅ État du modal
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    id: '',
+    name: '',
+    type: '',
+    isLoading: false,
+  });
 
   useEffect(() => {
     loadServices();
@@ -84,22 +98,47 @@ export default function AdminServicesPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Supprimer le service "${name}" ?`)) return;
+  // ✅ Ouvrir le modal de confirmation
+  const openDeleteModal = (id: string, name: string) => {
+    setDeleteModal({
+      isOpen: true,
+      id,
+      name,
+      type: 'Service',
+      isLoading: false,
+    });
+  };
+
+  // ✅ Fermer le modal
+  const closeDeleteModal = () => {
+    setDeleteModal({
+      isOpen: false,
+      id: '',
+      name: '',
+      type: '',
+      isLoading: false,
+    });
+  };
+
+  // ✅ Confirmer la suppression
+  const confirmDelete = async () => {
+    setDeleteModal(prev => ({ ...prev, isLoading: true }));
 
     try {
       const { error } = await supabase
         .from('services')
         .delete()
-        .eq('id', id);
+        .eq('id', deleteModal.id);
 
       if (error) throw error;
 
-      toast.success('✅ Service supprimé avec succès');
-      setServices(services.filter(s => s.id !== id));
+      toast.success(`✅ "${deleteModal.name}" supprimé avec succès`);
+      setServices(services.filter(s => s.id !== deleteModal.id));
+      closeDeleteModal();
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur lors de la suppression');
+      setDeleteModal(prev => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -178,13 +217,29 @@ export default function AdminServicesPage() {
               Gérez les services proposés par UNITECH
             </p>
           </div>
-          <Link href="/admin/services/new" className="flex-shrink-0">
-            <Button className="w-full sm:w-auto bg-[#F97316] hover:bg-[#ea580c] text-white text-xs sm:text-sm">
-              <FaPlus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden xs:inline">Nouveau service</span>
-              <span className="xs:hidden">Nouveau</span>
+          <div className="flex flex-wrap gap-2 flex-shrink-0">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => loadServices(false)}
+              disabled={refreshing}
+              className="text-xs sm:text-sm"
+            >
+              {refreshing ? (
+                <FaSpinner className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+              ) : (
+                <FaSync className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              )}
+              <span className="hidden xs:inline">{refreshing ? 'Chargement...' : 'Rafraîchir'}</span>
             </Button>
-          </Link>
+            <Link href="/admin/services/new" className="flex-shrink-0">
+              <Button className="w-full sm:w-auto bg-[#F97316] hover:bg-[#ea580c] text-white text-xs sm:text-sm">
+                <FaPlus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden xs:inline">Nouveau service</span>
+                <span className="xs:hidden">Nouveau</span>
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Statistiques */}
@@ -385,14 +440,18 @@ export default function AdminServicesPage() {
                           <div className="flex items-center justify-end gap-0.5 sm:gap-1">
                             <button
                               onClick={() => toggleStatus(service.id, service.is_active)}
-                              className={`h-7 w-7 sm:h-8 sm:w-8 rounded-lg transition ${
+                              className={`h-7 w-7 sm:h-8 sm:w-8 rounded-lg transition flex items-center justify-center ${
                                 service.is_active 
                                   ? 'text-green-600 hover:bg-green-50' 
                                   : 'text-red-600 hover:bg-red-50'
                               }`}
                               title={service.is_active ? 'Désactiver' : 'Activer'}
                             >
-                              {service.is_active ? '✅' : '❌'}
+                              {service.is_active ? (
+                                <FaEye className="h-3 w-3 sm:h-4 sm:w-4" />
+                              ) : (
+                                <FaEyeSlash className="h-3 w-3 sm:h-4 sm:w-4" />
+                              )}
                             </button>
                             <Link href={`/admin/services/${service.id}/edit`}>
                               <Button variant="ghost" size="sm" className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-slate-400 hover:text-[#F97316]">
@@ -404,7 +463,7 @@ export default function AdminServicesPage() {
                               variant="ghost" 
                               size="sm" 
                               className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-slate-400 hover:text-red-600"
-                              onClick={() => handleDelete(service.id, service.name)}
+                              onClick={() => openDeleteModal(service.id, service.name)}
                             >
                               <FaTrash className="h-3 w-3 sm:h-4 sm:w-4" />
                               <span className="sr-only">Supprimer</span>
@@ -420,6 +479,18 @@ export default function AdminServicesPage() {
           )}
         </div>
       </div>
+
+      {/* ✅ Modal de confirmation de suppression */}
+      <DeleteConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={confirmDelete}
+        title="Confirmer la suppression"
+        message="Êtes-vous sûr de vouloir supprimer ce service ?"
+        itemName={deleteModal.name}
+        itemType={deleteModal.type}
+        isLoading={deleteModal.isLoading}
+      />
     </main>
   );
 }

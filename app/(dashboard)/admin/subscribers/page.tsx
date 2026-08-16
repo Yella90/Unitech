@@ -24,6 +24,7 @@ import {
   FaSearch
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
+import DeleteConfirmModal from '@/components/ui/DeleteConfirmModal';
 
 type Subscriber = {
   id: string;
@@ -77,6 +78,24 @@ export default function AdminSubscribersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [contactFilter, setContactFilter] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+
+  // ✅ État du modal pour les abonnés
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    id: '',
+    name: '',
+    type: 'Abonné',
+    isLoading: false,
+  });
+
+  // ✅ État du modal pour les contacts
+  const [deleteContactModal, setDeleteContactModal] = useState({
+    isOpen: false,
+    id: '',
+    name: '',
+    type: 'Message',
+    isLoading: false,
+  });
 
   useEffect(() => {
     const checkAuthAndLoad = async () => {
@@ -151,41 +170,91 @@ export default function AdminSubscribersPage() {
     }
   };
 
-  const handleDeleteSubscriber = async (id: string, email: string) => {
-    if (!confirm(`Supprimer l'abonné "${email}" ?`)) return;
+  // ✅ Ouvrir le modal de suppression pour un abonné
+  const openDeleteSubscriberModal = (id: string, email: string) => {
+    setDeleteModal({
+      isOpen: true,
+      id,
+      name: email,
+      type: 'Abonné',
+      isLoading: false,
+    });
+  };
+
+  // ✅ Fermer le modal pour les abonnés
+  const closeDeleteSubscriberModal = () => {
+    setDeleteModal({
+      isOpen: false,
+      id: '',
+      name: '',
+      type: '',
+      isLoading: false,
+    });
+  };
+
+  // ✅ Confirmer la suppression d'un abonné
+  const confirmDeleteSubscriber = async () => {
+    setDeleteModal(prev => ({ ...prev, isLoading: true }));
 
     try {
       const { error } = await supabase
         .from('newsletter_subscribers')
         .delete()
-        .eq('id', id);
+        .eq('id', deleteModal.id);
 
       if (error) throw error;
 
-      toast.success('✅ Abonné supprimé avec succès');
-      setSubscribers(subscribers.filter(s => s.id !== id));
+      toast.success(`✅ "${deleteModal.name}" supprimé avec succès`);
+      setSubscribers(subscribers.filter(s => s.id !== deleteModal.id));
+      closeDeleteSubscriberModal();
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur lors de la suppression');
+      setDeleteModal(prev => ({ ...prev, isLoading: false }));
     }
   };
 
-  const handleDeleteContact = async (id: string, name: string) => {
-    if (!confirm(`Supprimer le message de "${name}" ?`)) return;
+  // ✅ Ouvrir le modal de suppression pour un contact
+  const openDeleteContactModal = (id: string, name: string) => {
+    setDeleteContactModal({
+      isOpen: true,
+      id,
+      name,
+      type: 'Message',
+      isLoading: false,
+    });
+  };
+
+  // ✅ Fermer le modal pour les contacts
+  const closeDeleteContactModal = () => {
+    setDeleteContactModal({
+      isOpen: false,
+      id: '',
+      name: '',
+      type: '',
+      isLoading: false,
+    });
+  };
+
+  // ✅ Confirmer la suppression d'un contact
+  const confirmDeleteContact = async () => {
+    setDeleteContactModal(prev => ({ ...prev, isLoading: true }));
 
     try {
       const { error } = await supabase
         .from('contacts')
         .delete()
-        .eq('id', id);
+        .eq('id', deleteContactModal.id);
 
       if (error) throw error;
 
-      toast.success('✅ Message supprimé avec succès');
-      setContacts(contacts.filter(c => c.id !== id));
+      toast.success(`✅ Message de "${deleteContactModal.name}" supprimé avec succès`);
+      setContacts(contacts.filter(c => c.id !== deleteContactModal.id));
+      closeDeleteContactModal();
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur lors de la suppression');
+      setDeleteContactModal(prev => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -553,7 +622,7 @@ export default function AdminSubscribersPage() {
                                 variant="ghost" 
                                 size="sm" 
                                 className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-slate-400 hover:text-red-600"
-                                onClick={() => handleDeleteSubscriber(subscriber.id, subscriber.email)}
+                                onClick={() => openDeleteSubscriberModal(subscriber.id, subscriber.email)}
                                 title="Supprimer"
                               >
                                 <FaTrash className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -662,7 +731,7 @@ export default function AdminSubscribersPage() {
                               size="sm" 
                               variant="ghost" 
                               className="h-7 w-7 sm:h-8 sm:w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteContact(contact.id, contact.name)}
+                              onClick={() => openDeleteContactModal(contact.id, contact.name)}
                               title="Supprimer"
                             >
                               <FaTrash className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
@@ -685,11 +754,11 @@ export default function AdminSubscribersPage() {
             <div className="flex flex-wrap gap-1 sm:gap-2">
               {(() => {
                 const interests = subscribers
-                  .flatMap(s => s.interested_in || [])
-                  .reduce((acc, i) => {
+                  .flatMap((s: Subscriber) => s.interested_in || [])
+                  .reduce((acc: Record<string, number>, i: string) => {
                     acc[i] = (acc[i] || 0) + 1;
                     return acc;
-                  }, {} as Record<string, number>);
+                  }, {});
 
                 const sortedInterests = Object.entries(interests)
                   .sort((a, b) => b[1] - a[1]);
@@ -704,6 +773,30 @@ export default function AdminSubscribersPage() {
           </div>
         )}
       </div>
+
+      {/* ✅ Modal de suppression pour les abonnés */}
+      <DeleteConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteSubscriberModal}
+        onConfirm={confirmDeleteSubscriber}
+        title="Confirmer la suppression"
+        message="Êtes-vous sûr de vouloir supprimer cet abonné ?"
+        itemName={deleteModal.name}
+        itemType={deleteModal.type}
+        isLoading={deleteModal.isLoading}
+      />
+
+      {/* ✅ Modal de suppression pour les contacts */}
+      <DeleteConfirmModal
+        isOpen={deleteContactModal.isOpen}
+        onClose={closeDeleteContactModal}
+        onConfirm={confirmDeleteContact}
+        title="Confirmer la suppression"
+        message="Êtes-vous sûr de vouloir supprimer ce message ?"
+        itemName={deleteContactModal.name}
+        itemType={deleteContactModal.type}
+        isLoading={deleteContactModal.isLoading}
+      />
     </main>
   );
 }

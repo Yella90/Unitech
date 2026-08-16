@@ -129,16 +129,19 @@ const colorMap: Record<string, ColorConfig> = {
 // ============================================================
 interface OurSolutionsProps {
   limit?: number;
+  initialSolutions?: Solution[];
 }
 
-export default function OurSolutions({ limit = 4 }: OurSolutionsProps) {
-  const [solutions, setSolutions] = useState<Solution[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [showAll, setShowAll] = useState<boolean>(false);
+export default function OurSolutions({ limit = 4, initialSolutions = [] }: OurSolutionsProps) {
+  const [solutions, setSolutions] = useState<Solution[]>(initialSolutions || []);
+  const [loading, setLoading] = useState(!initialSolutions || initialSolutions.length === 0);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    loadSolutions();
-  }, []);
+    if (!initialSolutions || initialSolutions.length === 0) {
+      loadSolutions();
+    }
+  }, [initialSolutions]);
 
   const loadSolutions = async (): Promise<void> => {
     try {
@@ -176,7 +179,10 @@ export default function OurSolutions({ limit = 4 }: OurSolutionsProps) {
     return colorMap[color]?.border || 'border-blue-200';
   };
 
-  const displayedSolutions = showAll ? solutions : solutions.slice(0, limit);
+  const displayedSolutions = solutions.length > 0 
+    ? (showAll ? solutions : solutions.slice(0, limit))
+    : [];
+  
   const hasMore = solutions.length > limit;
 
   if (loading) {
@@ -214,7 +220,7 @@ export default function OurSolutions({ limit = 4 }: OurSolutionsProps) {
         </motion.div>
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {displayedSolutions.map((solution: Solution, index: number) => (
+          {displayedSolutions.map((solution, index) => (
             <motion.div
               key={solution.id}
               initial={{ opacity: 0, y: 30 }}
@@ -236,7 +242,7 @@ export default function OurSolutions({ limit = 4 }: OurSolutionsProps) {
                     
                     {solution.features && solution.features.length > 0 && (
                       <div className="mt-4 flex flex-wrap gap-1.5">
-                        {solution.features.slice(0, 3).map((feature: string, idx: number) => (
+                        {solution.features.slice(0, 3).map((feature, idx) => (
                           <span
                             key={idx}
                             className="inline-block rounded-full bg-white/50 px-2.5 py-0.5 text-xs text-slate-600 border border-slate-200/50"
@@ -263,7 +269,6 @@ export default function OurSolutions({ limit = 4 }: OurSolutionsProps) {
           ))}
         </div>
 
-        {/* ✅ Bouton "Voir plus" */}
         {hasMore && !showAll && (
           <div className="text-center mt-8">
             <button
@@ -276,7 +281,6 @@ export default function OurSolutions({ limit = 4 }: OurSolutionsProps) {
           </div>
         )}
 
-        {/* ✅ Bouton "Voir moins" */}
         {showAll && (
           <div className="text-center mt-8">
             <button

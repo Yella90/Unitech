@@ -1,11 +1,15 @@
 // components/public/sections/Training.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from "framer-motion";
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Card, CardContent } from "@/components/ui/card";
-import { FaGraduationCap, FaArrowRight, FaClock, FaLevelUpAlt, FaCode, FaUserGraduate } from 'react-icons/fa';
+import { Badge } from "@/components/ui/badge";
+import { Button } from '@/components/ui/button';
+import { FaGraduationCap, FaArrowRight, FaClock, FaLevelUpAlt, FaCode, FaUserGraduate, FaUserPlus } from 'react-icons/fa';
+import TrainingRegistrationModal from '@/components/public/forms/TrainingRegistrationModal';
 
 // ============================================================
 // TYPES
@@ -15,12 +19,15 @@ type Training = {
   slug: string;
   title: string;
   description: string;
+  icon: string;
   duration: string;
   level: string;
+  schedule: string;
   price: string;
   modules: string[];
   color: string;
   created_at: string;
+  updated_at: string;
 };
 
 // ============================================================
@@ -91,10 +98,53 @@ interface TrainingProps {
 }
 
 export default function Training({ limit = 4, initialTrainings = [] }: TrainingProps) {
+  const [trainings, setTrainings] = useState<Training[]>(initialTrainings || []);
+  const [loading, setLoading] = useState(!initialTrainings || initialTrainings.length === 0);
   const [showAll, setShowAll] = useState(false);
+  
+  // ✅ État pour le modal
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedTraining, setSelectedTraining] = useState<{ id: string; title: string; slug: string } | null>(null);
 
-  // ✅ Utiliser directement les formations passées en props
-  const trainings = initialTrainings || [];
+  useEffect(() => {
+    if (!initialTrainings || initialTrainings.length === 0) {
+      loadTrainings();
+    }
+  }, [initialTrainings]);
+
+  const loadTrainings = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('trainings')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Erreur chargement formations:', error);
+        throw error;
+      }
+
+      setTrainings(data || []);
+    } catch (error) {
+      console.error('❌ Erreur chargement formations:', error);
+      setTrainings([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Ouvrir le modal d'inscription
+  const openModal = (training: { id: string; title: string; slug: string }) => {
+    setSelectedTraining(training);
+    setModalOpen(true);
+  };
+
+  // ✅ Fermer le modal
+  const closeModal = () => {
+    setModalOpen(false);
+    setSelectedTraining(null);
+  };
 
   const getColor = (color: string) => {
     return colorMap[color] || colorMap.blue;
@@ -110,47 +160,59 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
   
   const hasMore = trainings.length > limit;
 
+  if (loading) {
+    return (
+      <section className="py-16 bg-[#F5F7FB]">
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="flex items-center justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A8A] border-t-transparent" />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   if (!trainings || trainings.length === 0) {
     return null;
   }
 
   return (
-    <section className="py-16 bg-[#F5F7FB]">
-      <div className="mx-auto max-w-7xl px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true }}
-          className="text-center"
-        >
-          <div className="inline-flex items-center gap-2 rounded-full bg-[#1E3A8A]/10 px-4 py-1.5 text-sm font-medium text-[#1E3A8A]">
-            <FaGraduationCap className="h-4 w-4" />
-            Formations
-          </div>
-          <h2 className="mt-4 text-3xl font-black text-[#1E3A8A] md:text-4xl">
-            Formations Technologiques
-          </h2>
-          <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-            Des programmes de formation pour développer vos compétences techniques.
-          </p>
-        </motion.div>
+    <>
+      <section className="py-16 bg-[#F5F7FB]" id="trainings">
+        <div className="mx-auto max-w-7xl px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+            className="text-center"
+          >
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#1E3A8A]/10 px-4 py-1.5 text-sm font-medium text-[#1E3A8A]">
+              <FaGraduationCap className="h-4 w-4" />
+              Formations
+            </div>
+            <h2 className="mt-4 text-3xl font-black text-[#1E3A8A] md:text-4xl">
+              Formations Technologiques
+            </h2>
+            <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
+              Des programmes de formation pour développer vos compétences techniques.
+            </p>
+          </motion.div>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {displayedTrainings.map((training, index) => {
-            const color = getColor(training.color);
-            const levelColor = getLevelColor(training.level);
+          <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {displayedTrainings.map((training, index) => {
+              const color = getColor(training.color);
+              const levelColor = getLevelColor(training.level);
 
-            return (
-              <motion.div
-                key={training.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                viewport={{ once: true }}
-                whileHover={{ y: -5 }}
-              >
-                <Link href={`/trainings/${training.slug}`} className="block h-full">
+              return (
+                <motion.div
+                  key={training.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  viewport={{ once: true }}
+                  whileHover={{ y: -5 }}
+                >
                   <Card className={`border-2 ${color.border} hover:shadow-xl transition-all h-full group cursor-pointer`}>
                     <CardContent className="p-6">
                       <div className="flex items-start gap-4">
@@ -208,45 +270,85 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                             </div>
                           )}
 
-                          <div className="mt-3 flex items-center gap-1 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition">
-                            En savoir plus
-                            <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
+                          {/* ✅ Boutons d'action - Version avec les deux options */}
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {/* Lien vers la page de détail */}
+                            <Link 
+                              href={`/training/${training.slug}`}
+                              className="inline-flex items-center gap-1 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition"
+                            >
+                              En savoir plus
+                              <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
+                            </Link>
+                            
+                            <span className="text-slate-300">|</span>
+                            
+                            {/* ✅ Option 1: Lien vers la page d'inscription */}
+                            <Link 
+                              href={`/training/${training.slug}/register`}
+                              className="inline-flex items-center gap-1 text-sm font-medium text-[#F97316] hover:text-[#ea580c] transition"
+                            >
+                              <FaUserPlus className="h-3 w-3" />
+                              S'inscrire
+                            </Link>
+                            
+                            {/* ✅ Option 2: Bouton qui ouvre le modal (décommentez pour utiliser) */}
+                            {/*
+                            <button
+                              onClick={() => openModal({ id: training.id, title: training.title, slug: training.slug })}
+                              className="inline-flex items-center gap-1 text-sm font-medium text-[#F97316] hover:text-[#ea580c] transition"
+                            >
+                              <FaUserPlus className="h-3 w-3" />
+                              S'inscrire
+                            </button>
+                            */}
                           </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-                </Link>
-              </motion.div>
-            );
-          })}
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Bouton "Voir plus" */}
+          {hasMore && !showAll && (
+            <div className="text-center mt-8">
+              <button
+                onClick={() => setShowAll(true)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
+              >
+                Voir toutes nos formations ({trainings.length})
+                <FaArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Bouton "Voir moins" */}
+          {showAll && (
+            <div className="text-center mt-8">
+              <button
+                onClick={() => setShowAll(false)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-300 transition"
+              >
+                Réduire la liste
+              </button>
+            </div>
+          )}
         </div>
+      </section>
 
-        {/* Bouton "Voir plus" */}
-        {hasMore && !showAll && (
-          <div className="text-center mt-8">
-            <Link
-              href="/trainings"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
-            >
-              Voir toutes nos formations ({trainings.length})
-              <FaArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        )}
-
-        {/* Bouton "Voir moins" */}
-        {showAll && (
-          <div className="text-center mt-8">
-            <button
-              onClick={() => setShowAll(false)}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-300 transition"
-            >
-              Réduire la liste
-            </button>
-          </div>
-        )}
-      </div>
-    </section>
+      {/* ✅ Modal d'inscription */}
+      {selectedTraining && (
+        <TrainingRegistrationModal
+          isOpen={modalOpen}
+          onClose={closeModal}
+          trainingId={selectedTraining.id}
+          trainingTitle={selectedTraining.title}
+          trainingSlug={selectedTraining.slug}
+        />
+      )}
+    </>
   );
 }
