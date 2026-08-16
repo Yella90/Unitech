@@ -138,9 +138,17 @@ const colorMap: Record<string, ColorConfig> = {
   },
 };
 
-export default function OurServices() {
+// ============================================================
+// PROPS
+// ============================================================
+interface OurServicesProps {
+  limit?: number;
+}
+
+export default function OurServices({ limit = 4 }: OurServicesProps) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [showAll, setShowAll] = useState<boolean>(false);
 
   useEffect(() => {
     loadServices();
@@ -182,6 +190,10 @@ export default function OurServices() {
     return colorMap[color]?.border || 'border-blue-200';
   };
 
+  // ✅ Limiter l'affichage
+  const displayedServices = showAll ? services : services.slice(0, limit);
+  const hasMore = services.length > limit;
+
   if (loading) {
     return (
       <section className="py-16 bg-[#F5F7FB]">
@@ -217,57 +229,77 @@ export default function OurServices() {
         </motion.div>
 
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((service: Service, index: number) => {
-            // ✅ Utiliser le slug de la base de données
-            const slug = service.slug;
-            
-            return (
-              <motion.div
-                key={service.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                viewport={{ once: true }}
-                whileHover={{ y: -5 }}
-              >
-                <Link href={`/services/${slug}`} className="block h-full">
-                  <Card className={`border-2 bg-gradient-to-br ${getGradient(service.color)} ${getBorder(service.color)} hover:shadow-xl transition-all h-full group cursor-pointer`}>
-                    <CardContent className="p-6">
-                      <div className={`inline-flex rounded-full ${getIconBg(service.color)} p-3 mb-4 group-hover:scale-110 transition`}>
-                        {renderIcon(service.icon, service.color)}
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-800 group-hover:text-[#F97316] transition">
-                        {service.name}
-                      </h3>
-                      <p className="mt-2 text-sm text-slate-600">{service.description}</p>
-                      
-                      {service.features && service.features.length > 0 && (
-                        <ul className="mt-4 space-y-1">
-                          {service.features.slice(0, 3).map((feature: string, idx: number) => (
-                            <li key={idx} className="flex items-center gap-2 text-sm text-slate-600">
-                              <span className="h-1.5 w-1.5 rounded-full bg-[#1E3A8A]" />
-                              {feature}
-                            </li>
-                          ))}
-                          {service.features.length > 3 && (
-                            <li className="text-xs text-slate-400">
-                              +{service.features.length - 3} autres
-                            </li>
-                          )}
-                        </ul>
-                      )}
+          {displayedServices.map((service: Service, index: number) => (
+            <motion.div
+              key={service.id}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+              viewport={{ once: true }}
+              whileHover={{ y: -5 }}
+            >
+              <Link href={`/services/${service.slug}`} className="block h-full">
+                <Card className={`border-2 bg-gradient-to-br ${getGradient(service.color)} ${getBorder(service.color)} hover:shadow-xl transition-all h-full group cursor-pointer`}>
+                  <CardContent className="p-6">
+                    <div className={`inline-flex rounded-full ${getIconBg(service.color)} p-3 mb-4 group-hover:scale-110 transition`}>
+                      {renderIcon(service.icon, service.color)}
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800 group-hover:text-[#F97316] transition">
+                      {service.name}
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-600">{service.description}</p>
+                    
+                    {service.features && service.features.length > 0 && (
+                      <ul className="mt-4 space-y-1">
+                        {service.features.slice(0, 3).map((feature: string, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2 text-sm text-slate-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#1E3A8A]" />
+                            {feature}
+                          </li>
+                        ))}
+                        {service.features.length > 3 && (
+                          <li className="text-xs text-slate-400">
+                            +{service.features.length - 3} autres
+                          </li>
+                        )}
+                      </ul>
+                    )}
 
-                      <div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition">
-                        En savoir plus
-                        <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </motion.div>
-            );
-          })}
+                    <div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition">
+                      En savoir plus
+                      <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          ))}
         </div>
+
+        {/* ✅ Bouton "Voir plus" */}
+        {hasMore && !showAll && (
+          <div className="text-center mt-8">
+            <button
+              onClick={() => setShowAll(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
+            >
+              Voir tous nos services ({services.length})
+              <FaArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* ✅ Bouton "Voir moins" */}
+        {showAll && (
+          <div className="text-center mt-8">
+            <button
+              onClick={() => setShowAll(false)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-300 transition"
+            >
+              Réduire la liste
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
