@@ -142,9 +142,10 @@ export default async function HomePage() {
       <Training initialTrainings={trainings} limit={3} />
       <Stats />
       <OurValues />
+      <ProjectsGrid initialProjects={projects} limit={3} />
+
       <TechStack />
       <Partners initialCollaborations={collaborations} limit={3} />
-      <ProjectsGrid initialProjects={projects} limit={3} />
       <Newsletter />
     </>
   );
