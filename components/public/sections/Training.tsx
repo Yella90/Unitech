@@ -7,8 +7,16 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from '@/components/ui/button';
-import { FaGraduationCap, FaArrowRight, FaClock, FaLevelUpAlt, FaCode, FaUserGraduate, FaUserPlus } from 'react-icons/fa';
+import { 
+  FaGraduationCap, 
+  FaArrowRight, 
+  FaClock, 
+  FaLevelUpAlt, 
+  FaCode, 
+  FaUserGraduate, 
+  FaUserPlus,
+  FaExternalLinkAlt  // ✅ Ajout pour le lien
+} from 'react-icons/fa';
 import TrainingRegistrationModal from '@/components/public/forms/TrainingRegistrationModal';
 
 // ============================================================
@@ -159,6 +167,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
     : [];
   
   const hasMore = trainings.length > limit;
+  const totalTrainings = trainings.length;
 
   if (loading) {
     return (
@@ -199,7 +208,19 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
             </p>
           </motion.div>
 
-          <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {/* ✅ Lien vers /training */}
+          <div className="mt-6 flex justify-center">
+            <Link
+              href="/training"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
+            >
+              <span>Voir toutes nos formations</span>
+              <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+              <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalTrainings})</span>
+            </Link>
+          </div>
+
+          <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {displayedTrainings.map((training, index) => {
               const color = getColor(training.color);
               const levelColor = getLevelColor(training.level);
@@ -270,7 +291,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                             </div>
                           )}
 
-                          {/* ✅ Boutons d'action - Version avec les deux options */}
+                          {/* ✅ Boutons d'action */}
                           <div className="mt-4 flex flex-wrap gap-2">
                             {/* Lien vers la page de détail */}
                             <Link 
@@ -283,7 +304,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                             
                             <span className="text-slate-300">|</span>
                             
-                            {/* ✅ Option 1: Lien vers la page d'inscription */}
+                            {/* Lien vers la page d'inscription */}
                             <Link 
                               href={`/training/${training.slug}/register`}
                               className="inline-flex items-center gap-1 text-sm font-medium text-[#F97316] hover:text-[#ea580c] transition"
@@ -291,17 +312,6 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                               <FaUserPlus className="h-3 w-3" />
                               S'inscrire
                             </Link>
-                            
-                            {/* ✅ Option 2: Bouton qui ouvre le modal (décommentez pour utiliser) */}
-                            {/*
-                            <button
-                              onClick={() => openModal({ id: training.id, title: training.title, slug: training.slug })}
-                              className="inline-flex items-center gap-1 text-sm font-medium text-[#F97316] hover:text-[#ea580c] transition"
-                            >
-                              <FaUserPlus className="h-3 w-3" />
-                              S'inscrire
-                            </button>
-                            */}
                           </div>
                         </div>
                       </div>
@@ -312,16 +322,16 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
             })}
           </div>
 
-          {/* Bouton "Voir plus" */}
+          {/* Bouton "Voir plus" - Redirige vers /training */}
           {hasMore && !showAll && (
             <div className="text-center mt-8">
-              <button
-                onClick={() => setShowAll(true)}
+              <Link
+                href="/training"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
               >
-                Voir toutes nos formations ({trainings.length})
+                Voir toutes nos formations ({totalTrainings})
                 <FaArrowRight className="h-4 w-4" />
-              </button>
+              </Link>
             </div>
           )}
 

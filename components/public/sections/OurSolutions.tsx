@@ -19,7 +19,8 @@ import {
   FaBrain,
   FaCogs,
   FaChartLine,
-  FaArrowRight
+  FaArrowRight,
+  FaExternalLinkAlt  // ✅ Ajout pour le lien
 } from "react-icons/fa";
 
 // ============================================================
@@ -184,6 +185,7 @@ export default function OurSolutions({ limit = 4, initialSolutions = [] }: OurSo
     : [];
   
   const hasMore = solutions.length > limit;
+  const totalSolutions = solutions.length;
 
   if (loading) {
     return (
@@ -219,7 +221,19 @@ export default function OurSolutions({ limit = 4, initialSolutions = [] }: OurSo
           </p>
         </motion.div>
 
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ✅ Lien vers /solutions */}
+        <div className="mt-6 flex justify-center">
+          <Link
+            href="/solutions"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
+          >
+            <span>Voir toutes nos solutions</span>
+            <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+            <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalSolutions})</span>
+          </Link>
+        </div>
+
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {displayedSolutions.map((solution, index) => (
             <motion.div
               key={solution.id}
@@ -270,7 +284,7 @@ export default function OurSolutions({ limit = 4, initialSolutions = [] }: OurSo
         </div>
 
         {hasMore && !showAll && (
-          <div className="text-center mt-8">
+          <div className="text-center mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => setShowAll(true)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"

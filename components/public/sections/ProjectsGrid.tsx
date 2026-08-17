@@ -7,7 +7,14 @@ import Link from 'next/link';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { FaProjectDiagram, FaArrowRight, FaClock, FaCheckCircle, FaSpinner } from 'react-icons/fa';
+import { 
+  FaProjectDiagram, 
+  FaArrowRight, 
+  FaClock, 
+  FaCheckCircle, 
+  FaSpinner,
+  FaExternalLinkAlt  // ✅ Ajout pour le lien
+} from 'react-icons/fa';
 
 // ============================================================
 // TYPES
@@ -143,6 +150,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
     : [];
   
   const hasMore = projects.length > limit;
+  const totalProjects = projects.length;
 
   if (!projects || projects.length === 0) {
     return null;
@@ -170,7 +178,19 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
           </p>
         </motion.div>
 
-        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* ✅ Lien vers /projects */}
+        <div className="mt-6 flex justify-center">
+          <Link
+            href="/projects"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
+          >
+            <span>Voir tous nos projets</span>
+            <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+            <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalProjects})</span>
+          </Link>
+        </div>
+
+        <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {displayedProjects.map((project, index) => {
             const color = getColor(project.color);
             const status = getStatus(project.status);
@@ -258,14 +278,14 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
           })}
         </div>
 
-        {/* Bouton "Voir plus" */}
+        {/* Bouton "Voir plus" - Redirige vers /projects */}
         {hasMore && !showAll && (
           <div className="text-center mt-8">
             <Link
               href="/projects"
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
             >
-              Voir tous nos projets ({projects.length})
+              Voir tous nos projets ({totalProjects})
               <FaArrowRight className="h-4 w-4" />
             </Link>
           </div>
