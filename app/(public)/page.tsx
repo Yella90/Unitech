@@ -131,7 +131,7 @@ export default async function HomePage() {
   //console.log('📊 Résumé des données chargées:', {services: services.length,solutions: solutions.length,trainings: trainings.length,projects: projects.length,collaborations: collaborations.length});
 
   // ✅ Vérifier que les collaborations sont bien passées
-  console.log('📤 Passage des collaborations à Partners:', collaborations.length);
+  //console.log('📤 Passage des collaborations à Partners:', collaborations.length);
 
   return (
     <>
