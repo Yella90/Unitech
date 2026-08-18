@@ -12,6 +12,7 @@ import {
   FaCode,
   FaLightbulb
 } from "react-icons/fa";
+import { Target } from "lucide-react";
 
 // ✅ Mapping des types
 const typeConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
@@ -60,7 +61,7 @@ type Collaboration = {
   name: string;
   type: string;
   status: string;
-  contact: { name?: string; email?: string; phone?: string } | null;
+  contact: { name?: string; email?: string; phone?: string; site?: string } | null;
   agreement: { type?: string; start_date?: string; end_date?: string; terms?: string } | null;
   contributions: string[] | null;
   projects: string[] | null;
@@ -148,6 +149,16 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
             className="text-[10px] text-[#1E3A8A] hover:text-[#F97316] transition block truncate"
           >
             ✉️ {contact.email}
+          </a>
+        )}
+        {contact.site && (
+          <a
+            href={`${contact.site}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-[#1E3A8A] hover:text-[#F97316] transition block truncate"
+          >
+            ✉️ {contact.site}
           </a>
         )}
         {contact.phone && (

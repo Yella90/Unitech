@@ -20,7 +20,8 @@ import {
   FaChevronUp,
   FaUser,
   FaEnvelope,
-  FaPhone
+  FaPhone,
+  FaGlobe
 } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -61,6 +62,7 @@ export default function EditCollaborationPage({ params }: EditCollaborationPageP
     contact_name: '',
     contact_email: '',
     contact_phone: '',
+    contact_website: '',
     contributions: [] as string[],
     notes: '',
   });
@@ -119,6 +121,7 @@ export default function EditCollaborationPage({ params }: EditCollaborationPageP
           contact_name: data.contact?.name || '',
           contact_email: data.contact?.email || '',
           contact_phone: data.contact?.phone || '',
+          contact_website: data.contact?.site || '',
           contributions: data.contributions || [],
           notes: data.notes || '',
         });
@@ -168,6 +171,7 @@ export default function EditCollaborationPage({ params }: EditCollaborationPageP
         name: formData.contact_name || undefined,
         email: formData.contact_email || undefined,
         phone: formData.contact_phone || undefined,
+        site: formData.contact_website || undefined,
       };
 
       const { error } = await supabase
@@ -372,6 +376,19 @@ export default function EditCollaborationPage({ params }: EditCollaborationPageP
                           type="email"
                           value={formData.contact_email}
                           onChange={(e) => setFormData((prev) => ({ ...prev, contact_email: e.target.value }))}
+                          className="pl-10 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="contact_website" className="text-xs sm:text-sm">Site Web</Label>
+                      <div className="relative mt-1">
+                        <FaGlobe className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
+                        <Input
+                          id="contact_website"
+                          type="url"
+                          value={formData.contact_website}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, contact_website: e.target.value }))}
                           className="pl-10 text-sm"
                         />
                       </div>
