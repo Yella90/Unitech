@@ -106,6 +106,7 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
     solution: '',
     benefits: [] as string[],
     gallery: [] as string[],
+    site: '',
   });
 
   // ✅ Récupérer les étapes du projet
@@ -162,6 +163,7 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
             solution: data.solution || '',
             benefits: data.benefits || [],
             gallery: data.gallery || [],
+            site: data.site || '',
           });
         }
 
@@ -376,6 +378,7 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
           benefits: formData.benefits.length > 0 ? formData.benefits : null,
           gallery: formData.gallery.length > 0 ? formData.gallery : null,
           updated_at: new Date().toISOString(),
+          site: formData.site || null,
         })
         .eq('id', projectId);
 
@@ -500,6 +503,22 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
                           id="slug"
                           name="slug"
                           value={formData.slug}
+                          onChange={handleInputChange}
+                          required
+                          className="mt-1 text-sm"
+                        />
+                        <p className="mt-1 text-[10px] sm:text-xs text-slate-400">
+                          Identifiant unique pour l'URL
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="slug" className="text-xs sm:text-sm">
+                          URL site Wb <span className="text-red-500"></span>
+                        </Label>
+                        <Input
+                          id="site"
+                          name="site"
+                          value={formData.site}
                           onChange={handleInputChange}
                           required
                           className="mt-1 text-sm"

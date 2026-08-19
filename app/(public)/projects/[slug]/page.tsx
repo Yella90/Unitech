@@ -16,7 +16,8 @@ import {
   FaServer, 
   FaCog, 
   FaGlobe, 
-  FaArrowRight 
+  FaArrowRight,
+  FaExternalLinkAlt
 } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -88,6 +89,17 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           <div>
             <h1 className="text-3xl font-black md:text-4xl">{project.name}</h1>
             <p className="text-white/80">{project.description}</p>
+            {project.site && (
+              <a
+                href={project.site}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-white/80 hover:text-white"
+              >
+                <FaExternalLinkAlt className="h-4 w-4" />
+                Voir le site
+              </a>
+            )}
           </div>
         </div>
 
