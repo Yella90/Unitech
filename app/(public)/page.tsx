@@ -14,7 +14,7 @@ import Newsletter from "@/components/public/sections/Newsletter";
 // ✅ Récupérer les collaborations actives
 async function getCollaborations() {
   try {
-    console.log('🔍 Récupération des collaborations...');
+    //console.log('🔍 Récupération des collaborations...');
     
     const { data, error } = await supabase
       .from('collaborations')
@@ -27,8 +27,8 @@ async function getCollaborations() {
       return [];
     }
     
-    console.log('✅ Collaborations chargées:', data?.length || 0);
-    console.log('📦 Données collaborations:', JSON.stringify(data, null, 2));
+    //console.log('✅ Collaborations chargées:', data?.length || 0);
+    //console.log('📦 Données collaborations:', JSON.stringify(data, null, 2));
     return data || [];
   } catch (error) {
     console.error('❌ Erreur chargement collaborations:', error);

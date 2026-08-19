@@ -208,18 +208,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
             </p>
           </motion.div>
 
-          {/* ✅ Lien vers /training */}
-          <div className="mt-6 flex justify-center">
-            <Link
-              href="/training"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
-            >
-              <span>Voir toutes nos formations</span>
-              <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
-              <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalTrainings})</span>
-            </Link>
-          </div>
-
+          
           <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {displayedTrainings.map((training, index) => {
               const color = getColor(training.color);
@@ -321,6 +310,18 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
               );
             })}
           </div>
+          {/* ✅ Lien vers /training */}
+          <div className="mt-6 flex justify-center">
+            <Link
+              href="/training"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
+            >
+              <span>Voir toutes nos formations</span>
+              <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+              <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalTrainings})</span>
+            </Link>
+          </div>
+
 
           {/* Bouton "Voir plus" - Redirige vers /training */}
           {hasMore && !showAll && (

@@ -178,17 +178,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
           </p>
         </motion.div>
 
-        {/* ✅ Lien vers /projects */}
-        <div className="mt-6 flex justify-center">
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
-          >
-            <span>Voir tous nos projets</span>
-            <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
-            <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalProjects})</span>
-          </Link>
-        </div>
+       
 
         <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {displayedProjects.map((project, index) => {
@@ -276,6 +266,17 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
               </motion.div>
             );
           })}
+        </div>
+         {/* ✅ Lien vers /projects */}
+        <div className="mt-6 flex justify-center">
+          <Link
+            href="/projects"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
+          >
+            <span>Voir tous nos projets</span>
+            <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
+            <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalProjects})</span>
+          </Link>
         </div>
 
         {/* Bouton "Voir plus" - Redirige vers /projects */}

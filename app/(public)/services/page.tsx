@@ -177,6 +177,7 @@ export default async function ServicesPage() {
         {services && services.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {services.map((service: Service) => (
+              service.is_active && (
               <Link
                 key={service.id}
                 href={`/services/${service.slug}`}
@@ -217,7 +218,7 @@ export default async function ServicesPage() {
                   </div>
                 </div>
               </Link>
-            ))}
+            )))}
           </div>
         ) : (
           <div className="text-center py-16">
