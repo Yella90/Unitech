@@ -22,15 +22,14 @@ type Service = {
 };
 
 interface ServiceRequestFormProps {
-  services: Service[];
+  services: Service[]; // ✅ Sera toujours un tableau
 }
 
-export default function ServiceRequestForm({ services }: ServiceRequestFormProps) {
+export default function ServiceRequestForm({ services = [] }: ServiceRequestFormProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ État du formulaire
   const [formData, setFormData] = useState({
     service_id: '',
     name: '',
@@ -43,7 +42,6 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
     attachments: [] as File[],
   });
 
-  // ✅ Validation
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
@@ -82,13 +80,12 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
     setLoading(true);
 
     try {
-      // ✅ Upload des pièces jointes
       let attachmentUrls: string[] = [];
       
       if (formData.attachments.length > 0) {
         for (const file of formData.attachments) {
           const fileName = `${Date.now()}-${file.name}`;
-          const { data: uploadData, error: uploadError } = await supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from('service-requests')
             .upload(fileName, file);
 
@@ -105,11 +102,11 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
         }
       }
 
-      // ✅ Créer la demande
+      // ✅ Insertion avec gestion d'erreur améliorée
       const { data, error: insertError } = await supabase
         .from('service_requests')
         .insert({
-          service_id: formData.service_id,
+          service_id: formData.service_id || null,
           name: formData.name.trim(),
           email: formData.email.trim(),
           phone: formData.phone.trim() || null,
@@ -122,29 +119,30 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .select()
-        .single();
+        .select();
 
       if (insertError) {
-        console.error('❌ Erreur insertion:', insertError);
-        throw new Error(insertError.message);
-      }
-
-      // ✅ Envoyer une notification email (optionnel)
-      try {
-        await fetch('/api/service-request/notify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId: data.id }),
+        console.error('❌ Erreur insertion détaillée:', {
+          message: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
         });
-      } catch (notifyError) {
-        console.warn('⚠️ Erreur notification:', notifyError);
+
+        if (insertError.message.includes('row-level security')) {
+          throw new Error('Erreur de sécurité. Veuillez rafraîchir la page et réessayer.');
+        } else if (insertError.message.includes('violates foreign key')) {
+          throw new Error('Le service sélectionné n\'existe pas. Veuillez réessayer.');
+        } else if (insertError.message.includes('not-null')) {
+          throw new Error('Certains champs obligatoires sont manquants.');
+        } else {
+          throw new Error(insertError.message || 'Une erreur est survenue lors de l\'envoi.');
+        }
       }
 
       setSuccess(true);
       toast.success('✅ Votre demande a été envoyée avec succès !');
       
-      // Réinitialiser le formulaire après 5 secondes
       setTimeout(() => {
         setFormData({
           service_id: '',
@@ -163,7 +161,7 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
     } catch (err: any) {
       console.error('❌ Erreur:', err);
       setError(err.message || 'Une erreur est survenue');
-      toast.error('Erreur lors de l\'envoi');
+      toast.error(err.message || 'Erreur lors de l\'envoi');
     } finally {
       setLoading(false);
     }
@@ -202,6 +200,9 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
     );
   }
 
+  // ✅ Vérification que services existe et est un tableau
+  const servicesList = Array.isArray(services) ? services : [];
+
   return (
     <>
       <Toaster position="top-right" richColors />
@@ -218,14 +219,23 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
             className={`w-full rounded-lg border ${errors.service_id ? 'border-red-500' : 'border-slate-200'} bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent`}
           >
             <option value="">-- Sélectionnez un service --</option>
-            {services.map((service) => (
-              <option key={service.id} value={service.id}>
-                {service.name}
-              </option>
-            ))}
+            {servicesList.length > 0 ? (
+              servicesList.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))
+            ) : (
+              <option value="" disabled>Aucun service disponible</option>
+            )}
           </select>
           {errors.service_id && (
             <p className="mt-1 text-xs text-red-500">{errors.service_id}</p>
+          )}
+          {servicesList.length === 0 && (
+            <p className="mt-1 text-xs text-amber-500">
+              ⚠️ Aucun service disponible pour le moment. Veuillez réessayer plus tard.
+            </p>
           )}
         </div>
 
@@ -311,7 +321,7 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
           </p>
         </div>
 
-        {/* Budget et Délai */}
+        {/* Budget et Délai - En FCFA */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -323,12 +333,12 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
               className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
             >
               <option value="">-- À définir --</option>
-              <option value="moins-500">Moins de 500€</option>
-              <option value="500-1000">500€ - 1 000€</option>
-              <option value="1000-2500">1 000€ - 2 500€</option>
-              <option value="2500-5000">2 500€ - 5 000€</option>
-              <option value="5000-10000">5 000€ - 10 000€</option>
-              <option value="plus-10000">Plus de 10 000€</option>
+              <option value="moins-500">Moins de 500 000 FCFA</option>
+              <option value="500-1000">500 000 - 1 000 000 FCFA</option>
+              <option value="1000-2500">1 000 000 - 2 500 000 FCFA</option>
+              <option value="2500-5000">2 500 000 - 5 000 000 FCFA</option>
+              <option value="5000-10000">5 000 000 - 10 000 000 FCFA</option>
+              <option value="plus-10000">Plus de 10 000 000 FCFA</option>
             </select>
           </div>
           <div>
@@ -376,7 +386,6 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
             </div>
           </div>
           
-          {/* Liste des fichiers */}
           {formData.attachments.length > 0 && (
             <div className="mt-3 space-y-2">
               {formData.attachments.map((file, index) => (
@@ -395,7 +404,6 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
           )}
         </div>
 
-        {/* Erreur */}
         {error && (
           <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
             <FaExclamationCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
@@ -406,11 +414,10 @@ export default function ServiceRequestForm({ services }: ServiceRequestFormProps
           </div>
         )}
 
-        {/* Bouton d'envoi */}
         <Button
           type="submit"
-          disabled={loading}
-          className="w-full bg-[#1E3A8A] hover:bg-[#1A2F6A] text-white py-3 text-base font-semibold rounded-xl"
+          disabled={loading || servicesList.length === 0}
+          className="w-full bg-[#1E3A8A] hover:bg-[#1A2F6A] text-white py-3 text-base font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <>
