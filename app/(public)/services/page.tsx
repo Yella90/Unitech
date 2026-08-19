@@ -21,7 +21,8 @@ import {
   FaCloud,
   FaDatabase,
   FaShieldAlt,
-  FaHome
+  FaHome,
+  FaClipboardList // ✅ Ajout pour le lien vers demande
 } from 'react-icons/fa';
 import { Metadata } from 'next';
 
@@ -171,6 +172,18 @@ export default async function ServicesPage() {
               🚀 {services?.length || 0} services disponibles
             </span>
           </div>
+          
+          {/* ✅ NOUVEAU LIEN VERS LA DEMANDE DE SERVICE */}
+          <div className="mt-6">
+            <Link
+              href="/demande-service"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-full hover:bg-[#1A2F6A] transition hover:scale-105"
+            >
+              <FaClipboardList className="h-4 w-4" />
+              Demander un service personnalisé
+              <FaArrowRight className="h-4 w-4 group-hover:translate-x-1 transition" />
+            </Link>
+          </div>
         </div>
 
         {/* Grille des services */}
@@ -260,13 +273,20 @@ export default async function ServicesPage() {
           </div>
         )}
 
-        {/* Appel à l'action */}
-        <div className="mt-12 text-center">
+        {/* Appels à l'action */}
+        <div className="mt-12 flex flex-wrap justify-center gap-4">
+          <Link
+            href="/demande-service"
+            className="inline-flex items-center gap-2 px-8 py-3 bg-[#1E3A8A] text-white font-semibold rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
+          >
+            <FaClipboardList className="h-4 w-4" />
+            Demander un service
+          </Link>
           <Link
             href="/contact"
             className="inline-flex items-center gap-2 px-8 py-3 bg-[#F97316] text-white font-semibold rounded-xl hover:bg-[#ea580c] transition hover:scale-105"
           >
-            Demander un devis
+            Nous contacter
             <FaArrowRight className="h-4 w-4" />
           </Link>
         </div>

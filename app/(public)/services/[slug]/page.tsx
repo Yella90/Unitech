@@ -23,7 +23,9 @@ import {
   FaLeaf,
   FaBuilding,
   FaBolt,
-  FaUniversity
+  FaUniversity,
+  FaClipboardList, // ✅ Ajout pour le lien vers demande
+  FaArrowRight
 } from 'react-icons/fa';
 import { Metadata } from 'next';
 
@@ -203,8 +205,7 @@ export async function generateStaticParams() {
 }
 
 // ============================================================
-// PAGE DE DÉTAIL D'UN SERVICE
-// ============================================================
+// PAGE DE DÉTAIL D'UN SERVICE// ============================================================
 export default async function ServiceDetailPage({ params }: { params: { slug: string } }) {
   const { slug } = await params;
 
@@ -250,13 +251,27 @@ export default async function ServiceDetailPage({ params }: { params: { slug: st
               {service.description}
             </p>
             
-            <Link
-              href="/#services"
-              className="mt-6 inline-flex items-center gap-2 text-sm text-[#1E3A8A] hover:text-[#F97316] transition"
-            >
-              <FaArrowLeft className="h-4 w-4" />
-              Retour aux services
-            </Link>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+              <Link
+                href="/#services"
+                className="inline-flex items-center gap-2 text-sm text-[#1E3A8A] hover:text-[#F97316] transition"
+              >
+                <FaArrowLeft className="h-4 w-4" />
+                Retour aux services
+              </Link>
+              
+              {/* ✅ NOUVEAU LIEN VERS LA DEMANDE DE SERVICE */}
+              <span className="text-slate-300">|</span>
+              
+              <Link
+                href="/demande-service"
+                className="inline-flex items-center gap-2 text-sm text-[#F97316] hover:text-[#ea580c] transition font-medium"
+              >
+                <FaClipboardList className="h-4 w-4" />
+                Demander ce service
+                <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -289,6 +304,8 @@ export default async function ServiceDetailPage({ params }: { params: { slug: st
         </section>
       )}
 
+      {/* ... Le reste du code (Pourquoi choisir, Autres services, CTA) reste identique ... */}
+      
       {/* Pourquoi choisir ce service */}
       <section className="py-16 bg-[#F5F7FB]">
         <div className="mx-auto max-w-7xl px-4">
@@ -400,18 +417,20 @@ export default async function ServiceDetailPage({ params }: { params: { slug: st
             Contactez-nous dès maintenant pour discuter de vos besoins et obtenir un devis personnalisé.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <a
-              href="/contact"
+            {/* ✅ NOUVEAU LIEN VERS DEMANDE DE SERVICE */}
+            <Link
+              href="/demande-service"
               className="px-8 py-3 bg-[#F97316] text-white font-semibold rounded-xl hover:bg-[#ea580c] transition hover:scale-105"
             >
-              Nous contacter
-            </a>
-            <a
-              href="/#services"
+              <FaClipboardList className="inline mr-2 h-5 w-5" />
+              Demander ce service
+            </Link>
+            <Link
+              href="/contact"
               className="px-8 py-3 bg-white/20 text-white font-semibold rounded-xl hover:bg-white/30 transition backdrop-blur-sm"
             >
-              Découvrir nos services
-            </a>
+              Nous contacter
+            </Link>
           </div>
         </div>
       </section>
