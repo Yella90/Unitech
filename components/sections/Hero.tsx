@@ -1,9 +1,9 @@
-// components/sections/Hero.tsx
+// components/public/sections/Hero.tsx
 'use client';
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FaArrowRight, FaStar } from "react-icons/fa";
+import { FaArrowRight, FaStar, FaComments, FaRobot } from "react-icons/fa";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
@@ -26,9 +26,21 @@ export default function Hero() {
   const [isMounted, setIsMounted] = useState(false);
   const [particles, setParticles] = useState<Array<{ left: string; top: string; duration: number; delay: number }>>([]);
 
+  // ✅ Fonction pour ouvrir le chatbot
+  const openChatbot = () => {
+    // Chercher le bouton du chatbot et le cliquer
+    const chatButton = document.querySelector('[aria-label="Ouvrir le chat"]') as HTMLButtonElement;
+    if (chatButton) {
+      chatButton.click();
+    } else {
+      // Fallback: dispatcher un événement personnalisé
+      const event = new CustomEvent('openChat');
+      window.dispatchEvent(event);
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
-    // Générer les particules uniquement côté client
     setParticles(
       Array.from({ length: 20 }, () => ({
         left: `${Math.random() * 100}%`,
@@ -37,6 +49,17 @@ export default function Hero() {
         delay: Math.random() * 5,
       }))
     );
+
+    // ✅ Écouter l'événement personnalisé pour ouvrir le chat
+    const handleOpenChat = () => {
+      const chatButton = document.querySelector('[aria-label="Ouvrir le chat"]') as HTMLButtonElement;
+      if (chatButton && !chatButton.classList.contains('opened')) {
+        chatButton.click();
+      }
+    };
+
+    window.addEventListener('openChat', handleOpenChat);
+    return () => window.removeEventListener('openChat', handleOpenChat);
   }, []);
 
   return (
@@ -69,7 +92,7 @@ export default function Hero() {
             </motion.div>
           ))}
         </div>
-        {/* Particules de code flottantes - UNIQUEMENT côté client */}
+        {/* Particules de code flottantes */}
         {isMounted && particles.map((particle, i) => (
           <motion.div
             key={i}
@@ -158,15 +181,28 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.8 }}
           className="mt-8 flex flex-wrap justify-center gap-4"
         >
+          {/* ✅ NOUVEAU BOUTON CHATBOT - EN EVIDENCE */}
+          <Button
+            onClick={openChatbot}
+            className="relative bg-gradient-to-r from-[#F97316] to-orange-500 hover:from-[#ea580c] hover:to-orange-600 text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all shadow-lg hover:shadow-[0_0_30px_rgba(249,115,22,0.3)] group"
+          >
+            <FaComments className="mr-2 h-5 w-5 group-hover:animate-bounce" />
+            💬 Discuter avec notre IA
+            <span className="absolute -top-2 -right-2 bg-green-400 text-white text-[8px] font-bold px-2 py-0.5 rounded-full animate-pulse border-2 border-white">
+              EN LIGNE
+            </span>
+          </Button>
+
           <Button
             asChild
-            className="bg-[#F97316] hover:bg-[#ea580c] text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all"
+            className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all border border-white/20"
           >
             <a href="/projects">
               Voir nos projets
               <FaArrowRight className="ml-2 h-4 w-4" />
             </a>
           </Button>
+
           <Button
             asChild
             variant="outline"
@@ -174,6 +210,17 @@ export default function Hero() {
           >
             <a href="#newsletter">📬 Suivre l'avancement</a>
           </Button>
+        </motion.div>
+
+        {/* ✅ Petit indicateur du chatbot */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5 }}
+          className="mt-6 flex items-center justify-center gap-2 text-xs text-white/50"
+        >
+          <FaRobot className="h-3 w-3 text-[#F97316]" />
+          <span>Ou cliquez sur le bouton orange pour parler à notre assistant IA 24/7</span>
         </motion.div>
       </div>
     </section>

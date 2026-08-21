@@ -11,14 +11,14 @@ export default function Tracker() {
   useEffect(() => {
     const trackVisit = async () => {
       try {
-        console.log('📊 Tracker: Début tracking pour', pathname);
+        //console.log('📊 Tracker: Début tracking pour', pathname);
 
         // Générer un ID de visiteur unique
         let visitorId = localStorage.getItem('visitor_id');
         if (!visitorId) {
           visitorId = crypto.randomUUID();
           localStorage.setItem('visitor_id', visitorId);
-          console.log('📊 Nouveau visiteur ID:', visitorId);
+          //console.log('📊 Nouveau visiteur ID:', visitorId);
         }
 
         // Générer un ID de session
@@ -26,7 +26,7 @@ export default function Tracker() {
         if (!sessionId) {
           sessionId = crypto.randomUUID();
           sessionStorage.setItem('session_id', sessionId);
-          console.log('📊 Nouvelle session ID:', sessionId);
+          //console.log('📊 Nouvelle session ID:', sessionId);
         }
 
         const userAgent = navigator.userAgent;
@@ -46,7 +46,7 @@ export default function Tracker() {
           os: os,
         };
 
-        console.log('📊 Envoi des données:', visitData);
+        //console.log('📊 Envoi des données:', visitData);
 
         // Envoyer les données
         const { data, error } = await supabase

@@ -52,6 +52,14 @@ export default function Header() {
               Formation
             </Button>
           </Link>
+          <Link
+  href="/agents"
+  className="text-slate-600 hover:text-[#1E3A8A] transition flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-slate-100"
+>
+  <FaBrain className="h-4 w-4 text-[#F97316]" />
+  <span>Agents IA</span>
+  <span className="text-[8px] bg-[#1E3A8A]/10 text-[#1E3A8A] px-1.5 py-0.5 rounded-full">DONA + HARVEY</span>
+</Link>
           <Link href="/contact">
             <Button variant="ghost" className="text-sm font-medium text-slate-700 hover:text-[#1E3A8A]">
               Contact

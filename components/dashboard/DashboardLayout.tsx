@@ -33,6 +33,7 @@ import {
   FaTabletAlt,
   FaSync,
   FaHistory,
+  FaKey,
   FaRobot,
   FaUserTie,
   FaHandshake
@@ -64,13 +65,12 @@ const navItems = [
   { href: "/admin/trainings", label: "Formations", icon: FaGraduationCap },
    { href: "/admin/services", label: "Services", icon: FaCog },
     { href: "/admin/collaborations", label: "Collaborations", icon: FaHandshake },
-    
-
 
   { href: "/admin/users", label: "Utilisateurs", icon: FaUsers },
   { href: "/admin/subscribers", label: "Newsletter", icon: FaEnvelope },
   { href: "/admin/analytics", label: "Analytics", icon: FaChartLine },
   { href: "/admin/logs", label: "Logs", icon: FaClock },
+  { href: "/admin/api-keys", label: "Clés API", icon: FaKey },
   { href: "/admin/dona", label: "DONA", icon: FaRobot },
   { href: "/admin/harvey", label: "HARVEY", icon: FaUserTie }, 
   { href: "/admin/settings", label: "Paramètres", icon: FaCog },

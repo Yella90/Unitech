@@ -25,8 +25,6 @@ async function getCollaborations() {
       return [];
     }
     
-    console.log('✅ Collaborations chargées:', data?.length || 0);
-    console.log('📦 Données collaborations:', data);
     return data || [];
   } catch (error) {
     console.error('❌ Erreur chargement collaborations:', error);
@@ -126,14 +124,6 @@ export default async function HomePage() {
     getCollaborations()
   ]);
 
-  console.log('📊 Résumé des données chargées:', {
-    services: services.length,
-    solutions: solutions.length,
-    trainings: trainings.length,
-    projects: projects.length,
-    collaborations: collaborations.length
-  });
-
   return (
     <>
       <Hero />
@@ -142,10 +132,9 @@ export default async function HomePage() {
       <Training initialTrainings={trainings} limit={3} />
       <Stats />
       <OurValues />
-      <ProjectsGrid initialProjects={projects} limit={3} />
-
       <TechStack />
       <Partners initialCollaborations={collaborations} limit={3} />
+      <ProjectsGrid initialProjects={projects} limit={3} />
       <Newsletter />
     </>
   );

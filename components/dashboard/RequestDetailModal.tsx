@@ -17,9 +17,10 @@ import {
   FaTimes,
   FaCheck,
   FaSpinner,
-  FaClock
+  FaClock,
+  FaExclamationTriangle
 } from 'react-icons/fa';
-import Link from 'next/link';
+import { toast } from 'sonner';
 
 type ServiceRequest = {
   id: string;
@@ -78,6 +79,35 @@ export default function RequestDetailModal({
   onStatusUpdate,
 }: RequestDetailModalProps) {
   const [loading, setLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
+
+  // ✅ Gestion avec confirmation
+  const handleStatusUpdate = (status: string) => {
+    if (status === 'cancelled') {
+      // ✅ Demander confirmation pour l'annulation
+      if (!confirm('⚠️ Êtes-vous sûr de vouloir annuler cette demande ? Cette action est irréversible.')) {
+        return;
+      }
+    } else if (status === 'completed') {
+      if (!confirm('✅ Confirmez-vous que cette demande est terminée ?')) {
+        return;
+      }
+    } else if (status === 'processing') {
+      if (!confirm('📋 Confirmez-vous la prise en charge de cette demande ?')) {
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      onStatusUpdate(request.id, status);
+      toast.success(`Demande ${status === 'completed' ? 'terminée' : status === 'processing' ? 'prise en charge' : 'annulée'} avec succès`);
+    } catch (error) {
+      toast.error('Erreur lors de la mise à jour');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -186,13 +216,13 @@ export default function RequestDetailModal({
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition"
+                    className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition group"
                   >
                     <FaFile className="h-4 w-4 text-[#1E3A8A]" />
                     <span className="text-sm truncate flex-1">
                       {url.split('/').pop() || `Fichier ${index + 1}`}
                     </span>
-                    <FaDownload className="h-4 w-4 text-slate-400" />
+                    <FaDownload className="h-4 w-4 text-slate-400 group-hover:text-[#1E3A8A] transition" />
                   </a>
                 ))}
               </div>
@@ -205,32 +235,47 @@ export default function RequestDetailModal({
             Créé le {new Date(request.created_at).toLocaleString('fr-FR')}
           </div>
 
-          {/* Actions */}
+          {/* ✅ Actions avec meilleure gestion */}
           <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
             {request.status === 'pending' && (
               <Button
-                onClick={() => onStatusUpdate(request.id, 'processing')}
+                onClick={() => handleStatusUpdate('processing')}
+                disabled={loading}
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
-                <FaSpinner className="mr-2 h-4 w-4" />
+                {loading ? (
+                  <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FaSpinner className="mr-2 h-4 w-4" />
+                )}
                 Prendre en charge
               </Button>
             )}
             {request.status === 'processing' && (
               <Button
-                onClick={() => onStatusUpdate(request.id, 'completed')}
+                onClick={() => handleStatusUpdate('completed')}
+                disabled={loading}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
-                <FaCheck className="mr-2 h-4 w-4" />
+                {loading ? (
+                  <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FaCheck className="mr-2 h-4 w-4" />
+                )}
                 Marquer terminé
               </Button>
             )}
             {request.status !== 'cancelled' && request.status !== 'completed' && (
               <Button
                 variant="destructive"
-                onClick={() => onStatusUpdate(request.id, 'cancelled')}
+                onClick={() => handleStatusUpdate('cancelled')}
+                disabled={loading}
               >
-                <FaTimes className="mr-2 h-4 w-4" />
+                {loading ? (
+                  <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FaTimes className="mr-2 h-4 w-4" />
+                )}
                 Annuler
               </Button>
             )}
@@ -238,6 +283,32 @@ export default function RequestDetailModal({
               Fermer
             </Button>
           </div>
+
+          {/* ✅ Message d'information */}
+          {request.status === 'pending' && (
+            <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700">
+              <FaClock className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>Cette demande est en attente de traitement. Cliquez sur "Prendre en charge" pour commencer.</span>
+            </div>
+          )}
+          {request.status === 'processing' && (
+            <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+              <FaSpinner className="h-4 w-4 flex-shrink-0 mt-0.5 animate-spin" />
+              <span>Cette demande est en cours de traitement. Marquez-la comme terminée une fois le travail achevé.</span>
+            </div>
+          )}
+          {request.status === 'completed' && (
+            <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+              <FaCheck className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>Cette demande est terminée. Félicitations pour ce travail accompli !</span>
+            </div>
+          )}
+          {request.status === 'cancelled' && (
+            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              <FaExclamationTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>Cette demande a été annulée. Vous pouvez la réactiver si nécessaire.</span>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

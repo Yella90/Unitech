@@ -1,4 +1,4 @@
-// app/layout.tsx - Version avec DONA + HARVEY
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Inter, Geist } from "next/font/google";
 import "./globals.css";
@@ -6,6 +6,10 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import Tracker from "@/components/public/Tracker";
 import { cn } from "@/lib/utils";
+import ChatButton from "@/components/public/ChatButton";
+import { ChatProvider } from "@/contexts/ChatContext";
+
+
 // ✅ Imports des deux agents
 import { initDonaService } from '@/lib/agents/dona/auto-start';
 import { initHarveyService } from '@/lib/agents/harvey/auto-start';
@@ -66,10 +70,13 @@ export default function RootLayout({
   return (
     <html lang="fr" className={cn("font-sans", geist.variable)}>
       <body className={`${inter.className} bg-[#F5F7FB] min-h-screen flex flex-col`}>
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Tracker />
-        <Footer />
+        <ChatProvider>
+          <Header />
+          <main className="flex-1">{children}</main>
+          <Tracker />
+          <Footer />
+          <ChatButton />
+        </ChatProvider>
       </body>
     </html>
   );

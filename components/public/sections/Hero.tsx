@@ -3,11 +3,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FaArrowRight, FaStar } from "react-icons/fa";
+import { FaArrowRight, FaStar, FaComments, FaRobot } from "react-icons/fa";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { useChat } from "@/contexts/ChatContext";
 
 const TAGS = ['SaaS', 'IA', 'Domotique', 'Mécatronique', 'React', 'Node.js'];
 
+// Animation des lignes de code
 const codeLines = [
   'const innovate = () => {',
   '  return "Future ready";',
@@ -20,10 +23,38 @@ const codeLines = [
   'export default UNITECH;',
 ];
 
+interface Particle {
+  left: string;
+  top: string;
+  duration: number;
+  delay: number;
+}
+
 export default function Hero() {
+  const { openChat } = useChat();
+  const [isMounted, setIsMounted] = useState(false);
+  const [particles, setParticles] = useState<Particle[]>([]);
+
+  // ✅ Fonction pour ouvrir le chatbot via le contexte
+  const handleOpenChat = () => {
+    openChat();
+  };
+
+  useEffect(() => {
+    setIsMounted(true);
+    setParticles(
+      Array.from({ length: 20 }, () => ({
+        left: `${Math.random() * 100}%`,
+        top: `${Math.random() * 100}%`,
+        duration: 5 + Math.random() * 10,
+        delay: Math.random() * 5,
+      }))
+    );
+  }, []);
+
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-[#0f172a] via-[#1E3A8A] to-[#1E3A8A] min-h-[90vh] flex items-center">
-      {/* Animation des lignes de code */}
+      {/* Animation des lignes de code en arrière-plan */}
       <div className="absolute inset-0 opacity-10 overflow-hidden">
         <div className="absolute top-10 left-10 font-mono text-xs text-white/30 leading-8">
           {codeLines.map((line, index) => (
@@ -51,9 +82,35 @@ export default function Hero() {
             </motion.div>
           ))}
         </div>
+        {/* Particules de code flottantes */}
+        {isMounted && particles.map((particle, i) => (
+          <motion.div
+            key={i}
+            className="absolute h-1 w-1 rounded-full bg-[#F97316]"
+            initial={{
+              x: 0,
+              y: 0,
+              opacity: 0.2,
+            }}
+            animate={{
+              y: [0, -100, 100, 0],
+              opacity: [0.2, 0.8, 0.2],
+            }}
+            transition={{
+              duration: particle.duration,
+              repeat: Infinity,
+              delay: particle.delay,
+            }}
+            style={{
+              left: particle.left,
+              top: particle.top,
+            }}
+            suppressHydrationWarning
+          />
+        ))}
       </div>
 
-      {/* Effets de fond */}
+      {/* Effets de fond colorés */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-20 left-10 h-64 w-64 rounded-full bg-[#F97316] blur-3xl animate-pulse" />
         <div className="absolute bottom-20 right-10 h-80 w-80 rounded-full bg-blue-400 blur-3xl animate-pulse delay-1000" />
@@ -114,15 +171,18 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.8 }}
           className="mt-8 flex flex-wrap justify-center gap-4"
         >
+         
+
           <Button
             asChild
-            className="bg-[#F97316] hover:bg-[#ea580c] text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all"
+            className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all border border-white/20"
           >
             <a href="/projects">
               Voir nos projets
               <FaArrowRight className="ml-2 h-4 w-4" />
             </a>
           </Button>
+
           <Button
             asChild
             variant="outline"
@@ -130,6 +190,17 @@ export default function Hero() {
           >
             <a href="#newsletter">📬 Suivre l'avancement</a>
           </Button>
+        </motion.div>
+
+        {/* ✅ Petit indicateur du chatbot */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5 }}
+          className="mt-6 flex items-center justify-center gap-2 text-xs text-white/50"
+        >
+          <FaRobot className="h-3 w-3 text-[#F97316]" />
+          <span>Ou cliquez sur le bouton orange pour parler à notre assistant IA 24/7</span>
         </motion.div>
       </div>
     </section>

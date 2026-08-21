@@ -17,7 +17,7 @@ export type KeywordConfig = {
 // RÉSULTAT DE L'ANALYSE
 // ============================================================
 export type AnalysisResult = {
-  category: 'support' | 'commercial' | 'project' | 'newsletter' | 'information' | 'spam' | 'other';
+  category: 'support' | 'commercial' | 'project' | 'newsletter' | 'information' | 'spam' | 'other'| 'general';
   priority: 'high' | 'medium' | 'low';
   assigned_agent: string;
   confidence: number;
@@ -216,6 +216,7 @@ export const CategoryIcons: Record<CategoryType, string> = {
   information: 'ℹ️',
   spam: '🚫',
   other: '📌',
+  
 };
 
 // ============================================================

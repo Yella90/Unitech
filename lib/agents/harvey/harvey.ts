@@ -1,6 +1,7 @@
 // lib/agents/harvey/harvey.ts
 
 import { supabase } from '@/lib/supabase';
+import { keyManagement } from '@/lib/services/KeyManagementService';
 import { generateWithFallback } from '@/lib/config/llm';
 import {
   EmailWithAnalysis,
@@ -8,6 +9,7 @@ import {
   ConversationHistory,
   HarveyResponse,
   HarveyConfig,
+  HarveyResponseType,
 } from './types';
 
 // ============================================================
@@ -21,10 +23,13 @@ const defaultConfig: HarveyConfig = {
   defaultTone: 'professional',
   temperature: 0.7,
   maxTokens: 800,
+  responseType: 'both',
+  includeHtml: true,
+  includeJson: true,
 };
 
 // ============================================================
-// TEMPLATES D'EMAILS
+// TEMPLATES D'EMAILS HTML
 // ============================================================
 
 function getEmailTemplate(data: {
@@ -34,13 +39,13 @@ function getEmailTemplate(data: {
   message: string;
   category: string;
   signature: string;
-  logoUrl?: string;
+  logoUrl?: string | null;
   projectImages?: string[];
-  projectName?: string;
-  projectSlug?: string;
-  projectDescription?: string;
-  projectProgress?: number;
-  projectStatus?: string;
+  projectName?: string | null;
+  projectSlug?: string | null;
+  projectDescription?: string | null;
+  projectProgress?: number | null;
+  projectStatus?: string | null;
   links?: {
     website: string;
     contact: string;
@@ -127,7 +132,7 @@ function getEmailTemplate(data: {
                       ${data.projectDescription ? `<p style="color:#15803d;font-size:13px;margin:0 0 8px 0;">${data.projectDescription}</p>` : ''}
                       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                         ${data.projectStatus ? `<span style="background:#22c55e;color:white;padding:2px 12px;border-radius:12px;font-size:11px;">${data.projectStatus}</span>` : ''}
-                        ${data.projectProgress !== undefined ? `<span style="color:#15803d;font-size:13px;">Progression: ${data.projectProgress}%</span>` : ''}
+                        ${data.projectProgress !== undefined && data.projectProgress !== null ? `<span style="color:#15803d;font-size:13px;">Progression: ${data.projectProgress}%</span>` : ''}
                         ${data.projectSlug ? `
                           <a href="${data.links?.projects || '#'}/${data.projectSlug}" style="background:#1E3A8A;color:white;padding:6px 16px;border-radius:6px;text-decoration:none;font-size:12px;display:inline-block;">
                             Voir le projet →
@@ -186,7 +191,7 @@ function getEmailTemplate(data: {
 }
 
 // ============================================================
-// CLASSE HARVEY
+// CLASSE HARVEY AMÉLIORÉE
 // ============================================================
 
 export class Harvey {
@@ -195,7 +200,6 @@ export class Harvey {
   private knowledgeBase: any[] = [];
   private templates: any[] = [];
   private initialized = false;
-  
   private processedEmails: Set<string> = new Set();
   private processedContacts: Set<string> = new Set();
 
@@ -209,7 +213,6 @@ export class Harvey {
 
   async init(): Promise<void> {
     if (this.initialized) return;
-
     console.log('🦸‍♂️ HARVEY: Initialisation...');
 
     await Promise.all([
@@ -235,7 +238,7 @@ export class Harvey {
         .select('*')
         .single();
 
-      if (error) {
+      if (error || !data) {
         console.warn('⚠️ HARVEY: Données entreprise par défaut utilisées');
         this.companyData = this.getDefaultCompanyData();
         return;
@@ -403,7 +406,8 @@ export class Harvey {
       const { data, error } = await supabase
         .from('email_conversations')
         .select('email_id')
-        .not('email_id', 'is', null);
+        .not('email_id', 'is', null)
+        .limit(1000);
 
       if (error) {
         console.warn('⚠️ HARVEY: Erreur chargement emails traités:', error);
@@ -411,7 +415,7 @@ export class Harvey {
       }
 
       if (data) {
-        data.forEach(item => {
+        data.forEach((item: any) => {
           if (item.email_id) {
             this.processedEmails.add(item.email_id);
           }
@@ -432,7 +436,8 @@ export class Harvey {
       const { data, error } = await supabase
         .from('email_conversations')
         .select('from_email')
-        .not('from_email', 'is', null);
+        .not('from_email', 'is', null)
+        .limit(1000);
 
       if (error) {
         console.warn('⚠️ HARVEY: Erreur chargement contacts traités:', error);
@@ -440,7 +445,7 @@ export class Harvey {
       }
 
       if (data) {
-        data.forEach(item => {
+        data.forEach((item: any) => {
           if (item.from_email) {
             this.processedContacts.add(item.from_email);
           }
@@ -547,20 +552,20 @@ export class Harvey {
   // RÉCUPÉRER LE LOGO DE L'ENTREPRISE
   // ============================================================
 
-  private async getCompanyLogo(): Promise<string | undefined> {
+  private async getCompanyLogo(): Promise<string | null> {
     try {
       const { data, error } = await supabase
         .from('company_data')
         .select('logo_url')
         .single();
 
-      if (error || !data) {
-        return undefined;
+      if (error || !data || !data.logo_url) {
+        return null;
       }
 
       return data.logo_url;
     } catch (error) {
-      return undefined;
+      return null;
     }
   }
 
@@ -583,17 +588,17 @@ export class Harvey {
     return getEmailTemplate({
       companyName: this.companyData?.name || 'UNITECH',
       userName: email.from_email?.split('@')[0] || 'Client',
-      subject: email.subject,
+      subject: email.subject || 'Message',
       message: response.content,
       category: email.category || 'information',
       signature: `L'équipe ${this.companyData?.name || 'UNITECH'}`,
-      logoUrl: logoUrl,
+      logoUrl: logoUrl || undefined,
       projectImages: projectImages,
-      projectName: projectData?.name,
-      projectSlug: projectData?.slug,
-      projectDescription: projectData?.description,
-      projectProgress: projectData?.progress,
-      projectStatus: projectData?.status,
+      projectName: projectData?.name || null,
+      projectSlug: projectData?.slug || null,
+      projectDescription: projectData?.description || null,
+      projectProgress: projectData?.progress || null,
+      projectStatus: projectData?.status || null,
       links: {
         website: 'https://unitech-qvgo.onrender.com',
         contact: 'https://unitech-qvgo.onrender.com/contact',
@@ -797,13 +802,21 @@ Signature : L'équipe ${companyData.name}
   }
 
   // ============================================================
-  // APPEL À L'API LLM AVEC FALLBACK
+  // APPEL LLM AVEC GESTION DES CLÉS API
   // ============================================================
 
-  private async callLLM(prompt: string): Promise<string> {
+  private async callLLMWithKeyManagement(prompt: string): Promise<string> {
     try {
-      console.log('🤖 HARVEY: Appel du LLM avec fallback...');
+      // 1. Récupérer la meilleure clé API
+      const apiKey = await keyManagement.getBestApiKey('openai');
+      
+      if (apiKey) {
+        console.log(`🔑 Utilisation de la clé API: ${apiKey.key_name || 'sans nom'}`);
+        // Incrémenter l'utilisation
+        await keyManagement.incrementUsage(apiKey.id);
+      }
 
+      // 2. Appeler le LLM avec fallback
       const result = await generateWithFallback({
         messages: [
           {
@@ -855,14 +868,16 @@ Signature : L'équipe UNITECH`,
         max_tokens: this.config.maxTokens,
       });
 
-      if (!result.content) {
-        throw new Error('Le LLM a retourné une réponse vide.');
-      }
-
-      console.log(`✅ HARVEY: Réponse reçue (provider: ${result.provider})`);
       return result.content;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur LLM:', error.message);
+      
+      // Marquer l'erreur si une clé a été utilisée
+      const apiKey = await keyManagement.getBestApiKey('openai');
+      if (apiKey) {
+        await keyManagement.markError(apiKey.id, error.message);
+      }
+
       return this.getFallbackResponse();
     }
   }
@@ -1016,11 +1031,11 @@ L'équipe UNITECH
 
       const insertData: any = {
         email_id: emailId,
-        from_email: email.from_email,
+        from_email: email.from_email || '',
         to_email: email.to_email || 'doumbialayesoma@gmail.com',
-        subject: email.subject,
-        message: email.body,
-        body: email.body,
+        subject: email.subject || '',
+        message: email.body || '',
+        body: email.body || '',
         agent_response: response.content,
         agent_response_html: emailHtml,
         response_tone: response.tone,
@@ -1073,11 +1088,11 @@ L'équipe UNITECH
     try {
       const insertData: any = {
         email_id: emailId,
-        from_email: email.from_email,
+        from_email: email.from_email || '',
         to_email: email.to_email || 'doumbialayesoma@gmail.com',
-        subject: email.subject,
-        message: email.body,
-        body: email.body,
+        subject: email.subject || '',
+        message: email.body || '',
+        body: email.body || '',
         agent_response: response.content,
         agent_response_html: null,
         response_tone: response.tone,
@@ -1136,13 +1151,13 @@ L'équipe UNITECH
         message: response.content,
         category: contact.category || 'information',
         signature: `L'équipe ${this.companyData?.name || 'UNITECH'}`,
-        logoUrl: logoUrl,
+        logoUrl: logoUrl || undefined,
         projectImages: projectImages,
-        projectName: projectData?.name,
-        projectSlug: projectData?.slug,
-        projectDescription: projectData?.description,
-        projectProgress: projectData?.progress,
-        projectStatus: projectData?.status,
+        projectName: projectData?.name || null,
+        projectSlug: projectData?.slug || null,
+        projectDescription: projectData?.description || null,
+        projectProgress: projectData?.progress || null,
+        projectStatus: projectData?.status || null,
         links: {
           website: 'https://unitech-qvgo.onrender.com',
           contact: 'https://unitech-qvgo.onrender.com/contact',
@@ -1152,7 +1167,7 @@ L'équipe UNITECH
 
       const insertData: any = {
         contact_id: contactId,
-        from_email: contact.email,
+        from_email: contact.email || '',
         to_email: 'doumbialayesoma@gmail.com',
         subject: contact.subject || 'Demande de contact',
         message: contact.message || '',
@@ -1222,7 +1237,7 @@ L'équipe UNITECH
     try {
       const insertData: any = {
         contact_id: contactId,
-        from_email: contact.email,
+        from_email: contact.email || '',
         to_email: 'doumbialayesoma@gmail.com',
         subject: contact.subject || 'Demande de contact',
         message: contact.message || '',
@@ -1350,7 +1365,7 @@ L'équipe UNITECH
 
       const emailData: EmailWithAnalysis = {
         id: contact.id,
-        from_email: contact.email,
+        from_email: contact.email || '',
         to_email: 'doumbialayesoma@gmail.com',
         subject: contact.subject || 'Demande de contact',
         body: contact.message || '',
@@ -1378,7 +1393,7 @@ L'équipe UNITECH
 
       const history = await this.getConversationHistory(contact.email);
       const prompt = this.buildPrompt(emailData, history, this.companyData);
-      const responseContent = await this.callLLM(prompt);
+      const responseContent = await this.callLLMWithKeyManagement(prompt);
 
       if (!responseContent) {
         console.error('❌ HARVEY: Aucune réponse générée');
@@ -1461,7 +1476,7 @@ L'équipe UNITECH
 
       const history = await this.getConversationHistory(email.from_email);
       const prompt = this.buildPrompt(email, history, this.companyData);
-      const responseContent = await this.callLLM(prompt);
+      const responseContent = await this.callLLMWithKeyManagement(prompt);
 
       if (!responseContent) {
         console.error('❌ HARVEY: Aucune réponse générée');
@@ -1487,6 +1502,88 @@ L'équipe UNITECH
       return analysis;
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur génération:', error?.message || error);
+      return null;
+    }
+  }
+
+  // ============================================================
+  // GÉNÉRATION DE RÉPONSE COMPLÈTE AVEC HTML/JSON
+  // ============================================================
+
+  async generateFullResponse(
+    emailId: string,
+    options?: { responseType?: HarveyResponseType; includeHtml?: boolean; includeJson?: boolean }
+  ): Promise<{
+    response: HarveyResponse;
+    html?: string;
+    json?: any;
+  } | null> {
+    const response = await this.generateResponse(emailId);
+    if (!response) return null;
+
+    const includeHtml = options?.includeHtml ?? this.config.includeHtml ?? true;
+    const includeJson = options?.includeJson ?? this.config.includeJson ?? true;
+
+    const result: any = { response };
+
+    // Générer HTML si demandé
+    if (includeHtml) {
+      const email = await this.getEmailById(emailId);
+      if (email) {
+        const projectData = await this.getProjectData(email.project_id);
+        result.html = await this.generateEmailHtml(response, email, projectData);
+      }
+    }
+
+    // Générer JSON si demandé
+    if (includeJson) {
+      result.json = {
+        success: true,
+        content: response.content,
+        tone: response.tone,
+        actions: response.actions,
+        requires_human_review: response.requires_human_review,
+        confidence: response.confidence,
+        suggested_agent: response.suggested_agent,
+        metadata: response.metadata,
+      };
+    }
+
+    return result;
+  }
+
+  // ============================================================
+  // RÉCUPÉRATION DES DONNÉES
+  // ============================================================
+
+  private async getEmailById(emailId: string): Promise<EmailWithAnalysis | null> {
+    const { data, error } = await supabase
+      .from('incoming_emails')
+      .select('*')
+      .eq('id', emailId)
+      .single();
+
+    if (error || !data) {
+      console.error('❌ HARVEY: Email non trouvé:', error);
+      return null;
+    }
+
+    return {
+      ...data,
+      ai_analysis: data.ai_analysis || {},
+    };
+  }
+
+  private async getProjectData(projectId?: string | null): Promise<any> {
+    if (!projectId) return null;
+    try {
+      const { data } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+      return data;
+    } catch (error) {
       return null;
     }
   }
@@ -1675,7 +1772,6 @@ L'équipe UNITECH
 
       console.log(`✅ HARVEY: ${cleaned} doublons nettoyés`);
       return { cleaned, errors };
-
     } catch (error: any) {
       console.error('❌ HARVEY: Erreur cleanupDuplicates:', error.message);
       return { cleaned: 0, errors: [error.message] };

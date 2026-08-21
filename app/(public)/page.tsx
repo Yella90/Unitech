@@ -10,6 +10,7 @@ import TechStack from "@/components/public/sections/TechStack";
 import Partners from "@/components/public/sections/Partners";
 import ProjectsGrid from "@/components/public/sections/ProjectsGrid";
 import Newsletter from "@/components/public/sections/Newsletter";
+import ChatButton from "@/components/public/ChatButton";
 
 // ✅ Récupérer les collaborations actives
 async function getCollaborations() {
@@ -136,6 +137,7 @@ export default async function HomePage() {
   return (
     <>
       <Hero />
+      
       <OurServices initialServices={services} limit={3} />
       <OurSolutions initialSolutions={solutions} limit={3} />
       <Training initialTrainings={trainings} limit={3} />
@@ -145,6 +147,7 @@ export default async function HomePage() {
       <Partners initialCollaborations={collaborations} limit={3} />
       <ProjectsGrid initialProjects={projects} limit={3} />
       <Newsletter />
+      
     </>
   );
 }

@@ -1,21 +1,10 @@
 // lib/config/llm.ts
+import { aiManagement } from '@/lib/services/AIManagementService';
+import type { ContextType, AIProviderName } from '@/lib/types/ai-management';
 
 // ============================================================
 // TYPES
 // ============================================================
-
-export interface LLMConfig {
-  provider: string;
-  baseURL: string;
-  apiKey?: string;
-  model: string;
-  maxTokens: number;
-  temperature: number;
-  timeoutMs: number;
-  priority: number;
-  isFree: boolean;
-  enabled: boolean;
-}
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -30,6 +19,9 @@ export interface ChatCompletionParams {
   top_p?: number;
   frequency_penalty?: number;
   presence_penalty?: number;
+  contextType?: ContextType;
+  provider?: string;  // ✅ Ajouté
+  sessionId?: string; // ✅ Ajouté
 }
 
 export interface ChatCompletionResponse {
@@ -41,168 +33,191 @@ export interface ChatCompletionResponse {
       };
     }>;
     provider?: string;
+    model?: string;
   };
 }
 
 // ============================================================
-// CONFIGURATION
+// MODÈLES PAR PROVIDER
 // ============================================================
 
-/**
- * IMPORTANT :
- * Ce fichier est prévu pour fonctionner côté serveur.
- *
- * Les clés doivent être dans .env.local :
- *
- * GROQ_API_KEY=...
- * GEMINI_API_KEY=...
- * CEREBRAS_API_KEY=...
- * HUGGINGFACE_API_KEY=...
- *
- * Ne jamais mettre ces clés dans NEXT_PUBLIC_*.
- */
+const PROVIDER_MODELS: Record<string, string[]> = {
+  openai: [
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-5-nano',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4.1-nano'
+  ],
+  anthropic: [
+    'claude-opus-4-6',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5'
+  ],
+  google: [
+    'gemini-3.7-flash',
+    'gemini-3-pro',
+    'gemini-3-flash'
+  ],
+  mistral: [
+    'mistral-large-3',
+    'mistral-medium-3.5',
+    'mistral-small-4',
+    'ministral-3-8b',
+    'ministral-3-14b',
+    'ministral-3-3b',
+    'codestral',
+    'devstral',
+    'devstral-small',
+    'leanstral-1.5'
+  ],
+  deepseek: [
+    'deepseek-v3.2',
+    'deepseek-v3.2-speciale',
+    'deepseek-v4'
+  ],
+  groq: [
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'llama-3.3-70b-versatile',
+    'qwen/qwen3.6-27b',
+    'meta-llama/Llama-3.1-8B-Instruct',
+    'meta-llama/Llama-3.1-70B-Instruct',
+    'mistralai/Mistral-7B-Instruct-v0.3'
+  ],
+  cohere: [
+    'command-a-03-2025',
+    'command-a-reasoning-08-2025',
+    'command-r7b-12-2024',
+    'embed-v4.0',
+    'embed-multilingual-v3.0',
+    'embed-english-v3.0'
+  ],
+  cerebras: [
+    'llama3.1-8b',
+    'llama3.1-70b',
+    'llama3.1-405b'
+  ],
+  huggingface: [
+    'meta-llama/Llama-3.1-8B-Instruct',
+    'meta-llama/Llama-3.1-70B-Instruct',
+    'meta-llama/Llama-3.1-405B-Instruct',
+    'mistralai/Mistral-7B-Instruct-v0.3',
+    'mistralai/Mixtral-8x7B-Instruct-v0.1',
+    'NousResearch/Hermes-2-Pro-Llama-3-8B',
+    'google/gemma-2-9b-it',
+    'google/gemma-2-27b-it',
+    'Qwen/Qwen2.5-7B-Instruct',
+    'Qwen/Qwen2.5-14B-Instruct',
+    'Qwen/Qwen2.5-32B-Instruct',
+    'Qwen/Qwen2.5-72B-Instruct',
+    'microsoft/Phi-3.5-mini-instruct',
+    'Mistral-7B-Instruct-v0.3',
+    'zephyr-7b-beta'
+  ]
+};
 
 // ============================================================
-// PROVIDERS
+// API BASES PAR PROVIDER
 // ============================================================
 
-export const llmConfigs: LLMConfig[] = [
-  // ----------------------------------------------------------
-  // 1. GROQ
-  // ----------------------------------------------------------
-  {
-    provider: 'groq',
-    baseURL: 'https://api.groq.com/openai/v1',
-    apiKey: process.env.GROQ_API_KEY,
-    model: 'llama-3.1-8b-instant',
-    maxTokens: 800,
-    temperature: 0.7,
-    timeoutMs: 30000,
-    priority: 1,
-    isFree: true,
-    enabled: Boolean(process.env.GROQ_API_KEY),
-  },
-
-  // ----------------------------------------------------------
-  // 2. GEMINI
-  // ----------------------------------------------------------
-  {
-    provider: 'gemini',
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/models',
-    apiKey: process.env.GEMINI_API_KEY,
-    model: 'gemini-1.5-flash',
-    maxTokens: 800,
-    temperature: 0.7,
-    timeoutMs: 30000,
-    priority: 2,
-    isFree: true,
-    enabled: Boolean(process.env.GEMINI_API_KEY),
-  },
-
-  // ----------------------------------------------------------
-  // 3. CEREBRAS
-  // ----------------------------------------------------------
-  {
-    provider: 'cerebras',
-    baseURL: 'https://api.cerebras.ai/v1',
-    apiKey: process.env.CEREBRAS_API_KEY,
-    model: 'llama3.1-8b',
-    maxTokens: 800,
-    temperature: 0.7,
-    timeoutMs: 30000,
-    priority: 3,
-    isFree: true,
-    enabled: Boolean(process.env.CEREBRAS_API_KEY),
-  },
-
-  // ----------------------------------------------------------
-  // 4. HUGGING FACE
-  // ----------------------------------------------------------
-  {
-    provider: 'huggingface',
-    baseURL: 'https://router.huggingface.co/v1',
-    apiKey: process.env.HUGGINGFACE_API_KEY,
-    model: 'meta-llama/Llama-3.1-8B-Instruct',
-    maxTokens: 800,
-    temperature: 0.7,
-    timeoutMs: 45000,
-    priority: 4,
-    isFree: true,
-    enabled: Boolean(process.env.HUGGINGFACE_API_KEY),
-  },
-];
+const API_BASES: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta',
+  mistral: 'https://api.mistral.ai/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  cohere: 'https://api.cohere.ai/v1',
+  cerebras: 'https://api.cerebras.ai/v1',
+  huggingface: 'https://router.huggingface.co/v1'
+};
 
 // ============================================================
-// PROVIDER PAR DÉFAUT
+// API TYPES PAR PROVIDER
 // ============================================================
 
-export const defaultLLM = llmConfigs.find((provider) => provider.enabled) || llmConfigs[0];
+const API_TYPES: Record<string, 'openai' | 'anthropic' | 'google' | 'cohere'> = {
+  openai: 'openai',
+  anthropic: 'anthropic',
+  google: 'google',
+  mistral: 'openai',
+  deepseek: 'openai',
+  groq: 'openai',
+  cohere: 'cohere',
+  cerebras: 'openai',
+  huggingface: 'openai'
+};
 
 // ============================================================
-// UTILITAIRES
+// RÉPONSE DE SECOURS
 // ============================================================
 
-function normalizeBaseURL(baseURL: string): string {
-  return baseURL.replace(/\/+$/, '');
+function getFallbackResponse(): string {
+  return `Bonjour,
+
+Merci pour votre message.
+
+Je suis HARVEY, l'assistant automatique d'UNITECH.
+
+Je rencontre actuellement un problème technique pour générer une réponse complète.
+
+Un membre de notre équipe va prendre en charge votre demande dans les plus brefs délais.
+
+Nous vous remercions de votre compréhension.
+
+L'équipe UNITECH`;
 }
 
-function hasApiKey(config: LLMConfig): boolean {
-  return Boolean(
-    config.apiKey &&
-    config.apiKey.trim() &&
-    config.apiKey !== 'not-needed'
-  );
-}
-
 // ============================================================
-// EXTRACTION DE RÉPONSE
+// EXTRACTION DE RÉPONSE PAR PROVIDER
 // ============================================================
 
-function extractContent(data: any): string {
-  // ----------------------------------------------------------
-  // OpenAI / Groq / Cerebras / HF Router
-  // ----------------------------------------------------------
-
-  const openAIContent = data?.choices?.[0]?.message?.content;
-
-  if (typeof openAIContent === 'string' && openAIContent.trim()) {
-    return openAIContent.trim();
+function extractContent(data: any, provider: string): string {
+  // OpenAI / Groq / Mistral / DeepSeek / Cerebras / HuggingFace
+  if (['openai', 'groq', 'mistral', 'deepseek', 'cerebras', 'huggingface'].includes(provider)) {
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content === 'string' && content.trim()) {
+      return content.trim();
+    }
   }
 
-  // ----------------------------------------------------------
-  // Gemini
-  // ----------------------------------------------------------
-
-  const geminiContent = data?.candidates?.[0]?.content?.parts
-    ?.map((part: any) => part?.text || '')
-    .join('');
-
-  if (typeof geminiContent === 'string' && geminiContent.trim()) {
-    return geminiContent.trim();
+  // Anthropic
+  if (provider === 'anthropic') {
+    const content = data?.content?.[0]?.text;
+    if (typeof content === 'string' && content.trim()) {
+      return content.trim();
+    }
   }
 
-  // ----------------------------------------------------------
-  // Autres formats
-  // ----------------------------------------------------------
+  // Google Gemini
+  if (provider === 'google') {
+    const content = data?.candidates?.[0]?.content?.parts
+      ?.map((part: any) => part?.text || '')
+      .join('');
+    if (typeof content === 'string' && content.trim()) {
+      return content.trim();
+    }
+  }
 
+  // Cohere
+  if (provider === 'cohere') {
+    const content = data?.text || data?.generations?.[0]?.text;
+    if (typeof content === 'string' && content.trim()) {
+      return content.trim();
+    }
+  }
+
+  // Fallback générique
   if (typeof data?.response === 'string' && data.response.trim()) {
     return data.response.trim();
   }
-
   if (typeof data?.result === 'string' && data.result.trim()) {
     return data.result.trim();
   }
-
   if (typeof data?.content === 'string' && data.content.trim()) {
     return data.content.trim();
-  }
-
-  // Hugging Face ancien format
-  if (Array.isArray(data)) {
-    const generatedText = data[0]?.generated_text;
-    if (typeof generatedText === 'string' && generatedText.trim()) {
-      return generatedText.trim();
-    }
   }
 
   return '';
@@ -234,205 +249,137 @@ function buildGeminiContents(messages: ChatMessage[]) {
 }
 
 // ============================================================
-// RÉPONSE DE SECOURS
+// APPEL API PAR PROVIDER
 // ============================================================
 
-function getFallbackResponse(): string {
-  return `Bonjour,
+async function callProviderAPI(
+  provider: string,
+  apiKey: string,
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  maxTokens: number,
+  timeoutMs: number = 30000
+): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-Merci pour votre message.
+  try {
+    const apiType = API_TYPES[provider] || 'openai';
+    const baseURL = API_BASES[provider] || '';
 
-Je suis HARVEY, l'assistant automatique d'UNITECH.
+    let url = '';
+    let body: Record<string, any> = {};
+    let headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
 
-Je rencontre actuellement un problème technique pour générer une réponse complète.
-
-Un membre de notre équipe va prendre en charge votre demande dans les plus brefs délais.
-
-Nous vous remercions de votre compréhension.
-https://unitech-qvgo.onrender.com/
-
-L'équipe UNITECH`;
-}
-
-// ============================================================
-// CLIENT LLM
-// ============================================================
-
-export function createLLMClient(config: LLMConfig) {
-  return {
-    createChatCompletion: async (
-      params: ChatCompletionParams
-    ): Promise<ChatCompletionResponse> => {
-      if (!config.enabled) {
-        throw new Error(`Provider ${config.provider} désactivé ou clé API absente.`);
-      }
-
-      if (config.provider !== 'gemini' && !hasApiKey(config)) {
-        throw new Error(`Clé API absente pour ${config.provider}.`);
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
-
-      try {
-        let url = '';
-        let body: Record<string, any>;
-
-        // ====================================================
-        // GEMINI
-        // ====================================================
-
-        if (config.provider === 'gemini') {
-          if (!hasApiKey(config)) {
-            throw new Error('GEMINI_API_KEY est absente.');
-          }
-
-          url =
-            `${normalizeBaseURL(config.baseURL)}/` +
-            `${config.model}:generateContent` +
-            `?key=${encodeURIComponent(config.apiKey!)}`;
-
-          const gemini = buildGeminiContents(params.messages);
-
-          body = {
-            contents: gemini.contents,
-          };
-
-          if (gemini.systemInstruction) {
-            body.systemInstruction = gemini.systemInstruction;
-          }
-
-          body.generationConfig = {
-            maxOutputTokens: params.max_tokens ?? config.maxTokens,
-          };
-        }
-
-        // ====================================================
-        // OPENAI-COMPATIBLE
-        // Groq / Cerebras / HF Router
-        // ====================================================
-
-        else {
-          url = `${normalizeBaseURL(config.baseURL)}/chat/completions`;
-
-          body = {
-            model: params.model ?? config.model,
-            messages: params.messages,
-            temperature: params.temperature ?? config.temperature,
-            max_tokens: params.max_tokens ?? config.maxTokens,
-            top_p: params.top_p ?? 0.9,
-            frequency_penalty: params.frequency_penalty ?? 0.2,
-            presence_penalty: params.presence_penalty ?? 0.1,
-          };
-        }
-
-        // ====================================================
-        // HEADERS
-        // ====================================================
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
+    switch (apiType) {
+      case 'openai':
+        url = `${baseURL}/chat/completions`;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        body = {
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          top_p: 0.9,
+          frequency_penalty: 0.2,
+          presence_penalty: 0.1,
         };
+        break;
 
-        if (hasApiKey(config)) {
-          headers.Authorization = `Bearer ${config.apiKey}`;
-        }
+      case 'anthropic':
+        url = `${baseURL}/messages`;
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+        
+        const systemMessage = messages.find(m => m.role === 'system');
+        const userMessages = messages.filter(m => m.role !== 'system');
+        
+        body = {
+          model,
+          messages: userMessages,
+          system: systemMessage?.content,
+          temperature,
+          max_tokens: maxTokens,
+        };
+        break;
 
-        // ====================================================
-        // REQUEST
-        // ====================================================
-
-        const response = await fetch(url, {
-          method: 'POST',
-          headers,
-          signal: controller.signal,
-          body: JSON.stringify(body),
-        });
-
-        const responseText = await response.text();
-
-        if (!response.ok) {
-          throw new Error(`${config.provider} HTTP ${response.status}: ${responseText}`);
-        }
-
-        let data: any;
-
-        try {
-          data = JSON.parse(responseText);
-        } catch {
-          throw new Error(`${config.provider}: réponse JSON invalide.`);
-        }
-
-        const content = extractContent(data);
-
-        if (!content) {
-          throw new Error(`${config.provider}: réponse vide.`);
-        }
-
-        return {
-          data: {
-            choices: [
-              {
-                message: {
-                  role: 'assistant',
-                  content,
-                },
-              },
-            ],
-            provider: config.provider,
+      case 'google':
+        url = `${baseURL}/models/${model}:generateContent?key=${apiKey}`;
+        const gemini = buildGeminiContents(messages);
+        body = {
+          contents: gemini.contents,
+          generationConfig: {
+            maxOutputTokens: maxTokens,
+            temperature,
           },
         };
-      } catch (error: any) {
-        if (error?.name === 'AbortError') {
-          throw new Error(`${config.provider}: timeout après ${config.timeoutMs}ms`);
+        if (gemini.systemInstruction) {
+          body.systemInstruction = gemini.systemInstruction;
         }
+        break;
 
-        throw error;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    },
-  };
-}
+      case 'cohere':
+        url = `${baseURL}/generate`;
+        headers['Authorization'] = `Bearer ${apiKey}`;
+        const prompt = messages.map(m => `${m.role}: ${m.content}`).join('\n');
+        body = {
+          model,
+          prompt,
+          max_tokens: maxTokens,
+          temperature,
+        };
+        break;
 
-// ============================================================
-// CONFIGURATION PAR PROVIDER
-// ============================================================
-
-export function getLLMConfig(provider?: string): LLMConfig {
-  if (provider) {
-    const config = llmConfigs.find((item) => item.provider === provider);
-    if (config) {
-      return config;
+      default:
+        throw new Error(`Provider ${provider} non supporté`);
     }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      throw new Error(`${provider} HTTP ${response.status}: ${responseText}`);
+    }
+
+    let data: any;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`${provider}: réponse JSON invalide`);
+    }
+
+    const content = extractContent(data, provider);
+    if (!content) {
+      throw new Error(`${provider}: réponse vide`);
+    }
+
+    return {
+      content,
+      model: model,
+      usage: data?.usage || data?.usageMetadata || null,
+    };
+
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`${provider}: timeout après ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return defaultLLM;
 }
 
 // ============================================================
-// PROVIDERS PAR PRIORITÉ
-// ============================================================
-
-export function getLLMConfigsByPriority(): LLMConfig[] {
-  return llmConfigs
-    .filter((config) => config.enabled)
-    .sort((a, b) => a.priority - b.priority);
-}
-
-// ============================================================
-// PROVIDERS GRATUITS DISPONIBLES
-// ============================================================
-
-export function getFreeProviders(): LLMConfig[] {
-  return llmConfigs
-    .filter((config) => config.isFree && config.enabled)
-    .sort((a, b) => a.priority - b.priority);
-}
-
-// ============================================================
-// FALLBACK AUTOMATIQUE
+// FALLBACK AUTOMATIQUE AVEC GESTION DES CLÉS API
 // ============================================================
 
 export async function generateWithFallback(
@@ -440,44 +387,174 @@ export async function generateWithFallback(
 ): Promise<{
   content: string;
   provider: string;
+  model: string;
 }> {
-  const providers = getLLMConfigsByPriority();
+  const {
+    messages,
+    temperature = 0.7,
+    max_tokens = 800,
+    contextType = 'general',
+    model: preferredModel,
+    provider: preferredProvider
+  } = params;
+
+  // 1. Obtenir la liste des providers actifs
+  let providers = await aiManagement.getProviders(true);
+  
+  // 2. Si un provider spécifique est demandé, le mettre en premier
+  if (preferredProvider) {
+    const preferred = providers.find(p => p.name === preferredProvider);
+    if (preferred) {
+      providers = [preferred, ...providers.filter(p => p.name !== preferredProvider)];
+    }
+  }
 
   if (providers.length === 0) {
     console.warn('⚠️ Aucun provider configuré, utilisation du fallback');
     return {
       content: getFallbackResponse(),
       provider: 'fallback',
+      model: 'fallback'
     };
   }
 
-  const errors: string[] = [];
+  // 3. Obtenir les règles de contexte
+  const rules = await aiManagement.getContextRules(contextType);
 
-  for (const config of providers) {
-    console.log(`🤖 HARVEY → ${config.provider} (${config.model})`);
+  // 4. Trier les providers par score
+  const scoredProviders = await Promise.all(
+    providers.map(async (provider) => {
+      const key = await aiManagement.getActiveApiKey(provider.id);
+      if (!key) return null;
 
-    try {
-      const client = createLLMClient(config);
-      const response = await client.createChatCompletion(params);
+      const perf = await aiManagement.getPerformanceStats(provider.id, 7);
+      const rule = rules.find(r => r.provider_id === provider.id);
 
-      const content = response.data.choices?.[0]?.message?.content?.trim() || '';
+      let score = provider.priority || 0;
+      if (rule) score += rule.score || 0;
+      if (perf.successRate > 0.9) score += 20;
+      score -= (key.error_count || 0) * 5;
 
-      if (!content) {
-        throw new Error('Réponse vide.');
+      // Si un modèle spécifique est demandé, vérifier qu'il est disponible
+      if (preferredModel) {
+        const availableModels = PROVIDER_MODELS[provider.name] || [];
+        if (!availableModels.includes(preferredModel)) {
+          score -= 50; // Réduire le score si le modèle n'est pas disponible
+        }
       }
 
-      console.log(`✅ HARVEY → réponse obtenue avec ${config.provider}`);
       return {
-        content,
-        provider: config.provider,
+        provider,
+        key,
+        score,
+        performance: perf
       };
+    })
+  );
+
+  const validProviders = scoredProviders
+    .filter((item): item is { provider: any; key: any; score: number; performance: any } => item !== null)
+    .sort((a, b) => b.score - a.score);
+
+  if (validProviders.length === 0) {
+    console.warn('⚠️ Aucun provider valide, utilisation du fallback');
+    return {
+      content: getFallbackResponse(),
+      provider: 'fallback',
+      model: 'fallback'
+    };
+  }
+
+  // 5. Essayer chaque provider dans l'ordre de score
+  const errors: string[] = [];
+
+  for (const { provider, key } of validProviders) {
+    const availableModels = PROVIDER_MODELS[provider.name] || [];
+    const model = preferredModel && availableModels.includes(preferredModel)
+      ? preferredModel
+      : availableModels[0] || 'default';
+
+    console.log(`🤖 HARVEY → ${provider.display_name} (${model})`);
+
+    try {
+      const startTime = Date.now();
+      
+      const result = await callProviderAPI(
+        provider.name,
+        key.key_value,
+        model,
+        messages,
+        temperature,
+        max_tokens
+      );
+
+      const duration = Date.now() - startTime;
+
+      // Logger la performance
+      await aiManagement.logPerformance({
+        provider_id: provider.id,
+        api_key_id: key.id,
+        model: result.model || model,
+        request_type: contextType,
+        duration_ms: duration,
+        tokens_input: result.usage?.prompt_tokens || result.usage?.input_tokens || 0,
+        tokens_output: result.usage?.completion_tokens || result.usage?.output_tokens || 0,
+        tokens_total: result.usage?.total_tokens || result.usage?.totalTokenCount || 0,
+        cost: 0,
+        success: true,
+        response_time: duration,
+        context: contextType,
+        metadata: { temperature, max_tokens }
+      });
+
+      // Incrémenter l'utilisation
+      await aiManagement.incrementApiUsage(key.id, result.usage?.total_tokens || 0);
+
+      console.log(`✅ HARVEY → réponse obtenue avec ${provider.display_name} (${duration}ms)`);
+
+      return {
+        content: result.content,
+        provider: provider.name,
+        model: result.model || model
+      };
+
     } catch (error: any) {
       const message = error?.message || 'Erreur inconnue';
-      console.warn(`⚠️ ${config.provider} indisponible: ${message}`);
-      errors.push(`${config.provider}: ${message}`);
+      console.warn(`⚠️ ${provider.display_name} indisponible: ${message}`);
+      errors.push(`${provider.display_name}: ${message}`);
 
-      // Petit délai avant de passer au suivant
-      if (providers.indexOf(config) < providers.length - 1) {
+      // Logger l'erreur
+      await aiManagement.markApiKeyError(key.id, message);
+      
+      await aiManagement.logError({
+        provider_id: provider.id,
+        api_key_id: key.id,
+        error_type: error?.type || 'api_error',
+        error_message: message,
+        status_code: error?.status || 500,
+        request_data: { messages, temperature, max_tokens, model }
+      });
+
+      await aiManagement.logPerformance({
+        provider_id: provider.id,
+        api_key_id: key.id,
+        model: model,
+        request_type: contextType,
+        duration_ms: 0,
+        tokens_input: 0,
+        tokens_output: 0,
+        tokens_total: 0,
+        cost: 0,
+        success: false,
+        error_message: message,
+        response_time: 0,
+        context: contextType,
+        metadata: { temperature, max_tokens, error: message }
+      });
+
+      // Petit délai avant le prochain
+      const currentIndex = validProviders.findIndex(p => p.provider.id === provider.id);
+      if (currentIndex < validProviders.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
@@ -491,80 +568,12 @@ export async function generateWithFallback(
   return {
     content: getFallbackResponse(),
     provider: 'fallback',
+    model: 'fallback'
   };
 }
 
 // ============================================================
-// TEST D'UN PROVIDER
-// ============================================================
-
-export async function testProvider(
-  config: LLMConfig
-): Promise<{
-  provider: string;
-  success: boolean;
-  latency?: number;
-  error?: string;
-}> {
-  const start = Date.now();
-
-  try {
-    const client = createLLMClient(config);
-
-    await client.createChatCompletion({
-      messages: [
-        {
-          role: 'system',
-          content: 'Réponds uniquement par OK.',
-        },
-        {
-          role: 'user',
-          content: 'Dis OK.',
-        },
-      ],
-      max_tokens: 10,
-    });
-
-    return {
-      provider: config.provider,
-      success: true,
-      latency: Date.now() - start,
-    };
-  } catch (error: any) {
-    return {
-      provider: config.provider,
-      success: false,
-      latency: Date.now() - start,
-      error: error?.message || 'Erreur inconnue',
-    };
-  }
-}
-
-// ============================================================
-// TEST DE TOUS LES PROVIDERS
-// ============================================================
-
-export async function testAllProviders(): Promise<
-  Array<{
-    provider: string;
-    success: boolean;
-    error?: string;
-    latency?: number;
-  }>
-> {
-  const providers = getLLMConfigsByPriority();
-  const results = [];
-
-  for (const config of providers) {
-    const result = await testProvider(config);
-    results.push(result);
-  }
-
-  return results;
-}
-
-// ============================================================
-// CLIENT GLOBAL AVEC FAILOVER
+// CLIENT GLOBAL
 // ============================================================
 
 export const llmClient = {
@@ -584,6 +593,7 @@ export const llmClient = {
           },
         ],
         provider: result.provider,
+        model: result.model,
       },
     };
   },
