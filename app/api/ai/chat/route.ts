@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dona } from '@/lib/agents/dona/processor';
 import { generateWithFallback } from '@/lib/config/llm';
 import { keyManagement } from '@/lib/services/KeyManagementService';
+import { leadManagement } from '@/lib/services/LeadManagementService';
 import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +36,6 @@ async function getCompanyData(): Promise<CompanyData> {
   try {
     console.log('📊 Récupération des données entreprise...');
 
-    // 1. Récupérer les services
     const { data: services, error: servicesError } = await supabase
       .from('services')
       .select('*')
@@ -44,7 +44,6 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (servicesError) console.error('❌ Erreur services:', servicesError);
 
-    // 2. Récupérer les formations
     const { data: formations, error: formationsError } = await supabase
       .from('trainings')
       .select('*')
@@ -52,7 +51,6 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (formationsError) console.error('❌ Erreur formations:', formationsError);
 
-    // 3. Récupérer les projets
     const { data: projects, error: projectsError } = await supabase
       .from('projects')
       .select('*')
@@ -60,7 +58,6 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (projectsError) console.error('❌ Erreur projets:', projectsError);
 
-    // 4. Récupérer les solutions
     const { data: solutions, error: solutionsError } = await supabase
       .from('solutions')
       .select('*')
@@ -69,7 +66,6 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (solutionsError) console.error('❌ Erreur solutions:', solutionsError);
 
-    // 5. Récupérer les collaborations
     const { data: collaborations, error: collaborationsError } = await supabase
       .from('collaborations')
       .select('*')
@@ -78,7 +74,6 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (collaborationsError) console.error('❌ Erreur collaborations:', collaborationsError);
 
-    // 6. Récupérer les données de l'entreprise
     let companyData = null;
     try {
       const { data, error } = await supabase
@@ -95,7 +90,6 @@ async function getCompanyData(): Promise<CompanyData> {
       console.warn('⚠️ Erreur récupération company_data, utilisation des données par défaut');
     }
 
-    // 7. Récupérer la FAQ
     const { data: faq, error: faqError } = await supabase
       .from('faq')
       .select('*')
@@ -207,6 +201,66 @@ async function classifyWithDona(message: string): Promise<{
 }
 
 // ============================================================
+// DÉTECTION DES INFORMATIONS DE LEAD
+// ============================================================
+
+function extractLeadInfo(messages: any[]): {
+  name?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  interest?: string;
+  budget?: string;
+} {
+  const info: any = {};
+  const text = messages.map(m => m.content).join(' ').toLowerCase();
+
+  // Détection du nom
+  const nameMatch = text.match(/je m'appelle\s+([a-z\s]+)/i) || 
+                    text.match(/mon nom est\s+([a-z\s]+)/i) ||
+                    text.match(/moi c'est\s+([a-z\s]+)/i);
+  if (nameMatch) {
+    info.name = nameMatch[1].trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  // Détection de l'email
+  const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) {
+    info.email = emailMatch[0];
+  }
+
+  // Détection du téléphone
+  const phoneMatch = text.match(/(?:(?:\+|00)33|0)[1-9](?:\s?\d{2}){4}/);
+  if (phoneMatch) {
+    info.phone = phoneMatch[0];
+  }
+
+  // Détection de l'entreprise
+  const companyMatch = text.match(/je travaille chez\s+([a-z\s]+)/i) ||
+                       text.match(/mon entreprise\s+([a-z\s]+)/i);
+  if (companyMatch) {
+    info.company = companyMatch[1].trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  // Détection du budget
+  const budgetMatch = text.match(/budget\s*(?:de|:)?\s*([\d\s]+)\s*(?:€|euros|euro)/i);
+  if (budgetMatch) {
+    info.budget = budgetMatch[1].trim();
+  }
+
+  // Détection de l'intérêt
+  const interests = ['saas', 'logiciel', 'application', 'site web', 'formation', 'domotique', 'ia', 'intelligence artificielle', 'commerce', 'boutique', 'scolaire', 'éducation', 'énergie'];
+  for (const interest of interests) {
+    if (text.includes(interest)) {
+      info.interest = interest;
+      break;
+    }
+  }
+
+  return info;
+}
+
+// ============================================================
 // CONSTRUCTION DU PROMPT
 // ============================================================
 
@@ -214,51 +268,57 @@ function buildPromptWithContext(
   message: string,
   history: Array<{ role: string; content: string }>,
   companyData: CompanyData,
-  classification: any
+  classification: any,
+  leadInfo?: any
 ): string {
-  // Services
   const servicesText = companyData.services.map((s: any) => 
-    `- **${s.name}**: ${s.description || ''}${s.features ? ` (${s.features.join(', ')})` : ''}`
+    `- **${s.name}**: ${s.description || ''}`
   ).join('\n');
 
-  // Formations
   const formationsText = companyData.formations.map((f: any) => 
-    `- **${f.name || f.title}**: ${f.duration || ''} (${f.level || 'Tous niveaux'})${f.technologies ? ` - Technologies: ${f.technologies.join(', ')}` : ''}`
+    `- **${f.name || f.title}**: ${f.duration || ''}  ${f.slug || ''}  ${f.description || ''} (${f.level || 'Tous niveaux'})`
   ).join('\n');
 
-  // Projets
   const projectsText = companyData.projects.map((p: any) => 
-    `- **${p.name}**: ${p.status || 'En cours'} (${p.progress || 0}%) - ${p.description || ''}`
+    `- **${p.name}**: ${p.status || 'En cours'}  ${p.description || ''} ${p.slug || ''} (${p.progress || 0}%)`
   ).join('\n');
 
-  // Solutions
   const solutionsText = companyData.solutions.map((s: any) => 
     `- **${s.title || s.name}**: ${s.description || ''}`
   ).join('\n');
 
-  // Collaborations
   const collaborationsText = companyData.collaborations.map((c: any) => 
     `- **${c.name}**: ${c.type || 'Partenariat'} - ${c.status || 'Actif'}`
   ).join('\n');
 
-  // FAQ
   const faqText = companyData.faq.map((f: any) => 
     `Q: ${f.question}\nR: ${f.answer}`
   ).join('\n\n');
 
-  // Équipe
   const teamText = companyData.team.map((t: any) => 
     `- ${t.name}: ${t.role}`
   ).join('\n');
 
-  // Historique
   const historyText = history.length > 0 
     ? history.map((h: { role: string; content: string }) => 
         `${h.role === 'user' ? 'Utilisateur' : 'HARVEY'}: ${h.content}`
       ).join('\n')
     : 'Aucun historique';
 
-  // Instructions par catégorie
+  // Informations du lead
+  let leadInfoText = '';
+  if (leadInfo && Object.keys(leadInfo).length > 0) {
+    leadInfoText = `
+## INFORMATIONS COLLECTÉES
+${leadInfo.name ? `- Nom: ${leadInfo.name}` : ''}
+${leadInfo.email ? `- Email: ${leadInfo.email}` : ''}
+${leadInfo.phone ? `- Téléphone: ${leadInfo.phone}` : ''}
+${leadInfo.company ? `- Entreprise: ${leadInfo.company}` : ''}
+${leadInfo.budget ? `- Budget: ${leadInfo.budget}` : ''}
+${leadInfo.interest ? `- Intérêt: ${leadInfo.interest}` : ''}
+`;
+  }
+
   const categoryInstructions: Record<string, string> = {
     commercial: `L'utilisateur a une demande commerciale. Présente les services de manière attractive et propose un devis.`,
     project: `L'utilisateur demande des informations sur les projets. Présente les projets avec leurs statuts et progression.`,
@@ -285,13 +345,20 @@ Cette question ne semble pas liée à UNITECH.
 `;
   }
 
-  return `Tu es HARVEY, le conseiller IA de UNITECH.
+  return `Tu es HARVEY, le conseiller IA et agent commercial de UNITECH.
 
 ## IDENTITÉ
-- Tu es HARVEY, un consultant expert de UNITECH
+- Tu es HARVEY, un consultant expert et agent commercial de UNITECH
 - Tu es professionnel, courtois, précis et utile
 - Tu réponds dans la même langue que l'utilisateur
 - Tu peux faire des blagues et sympathiser
+
+## RÔLE D'AGENT COMMERCIAL
+1. **Qualifier le lead** : Identifie le besoin, le budget, le délai
+2. **Proposer des solutions** : Recommande les services adaptés
+3. **Créer un lien** : Sois chaleureux et professionnel
+4. **Collecter les infos** : Nom, email, téléphone, entreprise
+5. **Proposer des actions** : Devis, rendez-vous, démo
 
 ## RÈGLES IMPORTANTES
 1. Utilise les informations de l'entreprise ci-dessous
@@ -309,6 +376,8 @@ Cette question ne semble pas liée à UNITECH.
 - Catégorie: ${classification.category}
 - Confiance: ${classification.confidence}%
 - Mots-clés: ${classification.matched_keywords.join(', ')}
+
+${leadInfoText}
 
 ## DONNÉES ENTREPRISE
 
@@ -354,7 +423,7 @@ RÉPONSE:`;
 }
 
 // ============================================================
-// POST /api/ai/chat - CORRIGÉ
+// POST /api/ai/chat
 // ============================================================
 
 export async function POST(request: NextRequest) {
@@ -363,6 +432,7 @@ export async function POST(request: NextRequest) {
     const { 
       message, 
       history = [], 
+      sessionId,
       tone = 'friendly',
       temperature = 0.7,
       maxTokens = 600
@@ -387,24 +457,27 @@ export async function POST(request: NextRequest) {
     // ✅ 2. Récupérer les données de l'entreprise
     const companyData = await getCompanyData();
 
-    // ✅ 3. Construire le prompt
-    const prompt = buildPromptWithContext(message, history, companyData, classification);
+    // ✅ 3. Extraire les infos du lead
+    const allMessages = [...history, { role: 'user', content: message }];
+    const leadInfo = extractLeadInfo(allMessages);
 
-    // ✅ 4. Essayer d'utiliser le LLM - SANS provider spécifique
+    // ✅ 4. Construire le prompt
+    const prompt = buildPromptWithContext(message, history, companyData, classification, leadInfo);
+
+    // ✅ 5. Essayer d'utiliser le LLM
+    let llmResponse = null;
     try {
-      // ✅ Récupérer la meilleure clé disponible (n'importe quel provider)
-      const apiKey = await keyManagement.getBestApiKey(); // ✅ PAS de provider spécifique
+      const apiKey = await keyManagement.getBestApiKey();
       
       if (apiKey) {
         console.log(`🔑 Clé trouvée: ${apiKey.provider?.display_name || 'Inconnu'} (${apiKey.key_name})`);
-        console.log(`   Utilisations: ${apiKey.usage_count}, Erreurs: ${apiKey.error_count}`);
         await keyManagement.incrementUsage(apiKey.id);
         
         const result = await generateWithFallback({
           messages: [
             {
               role: 'system',
-              content: `Tu es HARVEY, le conseiller IA de UNITECH. Réponds de manière précise et utile. Si la question est hors sujet, dis-le poliment.`,
+              content: `Tu es HARVEY, le conseiller IA et agent commercial de UNITECH. Réponds de manière précise et utile. Si la question est hors sujet, dis-le poliment.`,
             },
             {
               role: 'user',
@@ -416,42 +489,62 @@ export async function POST(request: NextRequest) {
         });
 
         if (result?.content) {
+          llmResponse = result.content;
           console.log(`✅ HARVEY: Réponse générée (provider: ${result.provider})`);
-          return NextResponse.json({
-            success: true,
-            content: result.content,
-            provider: result.provider,
-            category: classification.category,
-            confidence: classification.confidence,
-          });
         }
       } else {
         console.warn('⚠️ Aucune clé API disponible');
       }
     } catch (llmError: any) {
       console.warn('⚠️ Erreur LLM:', llmError.message);
-      
-      // Tenter de marquer l'erreur si une clé a été utilisée
+    }
+
+    // ✅ 6. Utiliser la réponse du LLM ou le fallback
+    const finalContent = llmResponse || generateFallbackWithDona(message, classification, companyData);
+
+    // ✅ 7. Sauvegarder le lead si des informations sont collectées
+    if (sessionId && (leadInfo.name || leadInfo.email || leadInfo.phone)) {
       try {
-        const apiKey = await keyManagement.getBestApiKey();
-        if (apiKey) {
-          await keyManagement.markError(apiKey.id, llmError.message);
+        const existingLead = await leadManagement.getLeadBySession(sessionId);
+        if (existingLead) {
+          // Mettre à jour le lead existant
+          await leadManagement.updateLead(existingLead.id!, {
+            name: leadInfo.name || existingLead.name,
+            email: leadInfo.email || existingLead.email,
+            phone: leadInfo.phone || existingLead.phone,
+            company: leadInfo.company || existingLead.company,
+            interest: leadInfo.interest || existingLead.interest,
+            budget: leadInfo.budget || existingLead.budget,
+            status: 'contacted',
+            last_contact_at: new Date().toISOString()
+          });
+        } else if (leadInfo.name || leadInfo.email) {
+          // Créer un nouveau lead
+          await leadManagement.createLead({
+            session_id: sessionId,
+            name: leadInfo.name,
+            email: leadInfo.email,
+            phone: leadInfo.phone,
+            company: leadInfo.company,
+            interest: leadInfo.interest,
+            budget: leadInfo.budget,
+            status: 'new',
+            source: 'chatbot',
+            conversation_summary: allMessages.map(m => m.content).join(' ').substring(0, 500)
+          });
         }
-      } catch (markError) {
-        console.warn('⚠️ Erreur lors du marquage de l\'erreur:', markError);
+      } catch (leadError) {
+        console.warn('⚠️ Erreur sauvegarde lead:', leadError);
       }
     }
 
-    // ✅ 5. Fallback - UNIQUEMENT si le LLM échoue
-    console.log(`📝 Fallback (LLM indisponible)`);
-    const fallbackContent = generateFallbackWithDona(message, classification, companyData);
-
     return NextResponse.json({
       success: true,
-      content: fallbackContent,
-      fallback: true,
+      content: finalContent,
+      fallback: !llmResponse,
       category: classification.category,
       confidence: classification.confidence,
+      leadInfo: leadInfo,
     });
 
   } catch (error: any) {
@@ -467,33 +560,29 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================================
-// FALLBACK - UNIQUEMENT SI LE LLM ÉCHOUÉ
+// FALLBACK
 // ============================================================
 
 function generateFallbackWithDona(message: string, classification: any, companyData: CompanyData): string {
   const { category, matched_keywords } = classification;
 
-  // Détection des salutations
-  const greetings: string[] = ['bonjour', 'salut', 'hello', 'coucou', 'hey', 'bonsoir', 'bonsoir'];
+  const greetings: string[] = ['bonjour', 'salut', 'hello', 'coucou', 'hey', 'bonsoir'];
   const isGreeting = matched_keywords.some((k: string) => greetings.includes(k));
 
-  // Salutation
   if (category === 'general' && isGreeting) {
-    return `Bonjour ! 👋 Je suis HARVEY, l'assistant de UNITECH.
+    return `Bonjour ! 👋 Je suis HARVEY, votre conseiller IA chez UNITECH.
 
-Comment puis-je vous aider aujourd'hui ? Je peux vous renseigner sur :
-• Nos services et solutions
-• Nos agents IA (DONA et HARVEY)
-• Nos projets et formations
-• Notre équipe
-• Comment nous contacter
+Comment puis-je vous accompagner aujourd'hui ?
 
-Posez-moi votre question ! 💬`;
+Vous souhaitez découvrir nos services ? → https://unitech-qvgo.onrender.com/services
+Vous avez besoin d'un devis personnalisé ? → https://unitech-qvgo.onrender.com/contact
+Vous êtes intéressé par nos formations ? → https://unitech-qvgo.onrender.com/training
+
+N'hésitez pas à me préciser votre besoin, je suis là pour vous aider ! 💬`;
   }
 
-  // Question hors sujet
   if (category === 'general' && classification.confidence < 40) {
-    return `Je suis HARVEY, l'assistant de UNITECH. 🤖
+    return `Je suis HARVEY, votre conseiller IA chez UNITECH. 🤖
 
 Je suis spécialisé dans les questions concernant UNITECH et ses services.
 
@@ -507,8 +596,7 @@ Je peux vous renseigner sur :
 Si vous avez une question sur ces sujets, je serai ravi de vous aider ! 💬`;
   }
 
-  // Réponse par défaut
-  return `Je suis HARVEY, l'assistant de UNITECH. 🤖
+  return `Je suis HARVEY, votre conseiller IA chez UNITECH. 🤖
 
 Je peux vous renseigner sur :
 • Nos services et solutions
@@ -528,8 +616,8 @@ export async function GET() {
   const companyData = await getCompanyData();
   return NextResponse.json({
     status: 'ok',
-    message: 'HARVEY API with DONA classification - All questions go to LLM',
-    version: '2.1.0',
+    message: 'HARVEY API with DONA classification and Lead Management',
+    version: '2.2.0',
     data: {
       services: companyData.services.length,
       formations: companyData.formations.length,

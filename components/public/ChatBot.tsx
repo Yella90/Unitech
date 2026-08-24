@@ -16,10 +16,16 @@ import {
   FaRocket,
   FaHandshake,
   FaTrash,
-  FaClock
+  FaClock,
+  FaUser,
+  FaEnvelope,
+  FaPhone,
+  FaBuilding,
+  FaMoneyBillWave
 } from 'react-icons/fa';
 import { toast } from 'sonner';
 import { chatStorage, type StoredMessage, type StoredConversation } from '@/lib/services/chat-storage';
+import { leadManagement } from '@/lib/services/LeadManagementService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -67,12 +73,14 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   const [conversations, setConversations] = useState<StoredConversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [storageStats, setStorageStats] = useState({ totalConversations: 0, totalMessages: 0, storageSize: 0 });
+  const [leadId, setLeadId] = useState<string | null>(null);
   
+  const sessionId = useRef(`chat-${Date.now()}-${Math.random().toString(36).substring(7)}`);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ============================================================
-  // CHARGEMENT DES DONNÉES STOCKÉES (localStorage)
+  // CHARGEMENT DES DONNÉES STOCKÉES
   // ============================================================
 
   useEffect(() => {
@@ -173,6 +181,32 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   }, [currentConversationId]);
 
   // ============================================================
+  // SAUVEGARDE DES LEADS
+  // ============================================================
+
+  useEffect(() => {
+    if (messages.length >= 5 && !leadId) {
+      const saveLead = async () => {
+        const lead = await leadManagement.createLead({
+          session_id: sessionId.current,
+          source: 'chatbot',
+          messages: messages.map(m => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp.toISOString()
+          })),
+          conversation_summary: messages.map(m => m.content).join(' ').substring(0, 500),
+          status: 'new'
+        });
+        if (lead) {
+          setLeadId(lead.id || null);
+        }
+      };
+      saveLead();
+    }
+  }, [messages, leadId]);
+
+  // ============================================================
   // ENVOI DU MESSAGE
   // ============================================================
 
@@ -198,12 +232,18 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
     }]);
 
     try {
+      const history = messages.slice(-10).map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text.trim(),
-          category: 'general',
+          history: history,
+          sessionId: sessionId.current,
           tone: 'friendly'
         })
       });
@@ -221,9 +261,14 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         await addMessage({
           role: 'assistant',
           content: data.content,
-          agent: data.suggested_agent?.toLowerCase() === 'harvey' ? 'harvey' : 'dona',
+          agent: 'harvey',
           category: data.category || 'general'
         });
+
+        // ✅ Si le lead a été mis à jour, afficher une notification discrète
+        if (data.leadInfo && Object.keys(data.leadInfo).length > 0) {
+          console.log('📋 Informations lead collectées:', data.leadInfo);
+        }
       } else {
         await addMessage({
           role: 'assistant',
@@ -255,10 +300,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       setIsLoading(false);
       setIsTyping(false);
     }
-  }, [isLoading, addMessage]);
+  }, [isLoading, addMessage, messages]);
 
   // ============================================================
-  // COMPOSANT DE RENDU DES MESSAGES AVEC LIENS (CORRIGÉ)
+  // RENDU DES MESSAGES AVEC LIENS
   // ============================================================
 
   const renderMessageContent = (message: Message) => {
@@ -277,75 +322,30 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
-            // ✅ Liens cliquables - gère automatiquement mailto
             a: ({ href, children }) => {
-              // Vérifier si c'est un lien mailto
               const isMailto = href?.startsWith('mailto:');
-              
               return (
                 <a
                   href={href}
                   target={isMailto ? '_self' : '_blank'}
                   rel={isMailto ? '' : 'noopener noreferrer'}
                   className="text-[#1E3A8A] underline hover:text-[#F97316] transition-colors font-medium"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {children}
                 </a>
               );
             },
-            // ✅ Boutons
-            button: ({ children }) => (
-              <span className="inline-block bg-[#1E3A8A] text-white px-4 py-2 rounded-lg hover:bg-[#1A2F6A] transition">
-                {children}
-              </span>
-            ),
-            // ✅ Liste
-            ul: ({ children }) => (
-              <ul className="list-disc pl-4 space-y-1 my-2">
-                {children}
-              </ul>
-            ),
-            ol: ({ children }) => (
-              <ol className="list-decimal pl-4 space-y-1 my-2">
-                {children}
-              </ol>
-            ),
-            li: ({ children }) => (
-              <li className="text-slate-700">{children}</li>
-            ),
-            // ✅ Titres
-            h1: ({ children }) => (
-              <h1 className="text-xl font-bold text-[#1E3A8A] mt-4 mb-2">{children}</h1>
-            ),
-            h2: ({ children }) => (
-              <h2 className="text-lg font-semibold text-[#1E3A8A] mt-3 mb-2">{children}</h2>
-            ),
-            h3: ({ children }) => (
-              <h3 className="text-base font-semibold text-[#1E3A8A] mt-2 mb-1">{children}</h3>
-            ),
-            // ✅ Gras
-            strong: ({ children }) => (
-              <strong className="font-bold text-[#1E3A8A]">{children}</strong>
-            ),
-            // ✅ Paragraphe
-            p: ({ children }) => (
-              <p className="mb-2 last:mb-0">{children}</p>
-            ),
-            // ✅ Blockquote
-            blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-[#1E3A8A] pl-4 my-2 text-slate-600 italic">
-                {children}
-              </blockquote>
-            ),
-            // ✅ Code
-            code: ({ children }) => (
-              <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono">
-                {children}
-              </code>
-            ),
+            ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 my-2">{children}</ul>,
+            ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 my-2">{children}</ol>,
+            li: ({ children }) => <li className="text-slate-700">{children}</li>,
+            h1: ({ children }) => <h1 className="text-xl font-bold text-[#1E3A8A] mt-4 mb-2">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-lg font-semibold text-[#1E3A8A] mt-3 mb-2">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-base font-semibold text-[#1E3A8A] mt-2 mb-1">{children}</h3>,
+            strong: ({ children }) => <strong className="font-bold text-[#1E3A8A]">{children}</strong>,
+            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+            blockquote: ({ children }) => <blockquote className="border-l-4 border-[#1E3A8A] pl-4 my-2 text-slate-600 italic">{children}</blockquote>,
+            code: ({ children }) => <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
           }}
         >
           {message.content}
@@ -355,7 +355,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   };
 
   // ============================================================
-  // RENDU
+  // RENDU PRINCIPAL
   // ============================================================
 
   return (
@@ -402,7 +402,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
             </div>
           </div>
 
-          {/* Messages - Avec support des liens */}
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F8FAFC] min-h-[300px] max-h-[400px] sm:max-h-[500px] chat-scroll">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400">
@@ -441,7 +441,6 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                       </div>
                     )}
                     
-                    {/* ✅ Rendu avec ReactMarkdown - mailto géré automatiquement */}
                     {renderMessageContent(message)}
                     
                     {!message.isTyping && (
