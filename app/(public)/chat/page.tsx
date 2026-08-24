@@ -287,7 +287,7 @@ Comment puis-je vous aider aujourd'hui ?`,
       </div>
 
       {/* Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
+      <div className=" bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
         <div className="mx-auto max-w-4xl px-4 py-3">
           <form
             onSubmit={(e) => {
@@ -302,7 +302,7 @@ Comment puis-je vous aider aujourd'hui ?`,
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Posez votre question..."
-              className="flex-1 px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
+              className="flex-1 px-4 py-2 text-sm border bg-green-100 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
               disabled={isLoading}
             />
             <button

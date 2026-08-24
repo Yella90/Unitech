@@ -177,8 +177,8 @@ export default function Hero() {
             asChild
             className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all border border-white/20"
           >
-            <a href="/projects">
-              Voir nos projets
+            <a href="/chat">
+              Discuter avec HARVEY <span className="ml-2">Assistant</span>
               <FaArrowRight className="ml-2 h-4 w-4" />
             </a>
           </Button>
