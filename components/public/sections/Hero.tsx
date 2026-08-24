@@ -183,13 +183,7 @@ export default function Hero() {
             </a>
           </Button>
 
-          <Button
-            asChild
-            variant="outline"
-            className="border-white/35 text-white hover:bg-white/10 rounded-xl px-8 py-6 text-base hover:scale-105 transition-all"
-          >
-            <a href="#newsletter">📬 Suivre l'avancement</a>
-          </Button>
+         
         </motion.div>
 
         {/* ✅ Petit indicateur du chatbot */}
