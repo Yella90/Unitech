@@ -107,15 +107,15 @@ async function getCompanyData(): Promise<CompanyData> {
     });
 
     return {
-      name: companyData?.name || 'UNITECH',
+      name: companyData?.name || '',
       description: companyData?.description || 'Solutions technologiques innovantes',
-      founder: companyData?.founder || 'Laye Soma',
+      founder: companyData?.founder || '',
       services: services || [],
       formations: formations || [],
       projects: projects || [],
       solutions: solutions || [],
       collaborations: collaborations || [],
-      team: companyData?.team || [{ name: 'Laye Soma', role: 'Fondateur & CEO' }],
+      team: companyData?.team || [{ name: '', role: 'Fondateur & CEO' }],
       faq: faq || [],
       pricing: companyData?.pricing || {},
       missions: companyData?.missions || [],
@@ -371,6 +371,7 @@ Cette question ne semble pas liée à UNITECH.
    - Services: https://unitech-qvgo.onrender.com/services/<slug>
    - Contact: https://unitech-qvgo.onrender.com/contact
    - Email: doumbialayesoma@gmail.com
+   -Tel +223 90692363
 
 ## CLASSIFICATION DONA
 - Catégorie: ${classification.category}
@@ -582,7 +583,7 @@ N'hésitez pas à me préciser votre besoin, je suis là pour vous aider ! 💬`
   }
 
   if (category === 'general' && classification.confidence < 40) {
-    return `Je suis HARVEY, votre conseiller IA chez UNITECH. 🤖
+    return `Je suis HARVEY, votre conseiller  chez UNITECH. 🤖
 
 Je suis spécialisé dans les questions concernant UNITECH et ses services.
 
@@ -596,7 +597,7 @@ Je peux vous renseigner sur :
 Si vous avez une question sur ces sujets, je serai ravi de vous aider ! 💬`;
   }
 
-  return `Je suis HARVEY, votre conseiller IA chez UNITECH. 🤖
+  return `Je suis HARVEY, votre conseiller  chez UNITECH. 🤖
 
 Je peux vous renseigner sur :
 • Nos services et solutions
