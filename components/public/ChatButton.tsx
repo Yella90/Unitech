@@ -142,7 +142,7 @@ export default function ChatButton() {
             <span className="text-[10px] sm:text-xs md:text-sm font-bold text-[#1E3A8A] flex items-center gap-1 sm:gap-2">
               <FaBrain className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 text-[#F97316]" />
               <span className="hidden xs:inline">{isOpen ? 'Fermer' : '💬 Chatbot IA'}</span>
-              <span className="xs:hidden">{isOpen ? '✕' : '💬'}</span>
+              <span className="xs:hidden">{isOpen ? '✕ Fermer' : '💬'}</span>
             </span>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">

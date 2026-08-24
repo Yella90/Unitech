@@ -35,6 +35,7 @@ async function getCompanyData(): Promise<CompanyData> {
   try {
     console.log('📊 Récupération des données entreprise...');
 
+    // 1. Récupérer les services
     const { data: services, error: servicesError } = await supabase
       .from('services')
       .select('*')
@@ -43,6 +44,7 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (servicesError) console.error('❌ Erreur services:', servicesError);
 
+    // 2. Récupérer les formations
     const { data: formations, error: formationsError } = await supabase
       .from('trainings')
       .select('*')
@@ -50,6 +52,7 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (formationsError) console.error('❌ Erreur formations:', formationsError);
 
+    // 3. Récupérer les projets
     const { data: projects, error: projectsError } = await supabase
       .from('projects')
       .select('*')
@@ -57,6 +60,7 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (projectsError) console.error('❌ Erreur projets:', projectsError);
 
+    // 4. Récupérer les solutions
     const { data: solutions, error: solutionsError } = await supabase
       .from('solutions')
       .select('*')
@@ -65,6 +69,7 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (solutionsError) console.error('❌ Erreur solutions:', solutionsError);
 
+    // 5. Récupérer les collaborations
     const { data: collaborations, error: collaborationsError } = await supabase
       .from('collaborations')
       .select('*')
@@ -73,13 +78,24 @@ async function getCompanyData(): Promise<CompanyData> {
 
     if (collaborationsError) console.error('❌ Erreur collaborations:', collaborationsError);
 
-    const { data: company, error: companyError } = await supabase
-      .from('company_data')
-      .select('*')
-      .single();
+    // 6. Récupérer les données de l'entreprise
+    let companyData = null;
+    try {
+      const { data, error } = await supabase
+        .from('company_data')
+        .select('*')
+        .single();
 
-    if (companyError) console.error('❌ Erreur company_data:', companyError);
+      if (error) {
+        console.warn('⚠️ Aucune donnée entreprise trouvée, utilisation des données par défaut');
+      } else {
+        companyData = data;
+      }
+    } catch (error) {
+      console.warn('⚠️ Erreur récupération company_data, utilisation des données par défaut');
+    }
 
+    // 7. Récupérer la FAQ
     const { data: faq, error: faqError } = await supabase
       .from('faq')
       .select('*')
@@ -97,18 +113,18 @@ async function getCompanyData(): Promise<CompanyData> {
     });
 
     return {
-      name: company?.name || 'UNITECH',
-      description: company?.description || 'Solutions technologiques innovantes',
-      founder: company?.founder || 'Laye Soma',
+      name: companyData?.name || 'UNITECH',
+      description: companyData?.description || 'Solutions technologiques innovantes',
+      founder: companyData?.founder || 'Laye Soma',
       services: services || [],
       formations: formations || [],
       projects: projects || [],
       solutions: solutions || [],
       collaborations: collaborations || [],
-      team: company?.team || [{ name: 'Laye Soma', role: 'Fondateur & CEO' }],
+      team: companyData?.team || [{ name: 'Laye Soma', role: 'Fondateur & CEO' }],
       faq: faq || [],
-      pricing: company?.pricing || {},
-      missions: company?.missions || [],
+      pricing: companyData?.pricing || {},
+      missions: companyData?.missions || [],
     };
 
   } catch (error) {
@@ -200,40 +216,49 @@ function buildPromptWithContext(
   companyData: CompanyData,
   classification: any
 ): string {
+  // Services
   const servicesText = companyData.services.map((s: any) => 
-    `- **${s.name}**: ${s.description || ''} ${s.features || ''} (${s.slug || '/'}) ${s.is_active || 'false'}`
+    `- **${s.name}**: ${s.description || ''}${s.features ? ` (${s.features.join(', ')})` : ''}`
   ).join('\n');
 
+  // Formations
   const formationsText = companyData.formations.map((f: any) => 
-    `- **${f.title}**: ${f.duration || ''} (${f.level || 'Tous niveaux'}) (${f.description || 'Tous niveaux'}) (${f.icon || 'Tous niveaux'})  (${f.prix || 'Tous niveaux'}) (${f.modules || 'Tous niveaux'})`
+    `- **${f.name || f.title}**: ${f.duration || ''} (${f.level || 'Tous niveaux'})${f.technologies ? ` - Technologies: ${f.technologies.join(', ')}` : ''}`
   ).join('\n');
 
+  // Projets
   const projectsText = companyData.projects.map((p: any) => 
-    `- **${p.name}**: ${p.status || 'En cours'} (${p.progress || 0})% (${p.slug || '/'})  (${p.description || '/'})`
+    `- **${p.name}**: ${p.status || 'En cours'} (${p.progress || 0}%) - ${p.description || ''}`
   ).join('\n');
 
+  // Solutions
   const solutionsText = companyData.solutions.map((s: any) => 
-    `- **${s.title || s.name}**: ${s.description || ''} (${s.link_url || '/'}) ${s.is_active || 'false'}`
+    `- **${s.title || s.name}**: ${s.description || ''}`
   ).join('\n');
 
+  // Collaborations
   const collaborationsText = companyData.collaborations.map((c: any) => 
-    `- **${c.name}**: ${c.type || 'Partenariat'} - ${c.status || 'Actif' } ${c.site || '' }`
+    `- **${c.name}**: ${c.type || 'Partenariat'} - ${c.status || 'Actif'}`
   ).join('\n');
 
+  // FAQ
   const faqText = companyData.faq.map((f: any) => 
     `Q: ${f.question}\nR: ${f.answer}`
   ).join('\n\n');
 
+  // Équipe
   const teamText = companyData.team.map((t: any) => 
     `- ${t.name}: ${t.role}`
   ).join('\n');
 
+  // Historique
   const historyText = history.length > 0 
     ? history.map((h: { role: string; content: string }) => 
         `${h.role === 'user' ? 'Utilisateur' : 'HARVEY'}: ${h.content}`
       ).join('\n')
     : 'Aucun historique';
 
+  // Instructions par catégorie
   const categoryInstructions: Record<string, string> = {
     commercial: `L'utilisateur a une demande commerciale. Présente les services de manière attractive et propose un devis.`,
     project: `L'utilisateur demande des informations sur les projets. Présente les projets avec leurs statuts et progression.`,
@@ -273,13 +298,12 @@ Cette question ne semble pas liée à UNITECH.
 2. Si la question est hors sujet, dis-le poliment
 3. Propose une action concrète en fin de réponse
 4. Sois professionnel mais accessible
-5. Pour les lien des progets https://unitech-qvgo.onrender.com/projects , par proget https://unitech-qvgo.onrender.com/projects/<slug> suivi du slug du proget 
-6. pour les formation https://unitech-qvgo.onrender.com/training  , par formation https://unitech-qvgo.onrender.com/training/<slug> suivi du slug de la formation
-7. pour les services https://unitech-qvgo.onrender.com/services , par service https://unitech-qvgo.onrender.com/services/<slug> suivi du slug du service
-8. Pour la page de contacte https://unitech-qvgo.onrender.com/contact 
-9. Pour le contact via le mail adresse est doumbialayesma@gmail.com
-
-
+5. Pour les liens:
+   - Projets: https://unitech-qvgo.onrender.com/projects/<slug>
+   - Formations: https://unitech-qvgo.onrender.com/training/<slug>
+   - Services: https://unitech-qvgo.onrender.com/services/<slug>
+   - Contact: https://unitech-qvgo.onrender.com/contact
+   - Email: doumbialayesoma@gmail.com
 
 ## CLASSIFICATION DONA
 - Catégorie: ${classification.category}
@@ -330,7 +354,7 @@ RÉPONSE:`;
 }
 
 // ============================================================
-// POST /api/ai/chat
+// POST /api/ai/chat - CORRIGÉ
 // ============================================================
 
 export async function POST(request: NextRequest) {
@@ -356,18 +380,24 @@ export async function POST(request: NextRequest) {
 
     console.log(`🤖 HARVEY: Message reçu: "${message.substring(0, 50)}..."`);
 
+    // ✅ 1. Classification avec DONA
     const classification = await classifyWithDona(message);
     console.log(`🧠 DONA: ${classification.category} (${classification.confidence}%)`);
 
+    // ✅ 2. Récupérer les données de l'entreprise
     const companyData = await getCompanyData();
 
+    // ✅ 3. Construire le prompt
     const prompt = buildPromptWithContext(message, history, companyData, classification);
 
+    // ✅ 4. Essayer d'utiliser le LLM - SANS provider spécifique
     try {
-      const apiKey = await keyManagement.getBestApiKey('openai');
+      // ✅ Récupérer la meilleure clé disponible (n'importe quel provider)
+      const apiKey = await keyManagement.getBestApiKey(); // ✅ PAS de provider spécifique
       
       if (apiKey) {
-        console.log(`🔑 Clé API: ${apiKey.key_name || 'sans nom'}`);
+        console.log(`🔑 Clé trouvée: ${apiKey.provider?.display_name || 'Inconnu'} (${apiKey.key_name})`);
+        console.log(`   Utilisations: ${apiKey.usage_count}, Erreurs: ${apiKey.error_count}`);
         await keyManagement.incrementUsage(apiKey.id);
         
         const result = await generateWithFallback({
@@ -401,12 +431,18 @@ export async function POST(request: NextRequest) {
     } catch (llmError: any) {
       console.warn('⚠️ Erreur LLM:', llmError.message);
       
-      const apiKey = await keyManagement.getBestApiKey('openai');
-      if (apiKey) {
-        await keyManagement.markError(apiKey.id, llmError.message);
+      // Tenter de marquer l'erreur si une clé a été utilisée
+      try {
+        const apiKey = await keyManagement.getBestApiKey();
+        if (apiKey) {
+          await keyManagement.markError(apiKey.id, llmError.message);
+        }
+      } catch (markError) {
+        console.warn('⚠️ Erreur lors du marquage de l\'erreur:', markError);
       }
     }
 
+    // ✅ 5. Fallback - UNIQUEMENT si le LLM échoue
     console.log(`📝 Fallback (LLM indisponible)`);
     const fallbackContent = generateFallbackWithDona(message, classification, companyData);
 
@@ -437,12 +473,11 @@ export async function POST(request: NextRequest) {
 function generateFallbackWithDona(message: string, classification: any, companyData: CompanyData): string {
   const { category, matched_keywords } = classification;
 
-  // ✅ Typage explicite pour la vérification des salutations
-  const greetings: string[] = ['bonjour', 'salut', 'hello', 'coucou', 'hey'];
-  
-  // ✅ Correction avec typage explicite pour 'k'
+  // Détection des salutations
+  const greetings: string[] = ['bonjour', 'salut', 'hello', 'coucou', 'hey', 'bonsoir', 'bonsoir'];
   const isGreeting = matched_keywords.some((k: string) => greetings.includes(k));
 
+  // Salutation
   if (category === 'general' && isGreeting) {
     return `Bonjour ! 👋 Je suis HARVEY, l'assistant de UNITECH.
 
@@ -456,6 +491,7 @@ Comment puis-je vous aider aujourd'hui ? Je peux vous renseigner sur :
 Posez-moi votre question ! 💬`;
   }
 
+  // Question hors sujet
   if (category === 'general' && classification.confidence < 40) {
     return `Je suis HARVEY, l'assistant de UNITECH. 🤖
 
@@ -471,6 +507,7 @@ Je peux vous renseigner sur :
 Si vous avez une question sur ces sujets, je serai ravi de vous aider ! 💬`;
   }
 
+  // Réponse par défaut
   return `Je suis HARVEY, l'assistant de UNITECH. 🤖
 
 Je peux vous renseigner sur :
@@ -500,6 +537,7 @@ export async function GET() {
       solutions: companyData.solutions.length,
       collaborations: companyData.collaborations.length,
       faq: companyData.faq.length,
+      founder: companyData.founder,
     },
     timestamp: new Date().toISOString()
   });
