@@ -1,6 +1,14 @@
 // lib/services/LeadManagementService.ts
 import { supabase } from '@/lib/supabase';
 
+// ============================================================
+// TYPES
+// ============================================================
+
+export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost';
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'rescheduled';
+
 export interface Lead {
   id?: string;
   session_id: string;
@@ -10,7 +18,7 @@ export interface Lead {
   company?: string;
   interest?: string;
   budget?: string;
-  status?: 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost';
+  status?: LeadStatus;
   source?: string;
   messages?: any[];
   conversation_summary?: string;
@@ -26,7 +34,7 @@ export interface Quote {
   amount: number;
   description: string;
   services: string[];
-  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  status: QuoteStatus;
   valid_until: string;
   created_at?: string;
   updated_at?: string;
@@ -39,11 +47,15 @@ export interface Appointment {
   description?: string;
   scheduled_at: string;
   duration: number;
-  status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'rescheduled';
+  status: AppointmentStatus;
   meeting_link?: string;
   created_at?: string;
   updated_at?: string;
 }
+
+// ============================================================
+// SERVICE DE GESTION DES LEADS
+// ============================================================
 
 class LeadManagementService {
   private static instance: LeadManagementService;
@@ -97,12 +109,31 @@ class LeadManagementService {
 
   async updateLead(id: string, updates: Partial<Lead>): Promise<Lead | null> {
     try {
+      const validStatuses: LeadStatus[] = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
+      const status = updates.status as string;
+      
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.email !== undefined) updateData.email = updates.email;
+      if (updates.phone !== undefined) updateData.phone = updates.phone;
+      if (updates.company !== undefined) updateData.company = updates.company;
+      if (updates.interest !== undefined) updateData.interest = updates.interest;
+      if (updates.budget !== undefined) updateData.budget = updates.budget;
+      if (updates.conversation_summary !== undefined) updateData.conversation_summary = updates.conversation_summary;
+      if (updates.last_contact_at !== undefined) updateData.last_contact_at = updates.last_contact_at;
+      
+      if (status && validStatuses.includes(status as LeadStatus)) {
+        updateData.status = status;
+      } else if (status) {
+        console.warn(`⚠️ Statut invalide: ${status}, utilisation du statut actuel`);
+      }
+
       const { data, error } = await supabase
         .from('leads')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
@@ -115,6 +146,58 @@ class LeadManagementService {
       return data;
     } catch (error) {
       console.error('❌ Erreur updateLead:', error);
+      return null;
+    }
+  }
+
+  // ✅ NOUVELLE MÉTHODE - Mise à jour du statut uniquement
+  async updateLeadStatus(id: string, status: LeadStatus): Promise<Lead | null> {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .update({
+          status: status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Erreur mise à jour statut:', error);
+        return null;
+      }
+
+      console.log(`✅ Statut du lead ${id} mis à jour: ${status}`);
+      return data;
+    } catch (error) {
+      console.error('❌ Erreur updateLeadStatus:', error);
+      return null;
+    }
+  }
+
+  // ✅ RÉINITIALISATION DES STATUTS (optionnel)
+  async resetLeadStatus(id: string): Promise<Lead | null> {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .update({
+          status: 'new',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Erreur réinitialisation statut:', error);
+        return null;
+      }
+
+      console.log(`✅ Statut du lead ${id} réinitialisé: new`);
+      return data;
+    } catch (error) {
+      console.error('❌ Erreur resetLeadStatus:', error);
       return null;
     }
   }
@@ -137,6 +220,26 @@ class LeadManagementService {
       return data;
     } catch (error) {
       console.error('❌ Erreur getLeadBySession:', error);
+      return null;
+    }
+  }
+
+  async getLeadById(id: string): Promise<Lead | null> {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('❌ Erreur récupération lead:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('❌ Erreur getLeadById:', error);
       return null;
     }
   }
@@ -177,6 +280,46 @@ class LeadManagementService {
     }
   }
 
+  async getAllLeads(limit: number = 100): Promise<Lead[]> {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('❌ Erreur récupération leads:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erreur getAllLeads:', error);
+      return [];
+    }
+  }
+
+  async getLeadsByStatus(status: LeadStatus): Promise<Lead[]> {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('status', status)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Erreur récupération leads par statut:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erreur getLeadsByStatus:', error);
+      return [];
+    }
+  }
+
   // ============================================================
   // GESTION DES DEVIS
   // ============================================================
@@ -187,11 +330,13 @@ class LeadManagementService {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     
-    // Compter les devis du jour
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
     const { count } = await supabase
       .from('quotes')
       .select('*', { count: 'exact', head: true })
-      .gte('created_at', new Date(date.setHours(0, 0, 0, 0)).toISOString());
+      .gte('created_at', startOfDay.toISOString());
 
     const sequence = String((count || 0) + 1).padStart(4, '0');
     
@@ -226,6 +371,26 @@ class LeadManagementService {
     } catch (error) {
       console.error('❌ Erreur createQuote:', error);
       return null;
+    }
+  }
+
+  async getQuotesByLead(leadId: string): Promise<Quote[]> {
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Erreur récupération devis:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erreur getQuotesByLead:', error);
+      return [];
     }
   }
 
@@ -264,11 +429,40 @@ class LeadManagementService {
     }
   }
 
+  async getAppointmentsByLead(leadId: string): Promise<Appointment[]> {
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('scheduled_at', { ascending: true });
+
+      if (error) {
+        console.error('❌ Erreur récupération rendez-vous:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erreur getAppointmentsByLead:', error);
+      return [];
+    }
+  }
+
   // ============================================================
   // STATISTIQUES
   // ============================================================
 
-  async getStats(): Promise<any> {
+  async getStats(): Promise<{
+    total: number;
+    newLeads: number;
+    contacted: number;
+    qualified: number;
+    proposal: number;
+    negotiation: number;
+    won: number;
+    lost: number;
+  }> {
     try {
       const { data: leads } = await supabase
         .from('leads')
@@ -276,15 +470,71 @@ class LeadManagementService {
 
       const total = leads?.length || 0;
       const newLeads = leads?.filter(l => l.status === 'new').length || 0;
+      const contacted = leads?.filter(l => l.status === 'contacted').length || 0;
       const qualified = leads?.filter(l => l.status === 'qualified').length || 0;
+      const proposal = leads?.filter(l => l.status === 'proposal').length || 0;
+      const negotiation = leads?.filter(l => l.status === 'negotiation').length || 0;
       const won = leads?.filter(l => l.status === 'won').length || 0;
+      const lost = leads?.filter(l => l.status === 'lost').length || 0;
 
-      return { total, newLeads, qualified, won };
+      return { total, newLeads, contacted, qualified, proposal, negotiation, won, lost };
     } catch (error) {
       console.error('❌ Erreur stats:', error);
-      return { total: 0, newLeads: 0, qualified: 0, won: 0 };
+      return { total: 0, newLeads: 0, contacted: 0, qualified: 0, proposal: 0, negotiation: 0, won: 0, lost: 0 };
+    }
+  }
+
+  // ============================================================
+  // RECHERCHE
+  // ============================================================
+
+  async searchLeads(query: string): Promise<Lead[]> {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .or(`name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%,conversation_summary.ilike.%${query}%`)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Erreur recherche leads:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ Erreur searchLeads:', error);
+      return [];
+    }
+  }
+
+  // ============================================================
+  // SUPPRESSION
+  // ============================================================
+
+  async deleteLead(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Erreur suppression lead:', error);
+        return false;
+      }
+
+      console.log(`✅ Lead supprimé: ${id}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Erreur deleteLead:', error);
+      return false;
     }
   }
 }
+
+// ============================================================
+// EXPORT DE L'INSTANCE
+// ============================================================
 
 export const leadManagement = LeadManagementService.getInstance();

@@ -232,7 +232,7 @@ export default function OurSolutions({ limit = 4, initialSolutions = [] }: OurSo
               viewport={{ once: true }}
               whileHover={{ y: -5 }}
             >
-              <Link href={`/solutions/${solution.slug}`} className="block h-full">
+              <Link href={`/projects/`} className="block h-full">
                 <Card className={`border-2 bg-gradient-to-br ${getGradient(solution.color)} ${getBorder(solution.color)} hover:shadow-xl transition-all h-full group cursor-pointer`}>
                   <CardContent className="p-6">
                     <div className={`inline-flex rounded-full ${getIconBg(solution.color)} p-3 mb-4 group-hover:scale-110 transition`}>
@@ -271,18 +271,7 @@ export default function OurSolutions({ limit = 4, initialSolutions = [] }: OurSo
             </motion.div>
           ))}
         </div>
-        
-        {/* ✅ Lien vers /solutions */}
-        <div className="mt-6 flex justify-center">
-          <Link
-            href="/solutions"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
-          >
-            <span>Voir toutes nos solutions</span>
-            <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
-            <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalSolutions})</span>
-          </Link>
-        </div>
+      
 
         {hasMore && !showAll && (
           <div className="text-center mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
