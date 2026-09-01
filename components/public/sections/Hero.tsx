@@ -3,10 +3,20 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FaArrowRight, FaStar, FaComments, FaRobot } from "react-icons/fa";
+import { 
+  FaArrowRight, 
+  FaStar, 
+  FaComments, 
+  FaRobot,
+  FaUserPlus,
+  FaSignInAlt,
+  FaBuilding,
+  FaRocket
+} from "react-icons/fa";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useChat } from "@/contexts/ChatContext";
+import Link from "next/link";
 
 const TAGS = ['SaaS', 'IA', 'Domotique', 'Mécatronique', 'React', 'Node.js'];
 
@@ -145,7 +155,7 @@ export default function Hero() {
           className="mt-6 max-w-2xl mx-auto text-sm text-slate-200 md:text-base lg:text-lg"
         >
           UNITECH développe des solutions SaaS innovantes pour l'éducation, le commerce local,
-          et la gestion énergétique intelligente. Découvrez nos projets en cours de développement.
+          et la gestion énergétique intelligente. Rejoignez notre plateforme et accédez à nos services.
         </motion.p>
 
         <motion.div
@@ -171,27 +181,58 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.8 }}
           className="mt-8 flex flex-wrap justify-center gap-4"
         >
-         
+          <Link href="register">
+  <Button>Espace Client</Button>
+</Link>
 
-          <Button
-            asChild
-            className="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white font-semibold px-8 py-6 rounded-xl text-base hover:scale-105 transition-all border border-white/20"
-          >
-            <a href="/chat">
-              Discuter avec Harvey notre Assitant IA
-              <FaArrowRight className="ml-2 h-4 w-4" />
-            </a>
-          </Button>
 
-         
+<Link href="/connexion">
+  <Button variant="outline">Se connecter</Button>
+</Link>
+
+          {/* ✅ Bouton CHAT avec Harvey */}
+          
+        <Link href="/chat">
+  <Button 
+    variant="secondary" 
+    className="bg-[#F97316] hover:bg-[#ea580c] text-white font-semibold"
+  >
+    <span className="flex items-center gap-2">
+      <FaComments className="h-4 w-4" />
+      Chat avec Harvey
+    </span>
+  </Button>
+</Link>
         </motion.div>
 
-        {/* ✅ Petit indicateur du chatbot */}
+        {/* ✅ Lien vers les services */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2 }}
+          className="mt-6 flex items-center justify-center gap-2 text-xs text-white/50"
+        >
+          <FaRocket className="h-3 w-3 text-[#F97316]" />
+          <span>Découvrez nos services :</span>
+          <Link href="/services" className="text-white/70 hover:text-white hover:underline transition">
+            Automation Mail
+          </Link>
+          <span className="text-white/30">•</span>
+          <Link href="/services#recruitment" className="text-white/70 hover:text-white hover:underline transition">
+            Recrutement
+          </Link>
+          <span className="text-white/30">•</span>
+          <Link href="/services#api" className="text-white/70 hover:text-white hover:underline transition">
+            API
+          </Link>
+        </motion.div>
+
+        {/* ✅ Indicateur du chatbot */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.5 }}
-          className="mt-6 flex items-center justify-center gap-2 text-xs text-white/50"
+          className="mt-4 flex items-center justify-center gap-2 text-xs text-white/40"
         >
           <FaRobot className="h-3 w-3 text-[#F97316]" />
           <span>Ou cliquez sur le bouton orange pour parler à notre assistant IA 24/7</span>

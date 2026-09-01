@@ -19,6 +19,9 @@ import {
 } from 'react-icons/fa';
 import { toast } from 'sonner';
 
+// ✅ Rôles autorisés - Synchronisé avec les autres fichiers
+const ADMIN_ROLES = ['admin', 'super_admin', 'developer'];
+
 type Stats = {
   projects: number;
   users: number;
@@ -47,20 +50,22 @@ export default function AdminPage() {
         const sessionRes = await fetch('/api/auth/session');
         const sessionData = await sessionRes.json();
 
-        if (!sessionData.user || !['admin', 'super_admin'].includes(sessionData.user.role)) {
+        // ✅ Vérifier avec la liste complète des rôles autorisés
+        if (!sessionData.user || !ADMIN_ROLES.includes(sessionData.user.role)) {
           router.push('/login?error=unauthorized&message=Accès réservé aux administrateurs');
           return;
         }
 
         setIsAdmin(true);
 
+        // Récupérer toutes les statistiques en parallèle
         const [
-          { count: projectsCount },
-          { count: usersCount },
-          { count: trainingsCount },
-          { count: subscribersCount },
-          { count: activeProjectsCount },
-          { count: activeUsersCount }
+          projectsResult,
+          usersResult,
+          trainingsResult,
+          subscribersResult,
+          activeProjectsResult,
+          activeUsersResult
         ] = await Promise.all([
           supabase.from('projects').select('*', { count: 'exact', head: true }),
           supabase.from('users').select('*', { count: 'exact', head: true }),
@@ -73,12 +78,12 @@ export default function AdminPage() {
         ]);
 
         setStats({
-          projects: projectsCount || 0,
-          users: usersCount || 0,
-          trainings: trainingsCount || 0,
-          subscribers: subscribersCount || 0,
-          activeProjects: activeProjectsCount || 0,
-          activeUsers: activeUsersCount || 0,
+          projects: projectsResult.count || 0,
+          users: usersResult.count || 0,
+          trainings: trainingsResult.count || 0,
+          subscribers: subscribersResult.count || 0,
+          activeProjects: activeProjectsResult.count || 0,
+          activeUsers: activeUsersResult.count || 0,
         });
 
       } catch (error) {
@@ -105,6 +110,7 @@ export default function AdminPage() {
   }
 
   if (!isAdmin) {
+    console.warn('Accès refusé : utilisateur non administrateur');
     return null;
   }
 

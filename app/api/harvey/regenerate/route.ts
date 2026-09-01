@@ -2,9 +2,11 @@
 import { NextResponse } from 'next/server';
 import { harvey } from '@/lib/agents/harvey';
 import { supabase } from '@/lib/supabase';
+import { authorizationErrorResponse, requirePermission } from '@/lib/auth/session';
 
 export async function POST(request: Request) {
   try {
+    await requirePermission('ai.regenerate');
     const { conversationId } = await request.json();
 
     if (!conversationId) {
@@ -49,10 +51,12 @@ export async function POST(request: Request) {
       response 
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error('Erreur régénération:', error);
     return NextResponse.json(
-      { error: error.message },
+      { error: error instanceof Error ? error.message : 'Erreur interne' },
       { status: 500 }
     );
   }

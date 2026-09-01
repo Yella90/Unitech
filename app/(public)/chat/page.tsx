@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { FaArrowLeft, FaRobot, FaPaperPlane, FaSpinner, FaTrash, FaExpand } from 'react-icons/fa';
+import { FaArrowLeft, FaRobot, FaPaperPlane, FaSpinner, FaTrash } from 'react-icons/fa';
 import { toast } from 'sonner';
 import { chatStorage } from '@/lib/services/chat-storage';
 import ReactMarkdown from 'react-markdown';
@@ -28,6 +28,13 @@ export default function ChatPage() {
   const [sessionId] = useState(`chat-${Date.now()}-${Math.random().toString(36).substring(7)}`);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // This page is dedicated to the conversation: focus the composer as soon as
+  // it is rendered instead of leaving focus on surrounding site chrome.
+  useEffect(() => {
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 100);
+    return () => window.clearTimeout(focusTimer);
+  }, []);
 
   // Charger l'historique depuis localStorage
   useEffect(() => {
@@ -162,6 +169,7 @@ Comment puis-je vous aider aujourd'hui ?`,
     } finally {
       setIsLoading(false);
       setIsTyping(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isLoading, addMessage, messages, sessionId]);
 
@@ -182,7 +190,7 @@ Comment puis-je vous aider aujourd'hui ?`,
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F7FB]">
+    <div className="fixed inset-0 z-[60] flex min-h-[100dvh] flex-col overflow-hidden bg-[#F5F7FB]">
       {/* En-tête */}
       <header className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
         <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
@@ -214,8 +222,8 @@ Comment puis-je vous aider aujourd'hui ?`,
       </header>
 
       {/* Messages */}
-      <div className="mx-auto max-w-4xl px-4 py-4">
-        <div className="space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl space-y-3 px-4 py-4">
           {messages.map((message) => (
             <motion.div
               key={message.id}
@@ -287,7 +295,7 @@ Comment puis-je vous aider aujourd'hui ?`,
       </div>
 
       {/* Input */}
-      <div className=" bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
+      <div className="flex-shrink-0 bg-white border-t border-slate-200 shadow-lg">
         <div className="mx-auto max-w-4xl px-4 py-3">
           <form
             onSubmit={(e) => {

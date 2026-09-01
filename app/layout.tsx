@@ -8,7 +8,7 @@ import Tracker from "@/components/public/Tracker";
 import { cn } from "@/lib/utils";
 import ChatButton from "@/components/public/ChatButton";
 import { ChatProvider } from "@/contexts/ChatContext";
-
+import { headers } from 'next/headers'; // ✅ Ajout
 
 // ✅ Imports des deux agents
 import { initDonaService } from '@/lib/agents/dona/auto-start';
@@ -28,7 +28,6 @@ export const metadata: Metadata = {
 // ✅ Démarrer les agents au chargement du serveur
 if (typeof window === 'undefined') {
   try {
-    // 1. DONA - Classification (toutes les 60 secondes)
     const stopDona = initDonaService({ 
       interval: 60000,
       onError: (error) => {
@@ -36,7 +35,6 @@ if (typeof window === 'undefined') {
       }
     });
     
-    // 2. HARVEY - Réponse (toutes les 120 secondes)
     const stopHarvey = initHarveyService({ 
       interval: 120000,
       onError: (error) => {
@@ -44,7 +42,6 @@ if (typeof window === 'undefined') {
       }
     });
     
-    // Nettoyage à l'arrêt
     process.on('SIGTERM', () => {
       if (stopDona) stopDona();
       if (stopHarvey) stopHarvey();
@@ -62,11 +59,16 @@ if (typeof window === 'undefined') {
   }
 }
 
-export default function RootLayout({
+export default async function RootLayout({  // ✅ Ajouter 'async'
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // ✅ Utiliser await avec headers()
+  const headersList = await headers();
+  const pathname = headersList.get('x-pathname') || '';
+  const isChatPage = pathname === '/chat';
+console.log('🔍 Layout - Chemin actuel:', pathname, 'Is Chat Page:', isChatPage);
   return (
     <html lang="fr" className={cn("font-sans", geist.variable)}>
       <body className={`${inter.className} bg-[#F5F7FB] min-h-screen flex flex-col`}>
@@ -74,7 +76,8 @@ export default function RootLayout({
           <Header />
           <main className="flex-1">{children}</main>
           <Tracker />
-          <Footer />
+          {/* ✅ Condition pour afficher ou non le footer */}
+          {!isChatPage && <Footer />}
           <ChatButton />
         </ChatProvider>
       </body>

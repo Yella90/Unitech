@@ -37,9 +37,16 @@ import {
   FaRobot,
   FaUserTie,
   FaHandshake,
-  FaUserPlus
+  FaUserPlus,
+  FaUserTag,
+  FaBriefcase,
+  FaNewspaper,
+  FaFileAlt,
+  FaComments,
+  FaQuestionCircle
 } from "react-icons/fa";
 import { toast } from "sonner";
+import { canAccessAdminPage, isRole } from "@/lib/auth/rbac";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -60,28 +67,145 @@ interface VisitorStats {
   hasData: boolean;
 }
 
-const navItems = [
-  { href: "/admin", label: "Tableau de bord", icon: FaHome },
-  { href: "/admin/projects", label: "Projets", icon: FaProjectDiagram },
-  { href: "/admin/trainings", label: "Formations", icon: FaGraduationCap },
-   { href: "/admin/services", label: "Services", icon: FaCog },
-    { href: "/admin/collaborations", label: "Collaborations", icon: FaHandshake },
-    { href: "/admin/leads", label: "Leads", icon: FaUserPlus, section: "commerce" },
+// ✅ Configuration des liens de navigation avec rôles requis
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  roles: string[]; // Rôles autorisés à voir ce lien
+  section?: string;
+}
 
-  { href: "/admin/users", label: "Utilisateurs", icon: FaUsers },
-  { href: "/admin/subscribers", label: "Newsletter", icon: FaEnvelope },
-  { href: "/admin/analytics", label: "Analytics", icon: FaChartLine },
-  { href: "/admin/logs", label: "Logs", icon: FaClock },
-  { href: "/admin/api-keys", label: "Clés API", icon: FaKey },
-  { href: "/admin/dona", label: "DONA", icon: FaRobot },
-  { href: "/admin/harvey", label: "HARVEY", icon: FaUserTie }, 
-  { href: "/admin/settings", label: "Paramètres", icon: FaCog },
+const navItems: NavItem[] = [
+  // 📊 Tableau de bord - accessible à tous les admins
+  { 
+    href: "/admin", 
+    label: "Tableau de bord", 
+    icon: FaHome,
+    roles: ['super_admin', 'admin', 'project_manager', 'team_lead', 'developer', 'designer']
+  },
+  
+  // 📁 Projets - accessible aux project managers et admins
+  { 
+    href: "/admin/projects", 
+    label: "Projets", 
+    icon: FaProjectDiagram,
+    roles: ['super_admin', 'admin', 'project_manager', 'team_lead', 'developer']
+  },
+  
+  // 🎓 Formations - accessible aux admins et project managers
+  { 
+    href: "/admin/trainings", 
+    label: "Formations", 
+    icon: FaGraduationCap,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 💼 Services - accessible aux admins
+  { 
+    href: "/admin/services", 
+    label: "Services", 
+    icon: FaBriefcase,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 🤝 Collaborations - accessible aux admins
+  { 
+    href: "/admin/collaborations", 
+    label: "Collaborations", 
+    icon: FaHandshake,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 📊 Leads - accessible aux admins
+  { 
+    href: "/admin/leads", 
+    label: "Leads", 
+    icon: FaUserPlus,
+    roles: ['super_admin', 'admin', 'project_manager'],
+    section: "commerce"
+  },
+
+  // 👤 Utilisateurs - réservé aux super_admin et admin
+  { 
+    href: "/admin/users", 
+    label: "Utilisateurs", 
+    icon: FaUsers,
+    roles: ['super_admin', 'admin']
+  },
+  
+  // 📧 Newsletter - accessible aux admins
+  { 
+    href: "/admin/subscribers", 
+    label: "Newsletter", 
+    icon: FaEnvelope,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 📈 Analytics - accessible à tous les admins
+  { 
+    href: "/admin/analytics", 
+    label: "Analytics", 
+    icon: FaChartLine,
+    roles: ['super_admin', 'admin', 'project_manager', 'team_lead']
+  },
+  
+  // 📝 Logs - réservé aux super_admin et admin
+  { 
+    href: "/admin/logs", 
+    label: "Logs", 
+    icon: FaClock,
+    roles: ['super_admin', 'admin']
+  },
+  
+  // 🔑 Clés API - réservé aux super_admin
+  { 
+    href: "/admin/api-keys", 
+    label: "Clés API", 
+    icon: FaKey,
+    roles: ['super_admin']
+  },
+  
+  // 🤖 DONA - accessible à tous les admins
+  { 
+    href: "/admin/dona", 
+    label: "DONA", 
+    icon: FaRobot,
+    roles: ['super_admin', 'admin', 'project_manager', 'team_lead', ]
+  },
+  
+  // 🦸 HARVEY - accessible à tous les admins
+  { 
+    href: "/admin/harvey", 
+    label: "HARVEY", 
+    icon: FaUserTie,
+    roles: ['super_admin', 'admin', 'project_manager', 'team_lead']
+  },
+  
+  // ⚙️ Paramètres - réservé aux super_admin et admin
+  { 
+    href: "/admin/settings", 
+    label: "Paramètres", 
+    icon: FaCog,
+    roles: ['super_admin', 'admin']
+  },
 ];
+
+// ✅ Fonction pour vérifier si un utilisateur peut voir un lien
+function canSeeNavItem(userRole: string | null | undefined, item: NavItem): boolean {
+  if (!userRole) return false;
+  return item.roles.includes(userRole);
+}
+
+// ✅ Fonction pour grouper les liens par section
+function groupNavItems(items: NavItem[], userRole: string | null | undefined): NavItem[] {
+  return items.filter(item => canSeeNavItem(userRole, item));
+}
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(false); // ✅ Fermé par défaut sur mobile
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -103,9 +227,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // ✅ Détecter la taille de l'écran
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
-      // ✅ Sur desktop, ouvrir le sidebar par défaut
-      if (window.innerWidth >= 1024) {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (!mobile) {
         setSidebarOpen(true);
       } else {
         setSidebarOpen(false);
@@ -125,8 +249,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     try {
       setVisitorStats(prev => ({ ...prev, loading: true }));
 
-      console.log('📊 Début chargement statistiques...');
-
       const { data: allVisits, error: visitsError } = await supabase
         .from('page_visits')
         .select('*')
@@ -138,10 +260,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         return;
       }
 
-      console.log(`📊 ${allVisits?.length || 0} visites récupérées`);
-
       if (!allVisits || allVisits.length === 0) {
-        console.log('📊 Aucune visite trouvée');
         setVisitorStats(prev => ({ 
           ...prev, 
           loading: false, 
@@ -229,17 +348,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         ? Math.round((bounceVisits / validDurationVisits) * 100)
         : 0;
 
-      console.log('📊 Statistiques calculées:', {
-        totalVisits,
-        uniqueVisitors,
-        todayVisits,
-        avgDuration,
-        bounceRate,
-        deviceCounts,
-        visitsByPage,
-        visitsByDay: visitsByDay.map(d => d.count)
-      });
-
       setVisitorStats({
         totalVisits,
         uniqueVisitors,
@@ -269,7 +377,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         const response = await fetch('/api/auth/session');
         const payload = await response.json();
 
-        if (!response.ok || !payload.user || !['admin', 'super_admin'].includes(payload.user.role)) {
+        if (!response.ok || !payload.user || !isRole(payload.user.role) || !canAccessAdminPage(payload.user.role, pathname ?? '/admin')) {
           router.push('/login');
           return;
         }
@@ -340,7 +448,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   };
 
-  // ✅ Fermer le sidebar sur mobile après navigation
   const handleNavigation = () => {
     if (isMobile) {
       setSidebarOpen(false);
@@ -359,12 +466,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return null;
   }
 
+  // ✅ Filtrer les liens de navigation en fonction du rôle de l'utilisateur
+  const visibleNavItems = groupNavItems(navItems, user.role);
+
   const maxVisits = Math.max(...visitorStats.visitsByDay.map(d => d.count), 1);
   const hasData = visitorStats.hasData && visitorStats.totalVisits > 0;
 
   return (
     <div className="min-h-screen bg-[#F5F7FB]">
-      {/* ✅ Sidebar - Overlay avec z-index plus élevé sur mobile */}
+      {/* Sidebar */}
       <aside
         className={`fixed top-0 left-0 z-50 h-screen w-64 bg-white border-r border-slate-200 transition-transform duration-300 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -376,7 +486,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <span className="font-bold text-[#1E3A8A]">UNITECH</span>
             <span className="text-xs text-slate-400 font-medium">admin</span>
           </Link>
-          {/* ✅ Bouton fermeture uniquement sur mobile */}
           {isMobile && (
             <button 
               className="p-2 rounded-lg hover:bg-slate-100" 
@@ -389,8 +498,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-8rem)]">
-          {navItems.map((item) => {
+          {/* ✅ Affichage des liens filtrés par rôle */}
+          {visibleNavItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + "/"));
+            
+            // ✅ Vérification supplémentaire pour la sécurité
+            if (!canSeeNavItem(user.role, item)) {
+              return null;
+            }
+
             return (
               <Link 
                 key={item.href} 
@@ -407,6 +523,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
             );
           })}
+          
+          {/* ✅ Message si aucun lien n'est disponible */}
+          {visibleNavItems.length === 0 && (
+            <div className="text-center py-8 text-slate-400">
+              <FaShieldAlt className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+              <p className="text-sm">Aucune section disponible</p>
+              <p className="text-xs mt-1">Contactez l'administrateur</p>
+            </div>
+          )}
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 bg-white">
@@ -434,7 +559,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      {/* ✅ Overlay plus visible sur mobile avec z-index adapté */}
+      {/* Overlay mobile */}
       {isMobile && sidebarOpen && (
         <div 
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden transition-opacity duration-300" 
@@ -443,13 +568,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         />
       )}
 
-      {/* ✅ Contenu principal avec marge adaptative */}
+      {/* Contenu principal */}
       <div className={`transition-all duration-300 ${
         !isMobile && sidebarOpen ? "lg:ml-64" : "lg:ml-0"
       }`}>
         <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
           <div className="flex h-16 items-center justify-between px-4">
-            {/* ✅ Bouton menu burger sur mobile */}
             <button 
               className="p-2 rounded-lg hover:bg-slate-100 lg:hidden" 
               onClick={() => setSidebarOpen(true)}
@@ -458,6 +582,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <FaBars className="h-5 w-5 text-slate-600" />
             </button>
             <div className="flex items-center gap-4 ml-auto lg:ml-0">
+              {/* ✅ Affichage du rôle avec badge coloré */}
+              <Badge variant="outline" className="hidden sm:flex items-center gap-1 text-xs">
+                <FaShieldAlt className="h-3 w-3 text-[#F97316]" />
+                {user?.role || "viewer"}
+              </Badge>
               <span className="text-sm text-slate-500 hidden sm:block">admin.unitech.com</span>
               <span className="text-sm text-slate-700 truncate max-w-[120px] sm:max-w-none">
                 {user?.first_name || user?.email}
@@ -519,7 +648,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </div>
                 ) : (
                   <>
-                    {/* ✅ Grille responsive avec meilleure adaptation mobile */}
                     <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
                       <Card className="border-0 shadow-sm">
                         <CardContent className="p-3">

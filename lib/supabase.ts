@@ -10,7 +10,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Client public
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
+console.log('SUPABASE_SERVICE_ROLE_KEY existe ?', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+  console.log('SUPABASE_URL existe ?', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
 // ✅ Client admin - seulement si la clé existe
 export const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(

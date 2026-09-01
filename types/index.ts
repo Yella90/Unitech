@@ -35,7 +35,7 @@ export interface User {
   email: string;
   first_name: string | null;
   last_name: string | null;
-  role: 'super_admin' | 'admin' | 'project_manager' | 'team_lead' | 'developer' | 'designer' | 'client' | 'viewer';
+  role: 'super_admin' | 'admin' | 'project_manager' | 'team_lead' | 'developer' | 'designer' | 'client' | 'viewer' | 'collaborator' | 'associate';
   avatar: string | null;
   phone: string | null;
   department: string | null;

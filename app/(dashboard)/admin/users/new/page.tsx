@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +30,8 @@ const roles = [
   { value: 'designer', label: 'Designer', icon: '🎨' },
   { value: 'client', label: 'Client', icon: '🤝' },
   { value: 'viewer', label: 'Visiteur', icon: '👀' },
+  { value: 'collaborator', label: 'Collaborateur', icon: '🧩' },
+  { value: 'associate', label: 'Associé', icon: '🔗' },
 ];
 
 export default function NewUserPage() {
@@ -93,81 +94,88 @@ export default function NewUserPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setSaving(true);
 
-    try {
-      if (formData.password !== formData.confirmPassword) {
-        toast.error('Les mots de passe ne correspondent pas');
-        setSaving(false);
-        return;
-      }
+  try {
+    // Validation des mots de passe
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Les mots de passe ne correspondent pas");
+      setSaving(false);
+      return;
+    }
 
-      if (formData.password.length < 6) {
-        toast.error('Le mot de passe doit contenir au moins 6 caractères');
-        setSaving(false);
-        return;
-      }
+    if (formData.password.length < 12) {
+      toast.error("Le mot de passe doit contenir au moins 12 caractères");
+      setSaving(false);
+      return;
+    }
 
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    console.log("📤 Envoi à /api/users:", {
+      email: formData.email,
+      first_name: formData.first_name,
+      last_name: formData.last_name,
+      role: formData.role,
+    });
+
+    // ✅ Appel à l'API (sans /new)
+    const response = await fetch("/api/users", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
         email: formData.email,
         password: formData.password,
-        email_confirm: true,
-        user_metadata: {
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-        },
-      });
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        role: formData.role,
+      }),
+    });
 
-      if (authError) {
-        if (authError.message.includes('already been registered')) {
-          toast.error('Cet email est déjà utilisé');
-        } else {
-          toast.error(authError.message);
-        }
-        setSaving(false);
-        return;
+    console.log("📥 Status reçu:", response.status);
+
+    // ✅ Vérification du content-type
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      console.error("❌ Réponse non-JSON:", text.substring(0, 500));
+      
+      if (response.status === 404) {
+        toast.error("API non trouvée. Vérifiez le chemin /api/users");
+      } else {
+        toast.error("Erreur serveur inattendue");
       }
-
-      if (!authData.user) {
-        toast.error('Erreur lors de la création du compte');
-        setSaving(false);
-        return;
-      }
-
-      const { error: dbError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          email: formData.email,
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          role: formData.role,
-          is_active: true,
-          created_at: new Date().toISOString(),
-        });
-
-      if (dbError) {
-        console.error('Erreur insertion utilisateur:', dbError);
-        toast.error('Erreur lors de la création du profil');
-        setSaving(false);
-        return;
-      }
-
-      toast.success('✅ Utilisateur créé avec succès !');
-      setTimeout(() => {
-        router.push('/admin/users');
-      }, 1000);
-
-    } catch (err: any) {
-      console.error('Erreur création utilisateur :', err);
-      toast.error(err.message || 'Erreur lors de la création');
-    } finally {
       setSaving(false);
+      return;
     }
-  };
 
+    const result = await response.json();
+
+    if (!response.ok) {
+      toast.error(result.error || "Erreur lors de la création");
+      setSaving(false);
+      return;
+    }
+
+    toast.success("✅ Utilisateur créé avec succès !");
+    setTimeout(() => {
+      router.push("/admin/users");
+    }, 1000);
+
+  } catch (err: any) {
+    console.error("❌ Erreur création utilisateur:", err);
+    
+    if (err.message.includes("Unexpected token")) {
+      toast.error("Erreur serveur: réponse invalide");
+    } else {
+      toast.error(err.message || "Erreur lors de la création");
+    }
+  } finally {
+    setSaving(false);
+  }
+};
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
       <Toaster position="top-right" richColors />
@@ -235,9 +243,9 @@ export default function NewUserPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={formData.password}
                     onChange={handleChange}
-                    placeholder="Minimum 6 caractères"
+                    placeholder="Minimum 12 caractères"
                     required
-                    minLength={6}
+                    minLength={12}
                     className="pr-10 text-sm"
                   />
                   <button
