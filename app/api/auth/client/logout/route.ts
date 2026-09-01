@@ -7,19 +7,22 @@ export async function POST(req: NextRequest) {
     const sessionToken = req.cookies.get('client_session_token')?.value;
 
     if (sessionToken) {
-      // ✅ Désactiver la session
+      // Désactiver la session
       await supabase
         .from('client_sessions')
-        .update({ is_active: false })
+        .update({ 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
         .eq('token', sessionToken);
     }
 
-    // ✅ Supprimer le cookie
     const response = NextResponse.json({
       success: true,
       message: 'Déconnecté avec succès'
     });
 
+    // Supprimer le cookie
     response.cookies.delete('client_session_token');
 
     return response;
@@ -27,7 +30,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('❌ Erreur déconnexion:', error);
     return NextResponse.json(
-      { error: 'Erreur serveur' },
+      { success: false, error: 'Erreur lors de la déconnexion' },
       { status: 500 }
     );
   }

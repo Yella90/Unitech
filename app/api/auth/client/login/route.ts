@@ -9,7 +9,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { email, password } = body;
 
-    // ✅ Validation
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email et mot de passe requis' },
@@ -17,7 +16,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Récupérer le client
+    // Récupérer le client
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('*')
@@ -31,7 +30,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Vérifier si le compte est actif
+    // Vérifier si le compte est actif
     if (!client.is_active) {
       return NextResponse.json(
         { error: 'Ce compte a été désactivé' },
@@ -39,7 +38,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Vérifier le mot de passe
+    // Vérifier le mot de passe
     const isMatch = await bcrypt.compare(password, client.password_hash);
     if (!isMatch) {
       return NextResponse.json(
@@ -48,9 +47,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Créer une session
+    // Créer une session
     const sessionToken = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    // Récupérer l'IP correctement
+    const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                      req.headers.get('x-real-ip') || 
+                      'unknown';
 
     const { error: sessionError } = await supabase
       .from('client_sessions')
@@ -58,8 +62,9 @@ export async function POST(req: NextRequest) {
         client_id: client.id,
         token: sessionToken,
         expires_at: expiresAt.toISOString(),
-        ip_address: req.headers.get('x-forwarded-for') || req.ip || 'unknown',
-        user_agent: req.headers.get('user-agent') || 'unknown'
+        ip_address: ipAddress,
+        user_agent: req.headers.get('user-agent') || 'unknown',
+        is_active: true
       });
 
     if (sessionError) {
@@ -70,13 +75,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Mettre à jour la dernière connexion
+    // Mettre à jour la dernière connexion
     await supabase
       .from('clients')
       .update({ last_login_at: new Date().toISOString() })
       .eq('id', client.id);
 
-    // ✅ Préparer la réponse
     const response = NextResponse.json({
       success: true,
       message: 'Connexion réussie',
@@ -92,7 +96,6 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // ✅ Définir le cookie de session
     response.cookies.set('client_session_token', sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

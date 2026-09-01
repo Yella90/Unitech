@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     // ✅ Rediriger vers le dashboard
     return NextResponse.redirect(
-      new URL('/client/dashboard?verified=true', req.url)
+      new URL('/dashboard?verified=true', req.url)
     );
 
   } catch (error) {

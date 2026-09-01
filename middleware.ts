@@ -75,7 +75,7 @@ export async function middleware(req: NextRequest) {
       if (session.users?.role && ADMIN_ROLES.includes(session.users.role)) {
         return NextResponse.redirect(new URL('/admin', req.url));
       }
-      return NextResponse.redirect(new URL('/client/dashboard', req.url));
+      return NextResponse.redirect(new URL('/dashboard', req.url));
     }
 
     if (!ADMIN_ROLES.includes(session.users?.role)) {

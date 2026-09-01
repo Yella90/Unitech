@@ -79,7 +79,7 @@ export default function ClientLoginPage() {
 
       toast.success('Connexion réussie !');
       setTimeout(() => {
-        router.push('/client/dashboard');
+        router.push('/dashboard');
       }, 500);
 
     } catch (error) {
