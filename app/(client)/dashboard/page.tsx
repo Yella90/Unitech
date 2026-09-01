@@ -598,29 +598,7 @@ export default function ClientDashboard() {
         </Card>
       </div>
 
-      {/* ============================================================
-      PIED DE PAGE
-      ============================================================ */}
-      <div className="text-center text-xs text-slate-400 py-4 border-t border-slate-200 mt-6">
-        <p>© {new Date().getFullYear()} UNITECH - Tous droits réservés</p>
-        <div className="flex flex-wrap justify-center gap-3 mt-1">
-          <Link href="/client/support" className="hover:text-[#1E3A8A] transition">
-            Support
-          </Link>
-          <span className="text-slate-300">•</span>
-          <Link href="/client/terms" className="hover:text-[#1E3A8A] transition">
-            Conditions
-          </Link>
-          <span className="text-slate-300">•</span>
-          <Link href="/client/privacy" className="hover:text-[#1E3A8A] transition">
-            Confidentialité
-          </Link>
-          <span className="text-slate-300">•</span>
-          <Link href="/client/faq" className="hover:text-[#1E3A8A] transition">
-            FAQ
-          </Link>
-        </div>
-      </div>
+      
     </div>
   );
 }
