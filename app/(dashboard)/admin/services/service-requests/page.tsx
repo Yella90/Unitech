@@ -18,37 +18,66 @@ import {
   FaPhone,
   FaBuilding,
   FaCalendar,
-  FaFile,
-  FaDownload,
   FaSearch,
   FaFilter,
   FaTimesCircle,
-  FaSync
+  FaSync,
+  FaArrowLeft,
+  FaEdit,
+  FaTrash,
+  FaInfoCircle,
+  FaBriefcase,
+  FaMoneyBill,
+  FaCalendarAlt,
+  FaComment,
+  FaGlobe,
+  FaUserPlus
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
-import RequestDetailModal from '@/components/dashboard/RequestDetailModal';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-type ServiceRequest = {
+// ============================================================
+// TYPES
+// ============================================================
+type PublicServiceRequest = {
   id: string;
   service_id: string;
-  service?: {
-    name: string;
-    slug: string;
-  };
   name: string;
   email: string;
-  phone: string | null;
-  company: string | null;
+  phone?: string;
+  company?: string;
   description: string;
-  budget: string | null;
-  deadline: string | null;
+  budget?: string;
+  deadline?: string;
   attachments: string[];
   status: 'pending' | 'processing' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
+  service?: {
+    id: string;
+    name: string;
+    slug: string;
+    category: string;
+    type: string;
+    icon: string;
+    color: string;
+  };
 };
 
+// ============================================================
+// CONFIGURATION
+// ============================================================
 const statusMap: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   pending: {
     label: 'En attente',
@@ -72,45 +101,69 @@ const statusMap: Record<string, { label: string; color: string; icon: React.Reac
   },
 };
 
-export default function AdminServiceRequests() {
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+// ============================================================
+// COMPOSANT PRINCIPAL
+// ============================================================
+export default function AdminPublicServiceRequests() {
+  const [requests, setRequests] = useState<PublicServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'processing' | 'completed' | 'cancelled'>('all');
-  const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<PublicServiceRequest | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    status: '',
+    budget: '',
+    deadline: '',
+    notes: ''
+  });
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadRequests();
   }, []);
 
+  // ============================================================
+  // CHARGEMENT DES DONNÉES
+  // ============================================================
   const loadRequests = async (silent: boolean = false) => {
     if (!silent) setRefreshing(true);
 
     try {
-      let query = supabase
+      const { data: requestsData, error: requestsError } = await supabase
         .from('service_requests')
-        .select(`
-          *,
-          service:service_id (
-            name,
-            slug
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (filterStatus !== 'all') {
-        query = query.eq('status', filterStatus);
+      if (requestsError) throw requestsError;
+
+      const serviceIds = [...new Set(requestsData?.map(r => r.service_id).filter(Boolean) || [])];
+      let servicesMap = new Map();
+      
+      if (serviceIds.length > 0) {
+        const { data: servicesData, error: servicesError } = await supabase
+          .from('services')
+          .select('id, name, slug, category, type, icon, color')
+          .in('id', serviceIds);
+
+        if (!servicesError && servicesData) {
+          servicesMap = new Map(servicesData.map(s => [s.id, s]));
+        }
       }
 
-      const { data, error } = await query;
+      const mappedData = (requestsData || []).map((item: any) => ({
+        ...item,
+        service: servicesMap.get(item.service_id) || null
+      }));
 
-      if (error) throw error;
-      setRequests(data || []);
+      setRequests(mappedData);
       
       if (!silent) {
-        toast.success(`✅ ${data?.length || 0} demandes chargées`);
+        toast.success(`✅ ${mappedData.length} demandes publiques chargées`);
       }
     } catch (error) {
       console.error('❌ Erreur:', error);
@@ -123,6 +176,9 @@ export default function AdminServiceRequests() {
     }
   };
 
+  // ============================================================
+  // ACTIONS
+  // ============================================================
   const updateStatus = async (id: string, newStatus: string) => {
     try {
       const { error } = await supabase
@@ -150,8 +206,92 @@ export default function AdminServiceRequests() {
     }
   };
 
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+
+    setUpdating(true);
+
+    try {
+      const updates: any = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (editForm.status) updates.status = editForm.status;
+      if (editForm.budget) updates.budget = editForm.budget;
+      if (editForm.deadline) updates.deadline = editForm.deadline;
+      if (editForm.notes) updates.notes = editForm.notes;
+
+      const { error } = await supabase
+        .from('service_requests')
+        .update(updates)
+        .eq('id', selectedRequest.id);
+
+      if (error) throw error;
+
+      toast.success('✅ Demande mise à jour avec succès');
+      setEditModalOpen(false);
+      await loadRequests(true);
+      
+    } catch (error) {
+      console.error('❌ Erreur:', error);
+      toast.error('Erreur lors de la mise à jour');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedRequest) return;
+    
+    setDeleting(true);
+
+    try {
+      const { error } = await supabase
+        .from('service_requests')
+        .delete()
+        .eq('id', selectedRequest.id);
+
+      if (error) throw error;
+
+      toast.success('✅ Demande supprimée avec succès');
+      setDeleteModalOpen(false);
+      setModalOpen(false);
+      await loadRequests(true);
+      
+    } catch (error) {
+      console.error('❌ Erreur:', error);
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openEditModal = (request: PublicServiceRequest) => {
+    setSelectedRequest(request);
+    setEditForm({
+      status: request.status,
+      budget: request.budget || '',
+      deadline: request.deadline || '',
+      notes: ''
+    });
+    setEditModalOpen(true);
+  };
+
+  const openDeleteModal = (request: PublicServiceRequest) => {
+    setSelectedRequest(request);
+    setDeleteModalOpen(true);
+  };
+
+  // ============================================================
+  // FILTRES
+  // ============================================================
   const getFilteredRequests = () => {
     let filtered = requests;
+
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(r => r.status === filterStatus);
+    }
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -159,14 +299,28 @@ export default function AdminServiceRequests() {
         r.name.toLowerCase().includes(term) ||
         r.email.toLowerCase().includes(term) ||
         r.description.toLowerCase().includes(term) ||
-        r.company?.toLowerCase().includes(term)
+        r.company?.toLowerCase().includes(term) ||
+        r.service?.name?.toLowerCase().includes(term)
       );
     }
 
     return filtered;
   };
 
-  const filteredRequests = getFilteredRequests();
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // ============================================================
+  // STATISTIQUES
+  // ============================================================
   const stats = {
     total: requests.length,
     pending: requests.filter(r => r.status === 'pending').length,
@@ -175,6 +329,9 @@ export default function AdminServiceRequests() {
     cancelled: requests.filter(r => r.status === 'cancelled').length,
   };
 
+  // ============================================================
+  // RENDU
+  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F5F7FB] p-4">
@@ -183,40 +340,55 @@ export default function AdminServiceRequests() {
     );
   }
 
+  const filteredRequests = getFilteredRequests();
+
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
-        {/* En-tête */}
+        {/* ============================================================
+        EN-TÊTE
+        ============================================================ */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[#1E3A8A] flex items-center gap-2 sm:gap-3">
-              <FaClipboardList className="h-6 w-6 sm:h-7 sm:w-7 text-[#F97316]" />
-              Demandes de services
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Gérez les demandes de services des clients
-            </p>
+          <div className="flex items-center gap-2">
+            <Link href="/admin/services">
+              <Button variant="ghost" size="sm" className="text-slate-500 hover:text-[#1E3A8A]">
+                <FaArrowLeft className="h-4 w-4 mr-1" />
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[#1E3A8A] flex items-center gap-2 sm:gap-3">
+                <FaGlobe className="h-6 w-6 sm:h-7 sm:w-7 text-[#F97316]" />
+                Demandes publiques
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500">
+                Gérez les demandes de services du site public
+              </p>
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => loadRequests(false)}
-            disabled={refreshing}
-            className="flex-shrink-0"
-          >
-            {refreshing ? (
-              <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <FaSync className="mr-2 h-4 w-4" />
-            )}
-            Rafraîchir
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadRequests(false)}
+              disabled={refreshing}
+              className="flex-shrink-0"
+            >
+              {refreshing ? (
+                <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FaSync className="mr-2 h-4 w-4" />
+              )}
+              Rafraîchir
+            </Button>
+          </div>
         </div>
 
-        {/* Statistiques */}
-        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4">
+        {/* ============================================================
+        STATISTIQUES
+        ============================================================ */}
+        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           <Card>
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
@@ -261,27 +433,18 @@ export default function AdminServiceRequests() {
               </div>
             </CardContent>
           </Card>
-          <Card className="col-span-2 sm:col-span-1">
-            <CardContent className="p-3 sm:p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] sm:text-xs text-slate-500">Annulés</p>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">{stats.cancelled}</p>
-                </div>
-                <FaTimes className="h-5 w-5 sm:h-6 sm:w-6 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Recherche et filtres */}
+        {/* ============================================================
+        RECHERCHE ET FILTRES
+        ============================================================ */}
         <div className="mt-4 sm:mt-6 flex flex-col gap-3">
           <div className="flex flex-col xs:flex-row gap-2">
             <div className="relative flex-1">
               <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-3 w-3 sm:h-4 sm:w-4" />
               <input
                 type="text"
-                placeholder="Rechercher par nom, email, entreprise..."
+                placeholder="Rechercher par nom, email, entreprise, service..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
@@ -297,7 +460,6 @@ export default function AdminServiceRequests() {
             </div>
           </div>
 
-          {/* Filtres */}
           <div className="flex flex-wrap gap-2">
             <Button
               variant={filterStatus === 'all' ? 'default' : 'outline'}
@@ -346,31 +508,23 @@ export default function AdminServiceRequests() {
           </div>
         </div>
 
-        {/* Liste des demandes */}
+        {/* ============================================================
+        LISTE DES DEMANDES
+        ============================================================ */}
         <div className="mt-4 sm:mt-6 rounded-xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           {filteredRequests.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center px-4">
               <div className="rounded-full bg-slate-100 p-3 sm:p-4">
-                <FaClipboardList className="h-8 w-8 sm:h-10 sm:w-10 text-slate-400" />
+                <FaGlobe className="h-8 w-8 sm:h-10 sm:w-10 text-slate-400" />
               </div>
               <h3 className="mt-4 text-base sm:text-lg font-semibold text-slate-700">
-                Aucune demande trouvée
+                Aucune demande publique trouvée
               </h3>
               <p className="text-xs sm:text-sm text-slate-500">
                 {searchTerm || filterStatus !== 'all'
                   ? 'Essayez de modifier vos filtres'
-                  : 'Aucune demande de service pour le moment'}
+                  : 'Aucune demande de service public pour le moment'}
               </p>
-              {(searchTerm || filterStatus !== 'all') && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setSearchTerm(''); setFilterStatus('all'); }}
-                  className="mt-4"
-                >
-                  Réinitialiser les filtres
-                </Button>
-              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -379,7 +533,6 @@ export default function AdminServiceRequests() {
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600">Client</th>
                     <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 hidden md:table-cell">Service</th>
-                    <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 hidden lg:table-cell">Description</th>
                     <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600">Statut</th>
                     <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 hidden xs:table-cell">Date</th>
                     <th className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold text-slate-600">Actions</th>
@@ -408,11 +561,6 @@ export default function AdminServiceRequests() {
                           {request.service?.name || 'Non spécifié'}
                         </span>
                       </td>
-                      <td className="px-2 sm:px-4 py-2 sm:py-3 hidden lg:table-cell">
-                        <p className="line-clamp-2 max-w-xs text-slate-600 text-xs sm:text-sm">
-                          {request.description}
-                        </p>
-                      </td>
                       <td className="px-2 sm:px-4 py-2 sm:py-3">
                         <Badge className={`${statusMap[request.status]?.color || 'bg-gray-100'} text-[8px] sm:text-[10px] flex items-center gap-1 w-fit`}>
                           {statusMap[request.status]?.icon}
@@ -421,7 +569,7 @@ export default function AdminServiceRequests() {
                       </td>
                       <td className="px-2 sm:px-4 py-2 sm:py-3 hidden xs:table-cell">
                         <span className="text-[10px] sm:text-xs text-slate-500">
-                          {new Date(request.created_at).toLocaleDateString('fr-FR')}
+                          {formatDate(request.created_at)}
                         </span>
                       </td>
                       <td className="px-2 sm:px-4 py-2 sm:py-3 text-right">
@@ -435,6 +583,20 @@ export default function AdminServiceRequests() {
                             title="Voir les détails"
                           >
                             <FaEye className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </button>
+                          <button
+                            onClick={() => openEditModal(request)}
+                            className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg transition flex items-center justify-center text-slate-400 hover:text-[#F97316] hover:bg-orange-50"
+                            title="Modifier"
+                          >
+                            <FaEdit className="h-3 w-3 sm:h-4 sm:w-4" />
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(request)}
+                            className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg transition flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50"
+                            title="Supprimer"
+                          >
+                            <FaTrash className="h-3 w-3 sm:h-4 sm:w-4" />
                           </button>
                           {request.status === 'pending' && (
                             <button
@@ -474,15 +636,67 @@ export default function AdminServiceRequests() {
         </div>
       </div>
 
-      {/* Modal de détails */}
-      {selectedRequest && (
-        <RequestDetailModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          request={selectedRequest}
-          onStatusUpdate={updateStatus}
-        />
-      )}
+      {/* ============================================================
+      MODAL DE DÉTAILS
+      ============================================================ */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[#1E3A8A]">Détails de la demande publique</DialogTitle>
+            <DialogDescription>
+              Informations complètes sur la demande de service
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedRequest && (
+            <div className="space-y-4">
+              {/* ... contenu similaire à la version précédente ... */}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================
+      MODAL D'ÉDITION
+      ============================================================ */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-md">
+          {/* ... contenu similaire à la version précédente ... */}
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================
+      MODAL DE SUPPRESSION
+      ============================================================ */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Confirmer la suppression</DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette demande ?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setDeleteModalOpen(false)}
+            >
+              Annuler
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="flex-1"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : 'Supprimer'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

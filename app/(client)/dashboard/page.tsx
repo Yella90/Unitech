@@ -85,7 +85,7 @@ const services: Service[] = [
     icon: FaMailBulk,
     status: 'active',
     color: 'bg-blue-500',
-    href: '/client/mail',
+    href: '/clients/mail',
     features: ['Récupération automatique', 'Réponses IA', 'Templates personnalisés']
   },
   {
@@ -95,7 +95,7 @@ const services: Service[] = [
     icon: FaUserFriends,
     status: 'active',
     color: 'bg-green-500',
-    href: '/client/recruitment',
+    href: '/clients/recruitment',
     features: ['Formulaires personnalisés', 'Suivi candidats', 'Export données']
   },
   {
@@ -105,7 +105,7 @@ const services: Service[] = [
     icon: FaKey,
     status: 'active',
     color: 'bg-purple-500',
-    href: '/client/api',
+    href: '/clients/api',
     features: ['Documentation complète', 'Tokens sécurisés', 'Rate limiting']
   },
   {
@@ -115,7 +115,7 @@ const services: Service[] = [
     icon: FaChartLine,
     status: 'coming_soon',
     color: 'bg-orange-500',
-    href: '/client/analytics',
+    href: '/clients/analytics',
     features: ['Tableaux de bord', 'Rapports personnalisés', 'Export de données']
   }
 ];
@@ -339,13 +339,13 @@ export default function ClientDashboard() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/client/services">
+          <Link href="/clients/services">
             <Button className="bg-[#F97316] hover:bg-[#ea580c] text-sm sm:text-base">
               <FaPlus className="mr-2 h-4 w-4" />
               Nouveau service
             </Button>
           </Link>
-          <Link href="/client/profile">
+          <Link href="/clients/profile">
             <Button variant="outline" className="text-sm sm:text-base">
               <FaUserCog className="mr-2 h-4 w-4" />
               <span className="hidden xs:inline">Mon profil</span>
@@ -425,7 +425,7 @@ export default function ClientDashboard() {
             <FaRocket className="h-5 w-5 text-[#F97316]" />
             Vos services
           </h2>
-          <Link href="/client/services">
+          <Link href="/clients/services">
             <Button variant="ghost" className="text-sm text-[#F97316] hover:text-[#ea580c]">
               Voir tous <FaArrowRight className="ml-2 h-3 w-3" />
             </Button>
@@ -542,37 +542,37 @@ export default function ClientDashboard() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <Link href="/client/mail/compose">
+              <Link href="/clients/mail/compose">
                 <Button variant="outline" className="w-full justify-start text-xs sm:text-sm h-auto py-3">
                   <FaEnvelope className="mr-2 h-4 w-4 flex-shrink-0" />
                   <span className="truncate">Nouvel email</span>
                 </Button>
               </Link>
-              <Link href="/client/recruitment/create">
+              <Link href="/clients/recruitment/create">
                 <Button variant="outline" className="w-full justify-start text-xs sm:text-sm h-auto py-3">
                   <FaBriefcase className="mr-2 h-4 w-4 flex-shrink-0" />
                   <span className="truncate">Recrutement</span>
                 </Button>
               </Link>
-              <Link href="/client/api-keys/new">
+              <Link href="/clients/api-keys/new">
                 <Button variant="outline" className="w-full justify-start text-xs sm:text-sm h-auto py-3">
                   <FaKey className="mr-2 h-4 w-4 flex-shrink-0" />
                   <span className="truncate">Token API</span>
                 </Button>
               </Link>
-              <Link href="/client/credits">
+              <Link href="/clients/credits">
                 <Button variant="outline" className="w-full justify-start text-xs sm:text-sm h-auto py-3">
                   <FaCreditCard className="mr-2 h-4 w-4 flex-shrink-0" />
                   <span className="truncate">Recharger</span>
                 </Button>
               </Link>
-              <Link href="/client/mail/templates">
+              <Link href="/clients/mail/templates">
                 <Button variant="outline" className="w-full justify-start text-xs sm:text-sm h-auto py-3">
                   <FaFileAlt className="mr-2 h-4 w-4 flex-shrink-0" />
                   <span className="truncate">Templates</span>
                 </Button>
               </Link>
-              <Link href="/client/support">
+              <Link href="/clients/support">
                 <Button variant="outline" className="w-full justify-start text-xs sm:text-sm h-auto py-3">
                   <FaHeadset className="mr-2 h-4 w-4 flex-shrink-0" />
                   <span className="truncate">Support</span>
@@ -598,7 +598,29 @@ export default function ClientDashboard() {
         </Card>
       </div>
 
-      
+      {/* ============================================================
+      PIED DE PAGE
+      ============================================================ */}
+      <div className="text-center text-xs text-slate-400 py-4 border-t border-slate-200 mt-6">
+        <p>© {new Date().getFullYear()} UNITECH - Tous droits réservés</p>
+        <div className="flex flex-wrap justify-center gap-3 mt-1">
+          <Link href="/clients/support" className="hover:text-[#1E3A8A] transition">
+            Support
+          </Link>
+          <span className="text-slate-300">•</span>
+          <Link href="/clients/terms" className="hover:text-[#1E3A8A] transition">
+            Conditions
+          </Link>
+          <span className="text-slate-300">•</span>
+          <Link href="/clients/privacy" className="hover:text-[#1E3A8A] transition">
+            Confidentialité
+          </Link>
+          <span className="text-slate-300">•</span>
+          <Link href="/clients/faq" className="hover:text-[#1E3A8A] transition">
+            FAQ
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

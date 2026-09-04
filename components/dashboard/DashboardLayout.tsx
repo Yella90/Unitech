@@ -43,7 +43,19 @@ import {
   FaNewspaper,
   FaFileAlt,
   FaComments,
-  FaQuestionCircle
+  FaQuestionCircle,
+  FaBuilding,
+  FaCreditCard,
+  FaRocket,
+  FaClipboardList,
+  FaUserCheck,
+  FaUserTimes,
+  FaMailBulk,
+  FaBox,
+  FaLayerGroup,
+  FaThLarge,
+  FaList,
+  FaTags
 } from "react-icons/fa";
 import { toast } from "sonner";
 import { canAccessAdminPage, isRole } from "@/lib/auth/rbac";
@@ -72,12 +84,12 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ElementType;
-  roles: string[]; // Rôles autorisés à voir ce lien
+  roles: string[];
   section?: string;
 }
 
 const navItems: NavItem[] = [
-  // 📊 Tableau de bord - accessible à tous les admins
+  // 📊 Tableau de bord
   { 
     href: "/admin", 
     label: "Tableau de bord", 
@@ -85,7 +97,15 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'project_manager', 'team_lead', 'developer', 'designer']
   },
   
-  // 📁 Projets - accessible aux project managers et admins
+  // 👤 Clients
+  { 
+    href: "/admin/clients", 
+    label: "Clients", 
+    icon: FaUsers,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 📁 Projets
   { 
     href: "/admin/projects", 
     label: "Projets", 
@@ -93,15 +113,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'project_manager', 'team_lead', 'developer']
   },
   
-  // 🎓 Formations - accessible aux admins et project managers
-  { 
-    href: "/admin/trainings", 
-    label: "Formations", 
-    icon: FaGraduationCap,
-    roles: ['super_admin', 'admin', 'project_manager']
-  },
-  
-  // 💼 Services - accessible aux admins
+  // 💼 Services
   { 
     href: "/admin/services", 
     label: "Services", 
@@ -109,32 +121,47 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'project_manager']
   },
   
-  // 🤝 Collaborations - accessible aux admins
+  // 🚀 Souscriptions
   { 
-    href: "/admin/collaborations", 
-    label: "Collaborations", 
-    icon: FaHandshake,
+    href: "/admin/services/subscriptions", 
+    label: "Souscriptions", 
+    icon: FaCreditCard,
     roles: ['super_admin', 'admin', 'project_manager']
   },
   
-  // 📊 Leads - accessible aux admins
+  // 📋 Demandes clients
   { 
-    href: "/admin/leads", 
-    label: "Leads", 
-    icon: FaUserPlus,
-    roles: ['super_admin', 'admin', 'project_manager'],
-    section: "commerce"
+    href: "/admin/services/client-requests", 
+    label: "Demandes clients", 
+    icon: FaClipboardList,
+    roles: ['super_admin', 'admin', 'project_manager']
   },
-
-  // 👤 Utilisateurs - réservé aux super_admin et admin
+  
+  // 🌍 Demandes publiques
+  { 
+    href: "/admin/services/service-requests", 
+    label: "Demandes publiques", 
+    icon: FaGlobe,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 🎓 Formations
+  { 
+    href: "/admin/trainings", 
+    label: "Formations", 
+    icon: FaGraduationCap,
+    roles: ['super_admin', 'admin', 'project_manager']
+  },
+  
+  // 👤 Utilisateurs
   { 
     href: "/admin/users", 
     label: "Utilisateurs", 
-    icon: FaUsers,
+    icon: FaUserTag,
     roles: ['super_admin', 'admin']
   },
   
-  // 📧 Newsletter - accessible aux admins
+  // 📧 Newsletter
   { 
     href: "/admin/subscribers", 
     label: "Newsletter", 
@@ -142,7 +169,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'project_manager']
   },
   
-  // 📈 Analytics - accessible à tous les admins
+  // 📈 Analytics
   { 
     href: "/admin/analytics", 
     label: "Analytics", 
@@ -150,7 +177,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'project_manager', 'team_lead']
   },
   
-  // 📝 Logs - réservé aux super_admin et admin
+  // 📝 Logs
   { 
     href: "/admin/logs", 
     label: "Logs", 
@@ -158,7 +185,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin']
   },
   
-  // 🔑 Clés API - réservé aux super_admin
+  // 🔑 Clés API
   { 
     href: "/admin/api-keys", 
     label: "Clés API", 
@@ -166,15 +193,15 @@ const navItems: NavItem[] = [
     roles: ['super_admin']
   },
   
-  // 🤖 DONA - accessible à tous les admins
+  // 🤖 DONA
   { 
     href: "/admin/dona", 
     label: "DONA", 
     icon: FaRobot,
-    roles: ['super_admin', 'admin', 'project_manager', 'team_lead', ]
+    roles: ['super_admin', 'admin', 'project_manager', 'team_lead']
   },
   
-  // 🦸 HARVEY - accessible à tous les admins
+  // 🦸 HARVEY
   { 
     href: "/admin/harvey", 
     label: "HARVEY", 
@@ -182,7 +209,7 @@ const navItems: NavItem[] = [
     roles: ['super_admin', 'admin', 'project_manager', 'team_lead']
   },
   
-  // ⚙️ Paramètres - réservé aux super_admin et admin
+  // ⚙️ Paramètres
   { 
     href: "/admin/settings", 
     label: "Paramètres", 
@@ -241,9 +268,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const isDashboardHome = pathname === '/admin' || pathname === '/admin/';
+  // ✅ Vérifier si on est sur la page d'accueil du dashboard admin
+  const isDashboardHome = pathname === '/adminn' || pathname === '/adminn/';
 
+  // ✅ Fonction pour récupérer les statistiques des visiteurs
   const fetchVisitorStats = async () => {
+    // ✅ NE PAS charger si on n'est pas sur la page d'accueil
     if (!isDashboardHome) return;
 
     try {
@@ -384,6 +414,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         setUser(payload.user);
         
+        // ✅ NE charger les stats que si on est sur la page d'accueil
         if (isDashboardHome) {
           await fetchVisitorStats();
         }
@@ -397,6 +428,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
     fetchUser();
 
+    // ✅ Intervalle uniquement si on est sur la page d'accueil
     let interval: NodeJS.Timeout | null = null;
     if (isDashboardHome) {
       interval = setInterval(fetchVisitorStats, 30000);
@@ -498,11 +530,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         <nav className="p-4 space-y-1 overflow-y-auto h-[calc(100vh-8rem)]">
-          {/* ✅ Affichage des liens filtrés par rôle */}
           {visibleNavItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + "/"));
             
-            // ✅ Vérification supplémentaire pour la sécurité
             if (!canSeeNavItem(user.role, item)) {
               return null;
             }
@@ -524,7 +554,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             );
           })}
           
-          {/* ✅ Message si aucun lien n'est disponible */}
           {visibleNavItems.length === 0 && (
             <div className="text-center py-8 text-slate-400">
               <FaShieldAlt className="h-8 w-8 mx-auto mb-2 text-slate-300" />
@@ -582,7 +611,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <FaBars className="h-5 w-5 text-slate-600" />
             </button>
             <div className="flex items-center gap-4 ml-auto lg:ml-0">
-              {/* ✅ Affichage du rôle avec badge coloré */}
               <Badge variant="outline" className="hidden sm:flex items-center gap-1 text-xs">
                 <FaShieldAlt className="h-3 w-3 text-[#F97316]" />
                 {user?.role || "viewer"}
@@ -596,7 +624,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         <main>
-          {/* Statistiques des visiteurs - UNIQUEMENT SUR LA PAGE D'ACCUEIL */}
+          {/* ✅ SECTION STATISTIQUES DES VISITEURS - UNIQUEMENT SUR LA PAGE D'ACCUEIL */}
           {isDashboardHome && (
             <div className="p-4 border-b border-slate-200 bg-white/50">
               <div className="mx-auto max-w-7xl">

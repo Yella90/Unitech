@@ -17,7 +17,9 @@ import {
   FaTimes, 
   FaSpinner,
   FaChevronDown,
-  FaChevronUp
+  FaChevronUp,
+  FaRocket,
+  FaBox
 } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -36,7 +38,21 @@ const icons = [
   '📁', '🏫', '🛒', '⚡', '🏗️', '📱', '💻', '🌐', '🤖', '🎯', 
   '🚀', '💡', '🔧', '📊', '🎨', '📈', '🔬', '🧪', '⚙️', '📋',
   'FaUniversity', 'FaStore', 'FaSolarPanel', 'FaRobot', 'FaGraduationCap',
-  'FaLeaf', 'FaBuilding', 'FaCog'
+  'FaLeaf', 'FaBuilding', 'FaCog', 'FaEnvelope', 'FaBriefcase', 'FaKey'
+];
+
+const categories = [
+  { value: 'development', label: 'Développement' },
+  { value: 'design', label: 'Design' },
+  { value: 'consulting', label: 'Consulting' },
+  { value: 'training', label: 'Formation' },
+  { value: 'saas', label: 'SaaS' },
+  { value: 'other', label: 'Autre' },
+];
+
+const serviceTypes = [
+  { value: 'product', label: 'Produit', icon: <FaBox className="h-4 w-4" /> },
+  { value: 'saas', label: 'SaaS', icon: <FaRocket className="h-4 w-4" /> },
 ];
 
 export default function NewServicePage() {
@@ -45,20 +61,25 @@ export default function NewServicePage() {
   const [featureInput, setFeatureInput] = useState('');
   const [showIconPicker, setShowIconPicker] = useState(false);
   
-  // ✅ Déclaration du state à l'intérieur du composant
   const [expandedSections, setExpandedSections] = useState({
     general: true,
-    features: true
+    features: true,
+    pricing: true
   });
   
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    category: 'development',
+    type: 'product' as 'product' | 'saas',
     icon: '📁',
     color: 'blue',
     features: [] as string[],
     order_index: 0,
     is_active: true,
+    price_monthly: '',
+    price_yearly: '',
+    price_project: '',
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -90,19 +111,31 @@ export default function NewServicePage() {
     setSaving(true);
 
     try {
+      const insertData: any = {
+        name: formData.name,
+        description: formData.description,
+        category: formData.category,
+        type: formData.type,
+        icon: formData.icon,
+        color: formData.color,
+        features: formData.features.length > 0 ? formData.features : null,
+        order_index: formData.order_index,
+        is_active: formData.is_active,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // Ajouter les prix si type est SaaS
+      if (formData.type === 'saas') {
+        insertData.price_monthly = formData.price_monthly ? parseInt(formData.price_monthly) : null;
+        insertData.price_yearly = formData.price_yearly ? parseInt(formData.price_yearly) : null;
+      } else {
+        insertData.price_project = formData.price_project ? parseInt(formData.price_project) : null;
+      }
+
       const { error } = await supabase
         .from('services')
-        .insert({
-          name: formData.name,
-          description: formData.description,
-          icon: formData.icon,
-          color: formData.color,
-          features: formData.features.length > 0 ? formData.features : null,
-          order_index: formData.order_index,
-          is_active: formData.is_active,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+        .insert(insertData);
 
       if (error) throw error;
 
@@ -120,7 +153,7 @@ export default function NewServicePage() {
 
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
-      <Toaster position="top-right" />
+      <Toaster position="top-right" richColors />
 
       <div className="mx-auto max-w-3xl">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
@@ -195,6 +228,43 @@ export default function NewServicePage() {
                         className="mt-1 text-sm"
                         placeholder="Description du service..."
                       />
+                    </div>
+
+                    {/* Catégorie et Type */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="category" className="text-xs sm:text-sm">Catégorie</Label>
+                        <select
+                          id="category"
+                          value={formData.category}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
+                          className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent bg-white"
+                        >
+                          {categories.map((cat) => (
+                            <option key={cat.value} value={cat.value}>{cat.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="type" className="text-xs sm:text-sm">Type de service</Label>
+                        <div className="flex gap-2 mt-1">
+                          {serviceTypes.map((type) => (
+                            <button
+                              key={type.value}
+                              type="button"
+                              onClick={() => setFormData((prev) => ({ ...prev, type: type.value as 'product' | 'saas' }))}
+                              className={`flex-1 px-4 py-2 rounded-lg border-2 transition flex items-center justify-center gap-2 text-sm ${
+                                formData.type === type.value
+                                  ? 'border-[#1E3A8A] bg-[#1E3A8A]/5 text-[#1E3A8A]'
+                                  : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                              }`}
+                            >
+                              {type.icon}
+                              {type.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Icône et Couleur */}
@@ -360,6 +430,68 @@ export default function NewServicePage() {
                     </div>
                     <p className="mt-2 text-[10px] sm:text-xs text-slate-400">
                       {formData.features.length} fonctionnalité{formData.features.length > 1 ? 's' : ''} ajoutée{formData.features.length > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ============================================ */}
+              {/* TARIFICATION */}
+              {/* ============================================ */}
+              <div className="pb-4 sm:pb-6">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('pricing')}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <h3 className="text-base sm:text-lg font-semibold text-[#1E3A8A]">Tarification</h3>
+                  <span className="text-slate-400">
+                    {expandedSections.pricing ? <FaChevronUp /> : <FaChevronDown />}
+                  </span>
+                </button>
+                
+                {expandedSections.pricing && (
+                  <div className="mt-4">
+                    {formData.type === 'saas' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="price_monthly" className="text-xs sm:text-sm">Prix mensuel (FCFA)</Label>
+                          <Input
+                            id="price_monthly"
+                            type="number"
+                            placeholder="25000"
+                            value={formData.price_monthly}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, price_monthly: e.target.value }))}
+                            className="mt-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="price_yearly" className="text-xs sm:text-sm">Prix annuel (FCFA)</Label>
+                          <Input
+                            id="price_yearly"
+                            type="number"
+                            placeholder="250000"
+                            value={formData.price_yearly}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, price_yearly: e.target.value }))}
+                            className="mt-1 text-sm"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <Label htmlFor="price_project" className="text-xs sm:text-sm">Prix projet (FCFA)</Label>
+                        <Input
+                          id="price_project"
+                          type="number"
+                          placeholder="1000000"
+                          value={formData.price_project}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, price_project: e.target.value }))}
+                          className="mt-1 text-sm"
+                        />
+                      </div>
+                    )}
+                    <p className="mt-2 text-[10px] sm:text-xs text-slate-400">
+                      Laissez vide si le prix est sur devis
                     </p>
                   </div>
                 )}

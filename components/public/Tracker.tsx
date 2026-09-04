@@ -57,7 +57,7 @@ export default function Tracker() {
         if (error) {
           console.error('❌ Erreur tracking:', error);
         } else {
-          console.log('✅ Visite enregistrée avec succès:', data);
+          //console.log('✅ Visite enregistrée avec succès:', data);
         }
 
       } catch (error) {

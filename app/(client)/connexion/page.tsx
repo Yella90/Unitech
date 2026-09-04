@@ -1,4 +1,4 @@
-// app/(client)/login/page.tsx
+// app/(client)/connexion/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -15,7 +15,8 @@ import {
   FaShieldAlt,
   FaSpinner,
   FaEye,
-  FaEyeSlash
+  FaEyeSlash,
+  FaUser
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -105,7 +106,7 @@ export default function ClientLoginPage() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1E3A8A] text-white">
-              <FaShieldAlt className="h-8 w-8" />
+              <FaUser className="h-8 w-8" />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold text-[#1E3A8A]">Espace Client</CardTitle>
@@ -157,7 +158,7 @@ export default function ClientLoginPage() {
             </div>
 
             <div className="flex items-center justify-end">
-              <Link href="/client/forgot-password" className="text-sm text-[#F97316] hover:underline">
+              <Link href="/clients/forgot-password" className="text-sm text-[#F97316] hover:underline">
                 Mot de passe oublié ?
               </Link>
             </div>
@@ -182,14 +183,13 @@ export default function ClientLoginPage() {
 
             <p className="text-center text-sm text-slate-500">
               Pas encore de compte ?{' '}
-              <Link href="register" className="text-[#F97316] hover:underline font-medium">
+              <Link href="/clients/register" className="text-[#F97316] hover:underline font-medium">
                 Créer un compte
               </Link>
             </p>
 
-            <div className="text-center text-xs text-slate-400">
-              <p>Accès réservé aux clients UNITECH</p>
-            </div>
+           
+           
           </form>
         </CardContent>
       </Card>

@@ -38,7 +38,12 @@ import {
   FaDatabase,
   FaShieldAlt,
   FaHome,
-  FaClipboardList
+  FaClipboardList,
+  FaRocket,
+  FaEnvelope,
+  FaBriefcase,
+  FaKey,
+  FaUsers
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 import DeleteConfirmModal from '@/components/ui/DeleteConfirmModal';
@@ -47,11 +52,16 @@ type Service = {
   id: string;
   name: string;
   description: string;
+  category: string;
+  type: 'product' | 'saas';
   icon: string;
   color: string;
   features: string[];
   is_active: boolean;
   order_index: number;
+  price_monthly?: number;
+  price_yearly?: number;
+  price_project?: number;
   created_at: string;
   updated_at: string;
 };
@@ -88,6 +98,10 @@ const iconMap: Record<string, React.ReactNode> = {
   FaDatabase: <FaDatabase className="h-5 w-5 sm:h-6 sm:w-6" />,
   FaShieldAlt: <FaShieldAlt className="h-5 w-5 sm:h-6 sm:w-6" />,
   FaHome: <FaHome className="h-5 w-5 sm:h-6 sm:w-6" />,
+  FaRocket: <FaRocket className="h-5 w-5 sm:h-6 sm:w-6" />,
+  FaEnvelope: <FaEnvelope className="h-5 w-5 sm:h-6 sm:w-6" />,
+  FaBriefcase: <FaBriefcase className="h-5 w-5 sm:h-6 sm:w-6" />,
+  FaKey: <FaKey className="h-5 w-5 sm:h-6 sm:w-6" />,
 };
 
 // ✅ FONCTION POUR RÉCUPÉRER UNE ICÔNE
@@ -103,6 +117,7 @@ export default function AdminServicesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'product' | 'saas'>('all');
 
   // ✅ État du modal
   const [deleteModal, setDeleteModal] = useState({
@@ -126,6 +141,7 @@ export default function AdminServicesPage() {
       const { data, error } = await supabase
         .from('services')
         .select('*')
+        .order('type', { ascending: true })
         .order('order_index', { ascending: true });
 
       if (error) throw error;
@@ -222,6 +238,12 @@ export default function AdminServicesPage() {
       filtered = filtered.filter(s => !s.is_active);
     }
 
+    if (filterType === 'product') {
+      filtered = filtered.filter(s => s.type === 'product');
+    } else if (filterType === 'saas') {
+      filtered = filtered.filter(s => s.type === 'saas');
+    }
+
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(s => 
@@ -236,6 +258,8 @@ export default function AdminServicesPage() {
   const filteredServices = getFilteredServices();
   const total = services.length;
   const active = services.filter(s => s.is_active).length;
+  const productCount = services.filter(s => s.type === 'product').length;
+  const saasCount = services.filter(s => s.type === 'saas').length;
 
   if (loading) {
     return (
@@ -261,11 +285,10 @@ export default function AdminServicesPage() {
               )}
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate">
-              Gérez les services proposés par UNITECH
+              Gérez les services proposés par UNITECH ({productCount} produits, {saasCount} SaaS)
             </p>
           </div>
           <div className="flex flex-wrap gap-2 flex-shrink-0">
-            {/* ✅ LIEN VERS GESTION DES DEMANDES */}
             <Link href="/admin/services/service-requests" className="flex-shrink-0">
               <Button 
                 variant="outline" 
@@ -277,6 +300,19 @@ export default function AdminServicesPage() {
                 <span className="xs:hidden">Demandes</span>
               </Button>
             </Link>
+             <Link href="/admin/services/subscriptions">
+    <Button variant="outline" size="sm" className="border-[#1E3A8A] text-[#1E3A8A]">
+      <FaUsers className="mr-1 h-4 w-4" />
+      Souscriptions
+    </Button>
+  </Link>
+            <Link href="/admin/services/client-requests">
+    <Button variant="outline" size="sm" className="border-[#1E3A8A] text-[#1E3A8A]">
+      <FaUsers className="mr-1 h-4 w-4" />
+      Demandes clients
+    </Button>
+  </Link>
+
             <Button 
               variant="outline" 
               size="sm"
@@ -302,7 +338,7 @@ export default function AdminServicesPage() {
         </div>
 
         {/* Statistiques */}
-        <div className="mt-4 sm:mt-6 grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4">
           <Card>
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center justify-between">
@@ -322,6 +358,28 @@ export default function AdminServicesPage() {
                   <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-600">{active}</p>
                 </div>
                 <FaCog className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] sm:text-xs text-slate-500">Produits</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-600">{productCount}</p>
+                </div>
+                <FaCog className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] sm:text-xs text-slate-500">SaaS</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-purple-600">{saasCount}</p>
+                </div>
+                <FaRocket className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-purple-500" />
               </div>
             </CardContent>
           </Card>
@@ -368,19 +426,6 @@ export default function AdminServicesPage() {
               <FaFilter className="mr-2 h-3 w-3" />
               Filtres
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => loadServices(false)}
-              disabled={refreshing}
-              className="flex-shrink-0 text-xs sm:text-sm"
-            >
-              {refreshing ? (
-                <FaSpinner className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-              ) : (
-                <FaSearch className="h-3 w-3 sm:h-4 sm:w-4" />
-              )}
-            </Button>
           </div>
 
           {/* Filtres */}
@@ -410,6 +455,22 @@ export default function AdminServicesPage() {
               >
                 Inactifs ({total - active})
               </Button>
+              <Button 
+                variant={filterType === 'product' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilterType('product')}
+                className={`text-xs ${filterType === 'product' ? 'bg-blue-600' : ''}`}
+              >
+                📦 Produits ({productCount})
+              </Button>
+              <Button 
+                variant={filterType === 'saas' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilterType('saas')}
+                className={`text-xs ${filterType === 'saas' ? 'bg-purple-600' : ''}`}
+              >
+                🚀 SaaS ({saasCount})
+              </Button>
             </div>
           </div>
         </div>
@@ -433,7 +494,7 @@ export default function AdminServicesPage() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => { setSearchTerm(''); setFilterStatus('all'); }}
+                  onClick={() => { setSearchTerm(''); setFilterStatus('all'); setFilterType('all'); }}
                   className="mt-4"
                 >
                   Réinitialiser les filtres
@@ -455,7 +516,7 @@ export default function AdminServicesPage() {
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600">Service</th>
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 hidden md:table-cell">Description</th>
-                      <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600">Couleur</th>
+                      <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600">Type</th>
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600 hidden xs:table-cell">Statut</th>
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-left font-semibold text-slate-600">Ordre</th>
                       <th className="px-2 sm:px-4 py-2 sm:py-3 text-right font-semibold text-slate-600">Actions</th>
@@ -466,7 +527,6 @@ export default function AdminServicesPage() {
                       <tr key={service.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
                         <td className="px-2 sm:px-4 py-2 sm:py-3">
                           <div className="flex items-center gap-2 sm:gap-3">
-                            {/* ✅ AFFICHAGE CORRIGÉ DE L'ICÔNE */}
                             <span className="text-xl sm:text-2xl flex-shrink-0 text-[#1E3A8A]">
                               {getServiceIcon(service.icon)}
                             </span>
@@ -486,9 +546,14 @@ export default function AdminServicesPage() {
                           </p>
                         </td>
                         <td className="px-2 sm:px-4 py-2 sm:py-3">
-                          <Badge className={`${colorMap[service.color] || 'bg-gray-100 text-gray-700'} text-[8px] sm:text-[10px]`}>
-                            {service.color}
+                          <Badge className={service.type === 'saas' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}>
+                            {service.type === 'saas' ? '🚀 SaaS' : '📦 Produit'}
                           </Badge>
+                          {service.price_monthly && (
+                            <p className="text-[8px] text-slate-400 mt-1">
+                              {service.price_monthly} FCFA/mois
+                            </p>
+                          )}
                         </td>
                         <td className="px-2 sm:px-4 py-2 sm:py-3 hidden xs:table-cell">
                           <Badge variant={service.is_active ? 'default' : 'destructive'} className="text-[8px] sm:text-[10px]">

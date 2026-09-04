@@ -14,7 +14,10 @@ import {
   FaEnvelope,
   FaBriefcase,
   FaChartLine,
-  FaSpinner
+  FaSpinner,
+  FaUsers,
+  FaMailBulk,
+  FaRocket
 } from 'react-icons/fa';
 import { toast } from 'sonner';
 
@@ -84,14 +87,15 @@ export default function ClientLayout({
     }
   };
 
-  // ✅ Navigation client
+  // ✅ Navigation client - TOUS LES LIENS CORRIGÉS VERS /clients/
   const navItems = [
     { href: '/dashboard', label: 'Tableau de bord', icon: FaHome },
-    { href: '/profile', label: 'Profil', icon: FaUserCircle },
-    { href: '/emails', label: 'Emails', icon: FaEnvelope },
-    { href: '/recruitments', label: 'Recrutements', icon: FaBriefcase },
-    { href: '/analytics', label: 'Analytiques', icon: FaChartLine },
-    { href: '/settings', label: 'Paramètres', icon: FaCog },
+    { href: '/clients/profile', label: 'Profil', icon: FaUserCircle },
+    { href: '/clients/mail', label: 'Emails', icon: FaMailBulk },
+    { href: '/clients/recruitment', label: 'Recrutements', icon: FaBriefcase },
+    { href: '/clients/services', label: 'Services', icon: FaRocket },
+    { href: '/clients/analytics', label: 'Analytiques', icon: FaChartLine },
+    { href: '/clients/settings', label: 'Paramètres', icon: FaCog },
   ];
 
   // ✅ Si chargement
