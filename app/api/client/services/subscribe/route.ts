@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Vérifier si le client est déjà souscrit
+    // 4. Vérifier si le client est déjà souscrit (gestion des doublons)
     const { data: existing, error: checkError } = await supabase
       .from('client_services')
       .select('id, status')
@@ -58,14 +58,19 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (existing) {
+      // ✅ Si déjà actif, retourner une erreur claire
       if (existing.status === 'active') {
         return NextResponse.json(
-          { error: 'Vous êtes déjà souscrit à ce service' },
+          { 
+            error: 'Vous êtes déjà souscrit à ce service',
+            code: 'ALREADY_SUBSCRIBED',
+            subscriptionId: existing.id
+          },
           { status: 409 }
         );
       }
       
-      // 5. Réactiver la souscription (avec supabaseAdmin)
+      // ✅ Si en attente, annulé ou suspendu, on le réactive
       try {
         const adminClient = getAdminClient();
         
@@ -106,7 +111,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Créer une nouvelle souscription (avec supabaseAdmin)
+    // 5. Créer une nouvelle souscription
     try {
       const adminClient = getAdminClient();
       const expiresAt = new Date(Date.now() + (expiresInDays || 30) * 24 * 60 * 60 * 1000);
@@ -128,6 +133,18 @@ export async function POST(req: NextRequest) {
 
       if (createError) {
         console.error('❌ Erreur souscription:', createError);
+        
+        // ✅ Gérer spécifiquement l'erreur de clé unique
+        if (createError.code === '23505') {
+          return NextResponse.json(
+            { 
+              error: 'Vous êtes déjà souscrit à ce service',
+              code: 'ALREADY_SUBSCRIBED'
+            },
+            { status: 409 }
+          );
+        }
+        
         return NextResponse.json(
           { error: 'Erreur lors de la souscription' },
           { status: 500 }

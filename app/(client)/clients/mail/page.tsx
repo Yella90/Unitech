@@ -123,6 +123,14 @@ type MailAccount = {
   is_active: boolean;
   mail_config: any;
   prompt_config: any;
+  blocked_senders: string[];
+  blocked_domains: string[];
+  block_rules: {
+    block_spam: boolean;
+    block_unknown: boolean;
+    block_marketing: boolean;
+    custom_rules: string[];
+  };
   created_at: string;
 };
 
@@ -138,6 +146,34 @@ type EmailStats = {
   avgConfidence: number;
   byCategory: Record<string, number>;
   byPriority: Record<string, number>;
+};
+
+// ============================================================
+// TYPE DU PAYLOAD DE CONFIGURATION
+// ============================================================
+type ConfigPayload = {
+  email: string;
+  imap_server: string;
+  imap_port: number;
+  smtp_server: string;
+  smtp_port: number;
+  encryption: string;
+  max_emails_per_sync: number;
+  prompt_config: {
+    instructions: string;
+    tone: string;
+    signature: string;
+    custom_rules: string[];
+  };
+  blocked_senders: string[];
+  blocked_domains: string[];
+  block_rules: {
+    block_spam: boolean;
+    block_unknown: boolean;
+    block_marketing: boolean;
+    custom_rules: string[];
+  };
+  password?: string;
 };
 
 // ============================================================
@@ -266,6 +302,7 @@ export default function ClientMailPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('inbox');
+  const [clientEmail, setClientEmail] = useState<string>('');
 
   const [stats, setStats] = useState<EmailStats>({
     total: 0,
@@ -284,17 +321,24 @@ export default function ClientMailPage() {
   // Formulaire de configuration
   const [configForm, setConfigForm] = useState({
     email: '',
-    imap_server: '',
+    imap_server: 'imap.gmail.com',
     imap_port: '993',
-    smtp_server: '',
+    smtp_server: 'smtp.gmail.com',
     smtp_port: '587',
     password: '',
     encryption: 'tls',
-    max_emails_per_sync: '50',
+    max_emails_per_sync: '5',
     prompt_instructions: '',
     prompt_tone: 'professional',
     prompt_signature: "L'équipe UNITECH",
-    prompt_custom_rules: ''
+    prompt_custom_rules: '',
+    blocked_senders: [] as string[],
+    blocked_domains: [] as string[],
+    block_spam: true,
+    block_unknown: false,
+    block_marketing: true,
+    new_blocked_sender: '',
+    new_blocked_domain: ''
   });
   const [configLoading, setConfigLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
@@ -305,39 +349,25 @@ export default function ClientMailPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // ============================================================
-  // INITIALISATION
-  // ============================================================
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        await loadMailAccount();
-        await loadEmails();
-      } catch (error) {
-        console.error('Erreur chargement:', error);
-        toast.error('Erreur lors du chargement');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    if (autoRefresh) {
-      intervalRef.current = setInterval(() => {
-        loadEmails(true);
-      }, 30000);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [autoRefresh]);
-
-  // ============================================================
   // CHARGEMENT DES DONNÉES
   // ============================================================
+  const loadClientInfo = async () => {
+    try {
+      const response = await fetch('/api/auth/client/session');
+      const data = await response.json();
+      
+      if (data.user && data.user.email) {
+        setClientEmail(data.user.email);
+        setConfigForm(prev => ({
+          ...prev,
+          email: data.user.email
+        }));
+      }
+    } catch (error) {
+      console.error('Erreur chargement client:', error);
+    }
+  };
+
   const loadMailAccount = async () => {
     try {
       const response = await fetch('/api/client/mail/account');
@@ -346,10 +376,10 @@ export default function ClientMailPage() {
       if (data.success && data.data) {
         setMailAccount(data.data);
         setHasMailAccount(true);
-        // Pré-remplir le formulaire
+        
         setConfigForm(prev => ({
           ...prev,
-          email: data.data.email || '',
+          email: data.data.email || clientEmail || '',
           imap_server: data.data.imap_server || '',
           imap_port: data.data.imap_port?.toString() || '993',
           smtp_server: data.data.smtp_server || '',
@@ -359,10 +389,14 @@ export default function ClientMailPage() {
           prompt_instructions: data.data.prompt_config?.instructions || '',
           prompt_tone: data.data.prompt_config?.tone || 'professional',
           prompt_signature: data.data.prompt_config?.signature || "L'équipe UNITECH",
-          prompt_custom_rules: data.data.prompt_config?.custom_rules?.join('\n') || ''
+          prompt_custom_rules: data.data.prompt_config?.custom_rules?.join('\n') || '',
+          blocked_senders: data.data.blocked_senders || [],
+          blocked_domains: data.data.blocked_domains || [],
+          block_spam: data.data.block_rules?.block_spam !== false,
+          block_unknown: data.data.block_rules?.block_unknown || false,
+          block_marketing: data.data.block_rules?.block_marketing !== false
         }));
         
-        // Détecter le fournisseur
         detectProvider(data.data);
       } else {
         setHasMailAccount(false);
@@ -414,6 +448,38 @@ export default function ClientMailPage() {
   };
 
   // ============================================================
+  // INITIALISATION
+  // ============================================================
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        await loadClientInfo();
+        await loadMailAccount();
+        await loadEmails();
+      } catch (error) {
+        console.error('Erreur chargement:', error);
+        toast.error('Erreur lors du chargement');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        loadEmails(true);
+      }, 30000);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh]);
+
+  // ============================================================
   // CALCUL DES STATISTIQUES
   // ============================================================
   const calculateStats = (data: ClientEmail[]) => {
@@ -440,8 +506,6 @@ export default function ClientMailPage() {
           stats.pending = (stats.pending || 0) + 1;
           break;
         case 'analyzed':
-          stats.analyzed = (stats.analyzed || 0) + 1;
-          break;
         case 'generating':
           stats.analyzed = (stats.analyzed || 0) + 1;
           break;
@@ -452,8 +516,6 @@ export default function ClientMailPage() {
           stats.approved = (stats.approved || 0) + 1;
           break;
         case 'sending':
-          stats.sent = (stats.sent || 0) + 1;
-          break;
         case 'sent':
           stats.sent = (stats.sent || 0) + 1;
           break;
@@ -487,7 +549,7 @@ export default function ClientMailPage() {
   };
 
   // ============================================================
-  // ACTIONS SUR LES EMAILS
+  // ACTIONS
   // ============================================================
   const updateEmailStatus = async (id: string, status: string) => {
     try {
@@ -598,27 +660,45 @@ export default function ClientMailPage() {
     setConfigLoading(true);
 
     try {
+      const payload: ConfigPayload = {
+        email: configForm.email || clientEmail,
+        imap_server: configForm.imap_server,
+        imap_port: parseInt(configForm.imap_port),
+        smtp_server: configForm.smtp_server,
+        smtp_port: parseInt(configForm.smtp_port),
+        encryption: configForm.encryption,
+        max_emails_per_sync: parseInt(configForm.max_emails_per_sync),
+        prompt_config: {
+          instructions: configForm.prompt_instructions,
+          tone: configForm.prompt_tone,
+          signature: configForm.prompt_signature,
+          custom_rules: configForm.prompt_custom_rules ? configForm.prompt_custom_rules.split('\n').filter(r => r.trim()) : []
+        },
+        blocked_senders: configForm.blocked_senders || [],
+        blocked_domains: configForm.blocked_domains || [],
+        block_rules: {
+          block_spam: configForm.block_spam,
+          block_unknown: configForm.block_unknown,
+          block_marketing: configForm.block_marketing,
+          custom_rules: []
+        }
+      };
+
+      // ✅ Ajouter le mot de passe seulement s'il est rempli
+      if (configForm.password) {
+        payload.password = configForm.password;
+      }
+
       const response = await fetch('/api/client/mail/configure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...configForm,
-          imap_port: parseInt(configForm.imap_port),
-          smtp_port: parseInt(configForm.smtp_port),
-          max_emails_per_sync: parseInt(configForm.max_emails_per_sync),
-          prompt_config: {
-            instructions: configForm.prompt_instructions,
-            tone: configForm.prompt_tone,
-            signature: configForm.prompt_signature,
-            custom_rules: configForm.prompt_custom_rules ? configForm.prompt_custom_rules.split('\n').filter(r => r.trim()) : []
-          }
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
 
       if (data.success) {
-        toast.success('✅ Compte mail configuré avec succès');
+        toast.success(hasMailAccount ? '✅ Configuration mise à jour' : '✅ Compte mail configuré avec succès');
         await loadMailAccount();
         await loadEmails();
         setActiveTab('inbox');
@@ -700,20 +780,8 @@ export default function ClientMailPage() {
   };
 
   // ============================================================
-  // RENDU
+  // COMPOSANTS D'AIDE
   // ============================================================
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-[#1E3A8A] border-t-transparent"></div>
-      </div>
-    );
-  }
-
-  const displayedEmails = getFilteredEmails();
-  const provider = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
-
-  // ✅ Composant du guide du mot de passe d'application
   const AppPasswordGuide = () => {
     const provider = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
     
@@ -805,14 +873,26 @@ export default function ClientMailPage() {
     );
   };
 
+  // ============================================================
+  // RENDU
+  // ============================================================
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-[#1E3A8A] border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  const displayedEmails = getFilteredEmails();
+  const provider = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
+
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
-        {/* ============================================================
-        EN-TÊTE
-        ============================================================ */}
+        {/* EN-TÊTE */}
         <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between mb-4 md:mb-6">
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[#1E3A8A] flex flex-wrap items-center gap-2 md:gap-3">
@@ -888,9 +968,7 @@ export default function ClientMailPage() {
           </div>
         </div>
 
-        {/* ============================================================
-        STATISTIQUES
-        ============================================================ */}
+        {/* STATISTIQUES */}
         {hasMailAccount && (
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 sm:gap-3 md:gap-3 mb-4 md:mb-6">
             <Card className="transition-all hover:shadow-md">
@@ -962,9 +1040,7 @@ export default function ClientMailPage() {
           </div>
         )}
 
-        {/* ============================================================
-        TABS
-        ============================================================ */}
+        {/* TABS */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="flex flex-wrap gap-1 mb-4">
             {hasMailAccount && (
@@ -1002,9 +1078,7 @@ export default function ClientMailPage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ============================================================
-          TAB: INBOX
-          ============================================================ */}
+          {/* TAB: INBOX */}
           <TabsContent value="inbox">
             {!hasMailAccount ? (
               <Card>
@@ -1135,7 +1209,6 @@ export default function ClientMailPage() {
                   </div>
                 </div>
 
-                {/* Liste des emails - (contenu existant) */}
                 <Card>
                   <CardHeader className="p-3 sm:p-4 md:p-6">
                     <CardTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -1150,7 +1223,6 @@ export default function ClientMailPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-2 sm:p-3 md:p-6">
-                    {/* Contenu de la liste des emails existant... */}
                     {displayedEmails.length === 0 ? (
                       <div className="text-center py-8 sm:py-12 text-slate-500">
                         <FaInbox className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-slate-300 mb-3" />
@@ -1159,7 +1231,90 @@ export default function ClientMailPage() {
                       </div>
                     ) : (
                       <div className="space-y-3 sm:space-y-4">
-                        {/* ... contenu existant ... */}
+                        {displayedEmails.map(email => (
+                          <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-slate-800 text-sm truncate">
+                                    {email.from_name || email.from_email}
+                                  </span>
+                                  <span className="text-xs text-slate-400 truncate">
+                                    &lt;{email.from_email}&gt;
+                                  </span>
+                                  <Badge className={`${statusColors[email.status] || statusColors.pending} text-[10px]`}>
+                                    {statusLabels[email.status] || email.status}
+                                  </Badge>
+                                  {email.category && (
+                                    <Badge className={`${categoryColors[email.category] || categoryColors.general} text-[10px]`}>
+                                      {email.category}
+                                    </Badge>
+                                  )}
+                                  {email.priority && email.priority !== 'normal' && (
+                                    <Badge className={`${priorityColors[email.priority] || priorityColors.normal} text-[10px]`}>
+                                      {email.priority}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-sm text-slate-700 truncate mt-1">{email.subject}</p>
+                                <p className="text-xs text-slate-400 mt-1">{formatDate(email.received_at || email.created_at)}</p>
+                              </div>
+                              <div className="flex gap-2 flex-shrink-0">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedEmail(email);
+                                    setShowDetail(true);
+                                  }}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <FaEye className="h-4 w-4 text-slate-400" />
+                                </Button>
+                                {email.status === 'response_ready' && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => approveEmail(email.id)}
+                                      className="h-8 w-8 p-0 text-green-500"
+                                    >
+                                      <FaCheck className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => sendEmail(email.id)}
+                                      className="h-8 w-8 p-0 text-blue-500"
+                                    >
+                                      <FaReply className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                                {email.status === 'pending' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => updateEmailStatus(email.id, 'analyzed')}
+                                    className="h-8 w-8 p-0 text-indigo-500"
+                                  >
+                                    <FaBrain className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {!['sent', 'archived'].includes(email.status) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => archiveEmail(email.id)}
+                                    className="h-8 w-8 p-0 text-red-400"
+                                  >
+                                    <FaTimes className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </CardContent>
@@ -1168,23 +1323,112 @@ export default function ClientMailPage() {
             )}
           </TabsContent>
 
-          {/* ============================================================
-          TAB: RESPONSES (contenu existant)
-          ============================================================ */}
+          {/* TAB: RESPONSES */}
           <TabsContent value="responses">
-            {/* ... contenu existant ... */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Réponses générées par l'IA</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {emails.filter(e => e.status === 'response_ready' || e.status === 'approved').length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <FaBrain className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+                    <p className="font-medium">Aucune réponse prête</p>
+                    <p className="text-sm">Les réponses générées par l'IA apparaîtront ici.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {emails.filter(e => e.status === 'response_ready' || e.status === 'approved').map(email => (
+                      <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-800">{email.from_name || email.from_email}</span>
+                              <Badge className={`${statusColors[email.status]} text-[10px]`}>
+                                {statusLabels[email.status]}
+                              </Badge>
+                            </div>
+                            <span className="text-xs text-slate-400">{formatDate(email.received_at)}</span>
+                          </div>
+                          <p className="text-sm font-medium text-slate-700">{email.subject}</p>
+                          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <p className="text-sm text-slate-700 line-clamp-2">{email.harvey_response}</p>
+                          </div>
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedEmail(email);
+                                setShowDetail(true);
+                              }}
+                            >
+                              <FaEye className="mr-2 h-3 w-3" />
+                              Voir
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700"
+                              onClick={() => sendEmail(email.id)}
+                            >
+                              <FaReply className="mr-2 h-3 w-3" />
+                              Envoyer
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                              onClick={() => regenerateResponse(email.id)}
+                            >
+                              <FaSync className="mr-2 h-3 w-3" />
+                              Régénérer
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
-          {/* ============================================================
-          TAB: SENT (contenu existant)
-          ============================================================ */}
+          {/* TAB: SENT */}
           <TabsContent value="sent">
-            {/* ... contenu existant ... */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Emails envoyés</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {emails.filter(e => e.status === 'sent').length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <FaCheckCircle className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+                    <p className="font-medium">Aucun email envoyé</p>
+                    <p className="text-sm">Les emails envoyés apparaîtront ici.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {emails.filter(e => e.status === 'sent').map(email => (
+                      <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-slate-800">{email.from_name || email.from_email}</p>
+                            <p className="text-sm text-slate-700">{email.subject}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className="bg-emerald-100 text-emerald-700">✅ Envoyé</Badge>
+                            <p className="text-xs text-slate-400 mt-1">{formatDate(email.replied_at || email.created_at)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
-          {/* ============================================================
-          TAB: CONFIGURATION - FORMULAIRE COMPLET AVEC GUIDE
-          ============================================================ */}
+          {/* TAB: CONFIGURATION */}
           <TabsContent value="config">
             <Card>
               <CardHeader className="p-3 sm:p-4 md:p-6">
@@ -1193,14 +1437,15 @@ export default function ClientMailPage() {
                   <span>Configuration du compte mail</span>
                 </CardTitle>
                 <p className="text-sm text-slate-500">
-                  Configurez votre compte mail pour l'automatisation des réponses
+                  {hasMailAccount 
+                    ? 'Modifiez les paramètres de votre compte mail et gérez les filtres de blocage'
+                    : 'Configurez votre compte mail pour l\'automatisation des réponses'
+                  }
                 </p>
               </CardHeader>
               <CardContent className="p-3 sm:p-4 md:p-6">
                 <form onSubmit={handleConfigSubmit} className="space-y-4">
-                  {/* ============================================ */}
-                  {/* QUICK CONFIG - SÉLECTION DU FOURNISSEUR */}
-                  {/* ============================================ */}
+                  {/* Quick Config */}
                   <div className="border-b border-slate-200 pb-4">
                     <h3 className="text-sm font-semibold text-[#1E3A8A] mb-3 flex items-center gap-2">
                       <FaRocket className="h-4 w-4 text-[#F97316]" />
@@ -1247,14 +1492,33 @@ export default function ClientMailPage() {
                     )}
                   </div>
 
-                  {/* ============================================ */}
-                  {/* INFORMATIONS DU COMPTE */}
-                  {/* ============================================ */}
+                  {/* Informations du compte */}
                   <div className="border-b border-slate-200 pb-4">
                     <h3 className="text-sm font-semibold text-[#1E3A8A] mb-3 flex items-center gap-2">
                       <FaUser className="h-4 w-4 text-[#F97316]" />
                       Informations du compte
                     </h3>
+                    
+                    {hasMailAccount && mailAccount && (
+                      <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <div className="flex items-start gap-2">
+                          <FaInfoCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-blue-800">Compte configuré</p>
+                            <p className="text-xs text-blue-700">
+                              {mailAccount.email} • {mailAccount.imap_server}:{mailAccount.imap_port}
+                            </p>
+                            <p className="text-xs text-blue-700">
+                              Dernière synchronisation: {mailAccount.last_sync_at ? formatDate(mailAccount.last_sync_at) : 'Jamais'}
+                            </p>
+                            <p className="text-xs text-blue-700">
+                              Statut: {mailAccount.is_connected ? '✅ Connecté' : '❌ Non connecté'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="config-email">Adresse email <span className="text-red-500">*</span></Label>
@@ -1264,17 +1528,21 @@ export default function ClientMailPage() {
                             id="config-email"
                             type="email"
                             placeholder="votre@email.com"
-                            value={configForm.email}
+                            value={configForm.email || clientEmail}
                             onChange={(e) => setConfigForm({ ...configForm, email: e.target.value })}
-                            className="pl-10"
+                            className="pl-10 bg-slate-50 cursor-not-allowed"
                             required
-                            disabled={hasMailAccount}
+                            disabled={true}
+                            readOnly={true}
                           />
                         </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          📧 L'adresse email est liée à votre compte
+                        </p>
                       </div>
                       <div>
                         <Label htmlFor="config-password">
-                          Mot de passe <span className="text-red-500">*</span>
+                          Mot de passe
                           <span className="ml-2 text-[10px] text-slate-400 font-normal">
                             (Mot de passe d'application)
                           </span>
@@ -1284,22 +1552,25 @@ export default function ClientMailPage() {
                           <Input
                             id="config-password"
                             type="password"
-                            placeholder="Votre mot de passe d'application"
-                            value={configForm.password}
+                            placeholder={hasMailAccount ? "Laissez vide pour conserver" : "Votre mot de passe d'application"}
+                            value={configForm.password || ''}
                             onChange={(e) => setConfigForm({ ...configForm, password: e.target.value })}
                             className="pl-10"
                             required={!hasMailAccount}
-                            disabled={hasMailAccount}
                           />
                         </div>
+                        {hasMailAccount && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            💡 Laissez vide pour conserver le mot de passe actuel
+                          </p>
+                        )}
                         <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
                           <div className="flex items-start gap-2">
                             <FaShieldAlt className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="text-xs font-medium text-blue-800">🔐 Sécurité</p>
                               <p className="text-[10px] text-blue-700">
-                                Utilisez un <strong>mot de passe d'application</strong> (App Password) 
-                                et non le mot de passe principal de votre compte email.
+                                Utilisez un <strong>mot de passe d'application</strong> (App Password)
                                 {selectedProvider && (
                                   <button
                                     type="button"
@@ -1317,14 +1588,10 @@ export default function ClientMailPage() {
                     </div>
                   </div>
 
-                  {/* ============================================ */}
-                  {/* GUIDE MOT DE PASSE D'APPLICATION */}
-                  {/* ============================================ */}
+                  {/* Guide mot de passe */}
                   {showAppPasswordGuide && <AppPasswordGuide />}
 
-                  {/* ============================================ */}
-                  {/* SERVEURS */}
-                  {/* ============================================ */}
+                  {/* Serveurs */}
                   <div className="border-b border-slate-200 pb-4">
                     <h3 className="text-sm font-semibold text-[#1E3A8A] mb-3 flex items-center gap-2">
                       <FaServer className="h-4 w-4 text-[#F97316]" />
@@ -1339,7 +1606,6 @@ export default function ClientMailPage() {
                           value={configForm.imap_server}
                           onChange={(e) => setConfigForm({ ...configForm, imap_server: e.target.value })}
                           required
-                          disabled={hasMailAccount}
                         />
                       </div>
                       <div>
@@ -1351,7 +1617,6 @@ export default function ClientMailPage() {
                           value={configForm.imap_port}
                           onChange={(e) => setConfigForm({ ...configForm, imap_port: e.target.value })}
                           required
-                          disabled={hasMailAccount}
                         />
                       </div>
                       <div>
@@ -1361,7 +1626,6 @@ export default function ClientMailPage() {
                           value={configForm.encryption}
                           onChange={(e) => setConfigForm({ ...configForm, encryption: e.target.value })}
                           className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent bg-white"
-                          disabled={hasMailAccount}
                         >
                           <option value="tls">TLS</option>
                           <option value="ssl">SSL</option>
@@ -1379,7 +1643,6 @@ export default function ClientMailPage() {
                           value={configForm.smtp_server}
                           onChange={(e) => setConfigForm({ ...configForm, smtp_server: e.target.value })}
                           required
-                          disabled={hasMailAccount}
                         />
                       </div>
                       <div>
@@ -1391,15 +1654,228 @@ export default function ClientMailPage() {
                           value={configForm.smtp_port}
                           onChange={(e) => setConfigForm({ ...configForm, smtp_port: e.target.value })}
                           required
-                          disabled={hasMailAccount}
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* ============================================ */}
-                  {/* OPTIONS AVANCÉES */}
-                  {/* ============================================ */}
+                  {/* SECTION BLOCAGE DES EMAILS */}
+                  <div className="border-b border-slate-200 pb-4">
+                    <h3 className="text-sm font-semibold text-[#1E3A8A] mb-3 flex items-center gap-2">
+                      <FaShieldAlt className="h-4 w-4 text-[#F97316]" />
+                      Filtrage et blocage des emails
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      {/* Règles de blocage automatiques */}
+                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <h4 className="text-sm font-medium text-slate-700 mb-3">Règles de blocage automatiques</h4>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={configForm.block_spam}
+                              onChange={(e) => setConfigForm({ 
+                                ...configForm, 
+                                block_spam: e.target.checked 
+                              })}
+                              className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
+                            />
+                            <span className="text-sm text-slate-700">🚫 Bloquer les emails identifiés comme spam</span>
+                          </label>
+                          
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={configForm.block_marketing}
+                              onChange={(e) => setConfigForm({ 
+                                ...configForm, 
+                                block_marketing: e.target.checked 
+                              })}
+                              className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
+                            />
+                            <span className="text-sm text-slate-700">📧 Bloquer les emails marketing/publicitaires</span>
+                          </label>
+                          
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={configForm.block_unknown}
+                              onChange={(e) => setConfigForm({ 
+                                ...configForm, 
+                                block_unknown: e.target.checked 
+                              })}
+                              className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
+                            />
+                            <span className="text-sm text-slate-700">👤 Bloquer les expéditeurs inconnus</span>
+                          </label>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2">
+                          Ces règles seront appliquées lors de la synchronisation des emails
+                        </p>
+                      </div>
+
+                      {/* Expéditeurs bloqués */}
+                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                          <FaUserFriends className="h-4 w-4 text-red-500" />
+                          Expéditeurs bloqués
+                        </h4>
+                        
+                        <div className="flex gap-2 mb-3">
+                          <Input
+                            type="email"
+                            placeholder="exemple@domaine.com"
+                            value={configForm.new_blocked_sender || ''}
+                            onChange={(e) => setConfigForm({ 
+                              ...configForm, 
+                              new_blocked_sender: e.target.value 
+                            })}
+                            className="flex-1 text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (configForm.new_blocked_sender && !configForm.blocked_senders?.includes(configForm.new_blocked_sender)) {
+                                  setConfigForm({
+                                    ...configForm,
+                                    blocked_senders: [...(configForm.blocked_senders || []), configForm.new_blocked_sender],
+                                    new_blocked_sender: ''
+                                  });
+                                }
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              if (configForm.new_blocked_sender && !configForm.blocked_senders?.includes(configForm.new_blocked_sender)) {
+                                setConfigForm({
+                                  ...configForm,
+                                  blocked_senders: [...(configForm.blocked_senders || []), configForm.new_blocked_sender],
+                                  new_blocked_sender: ''
+                                });
+                              }
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white text-xs"
+                          >
+                            <FaPlus className="h-3 w-3 mr-1" />
+                            Bloquer
+                          </Button>
+                        </div>
+
+                        <div className="space-y-1">
+                          {configForm.blocked_senders?.map((sender, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                              <span className="text-sm text-slate-700 flex items-center gap-2">
+                                <FaTimesCircle className="h-3 w-3 text-red-400" />
+                                {sender}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const newSenders = (configForm.blocked_senders || []).filter(s => s !== sender);
+                                  setConfigForm({
+                                    ...configForm,
+                                    blocked_senders: newSenders
+                                  });
+                                }}
+                                className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
+                              >
+                                <FaTrash className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                          {(!configForm.blocked_senders || configForm.blocked_senders.length === 0) && (
+                            <p className="text-xs text-slate-400 text-center py-2">Aucun expéditeur bloqué</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Domaines bloqués */}
+                      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                          <FaGlobe className="h-4 w-4 text-red-500" />
+                          Domaines bloqués
+                        </h4>
+                        
+                        <div className="flex gap-2 mb-3">
+                          <Input
+                            type="text"
+                            placeholder="domaine.com"
+                            value={configForm.new_blocked_domain || ''}
+                            onChange={(e) => setConfigForm({ 
+                              ...configForm, 
+                              new_blocked_domain: e.target.value 
+                            })}
+                            className="flex-1 text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (configForm.new_blocked_domain && !configForm.blocked_domains?.includes(configForm.new_blocked_domain)) {
+                                  setConfigForm({
+                                    ...configForm,
+                                    blocked_domains: [...(configForm.blocked_domains || []), configForm.new_blocked_domain],
+                                    new_blocked_domain: ''
+                                  });
+                                }
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              if (configForm.new_blocked_domain && !configForm.blocked_domains?.includes(configForm.new_blocked_domain)) {
+                                setConfigForm({
+                                  ...configForm,
+                                  blocked_domains: [...(configForm.blocked_domains || []), configForm.new_blocked_domain],
+                                  new_blocked_domain: ''
+                                });
+                              }
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white text-xs"
+                          >
+                            <FaPlus className="h-3 w-3 mr-1" />
+                            Bloquer
+                          </Button>
+                        </div>
+
+                        <div className="space-y-1">
+                          {configForm.blocked_domains?.map((domain, index) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                              <span className="text-sm text-slate-700 flex items-center gap-2">
+                                <FaHashtag className="h-3 w-3 text-red-400" />
+                                *@{domain}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const newDomains = (configForm.blocked_domains || []).filter(d => d !== domain);
+                                  setConfigForm({
+                                    ...configForm,
+                                    blocked_domains: newDomains
+                                  });
+                                }}
+                                className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
+                              >
+                                <FaTrash className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                          {(!configForm.blocked_domains || configForm.blocked_domains.length === 0) && (
+                            <p className="text-xs text-slate-400 text-center py-2">Aucun domaine bloqué</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Options avancées */}
                   <div className="border-b border-slate-200 pb-4">
                     <button
                       type="button"
@@ -1425,7 +1901,6 @@ export default function ClientMailPage() {
                             placeholder="50"
                             value={configForm.max_emails_per_sync}
                             onChange={(e) => setConfigForm({ ...configForm, max_emails_per_sync: e.target.value })}
-                            disabled={hasMailAccount}
                           />
                           <p className="text-xs text-slate-400 mt-1">Nombre maximum d'emails récupérés à chaque synchronisation</p>
                         </div>
@@ -1433,9 +1908,7 @@ export default function ClientMailPage() {
                     )}
                   </div>
 
-                  {/* ============================================ */}
-                  {/* CONFIGURATION IA */}
-                  {/* ============================================ */}
+                  {/* Configuration IA */}
                   <div className="border-b border-slate-200 pb-4">
                     <h3 className="text-sm font-semibold text-[#1E3A8A] mb-3 flex items-center gap-2">
                       <FaBrain className="h-4 w-4 text-[#F97316]" />
@@ -1495,9 +1968,7 @@ export default function ClientMailPage() {
                     </div>
                   </div>
 
-                  {/* ============================================ */}
-                  {/* BOUTONS */}
-                  {/* ============================================ */}
+                  {/* Boutons */}
                   <div className="flex flex-wrap gap-3 pt-4">
                     <Button
                       type="submit"
@@ -1507,13 +1978,15 @@ export default function ClientMailPage() {
                       {configLoading ? (
                         <>
                           <FaSpinner className="mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-                          Configuration en cours...
+                          {hasMailAccount ? 'Mise à jour...' : 'Configuration en cours...'}
                         </>
                       ) : (
                         <>
                           <FaSave className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                          <span className="hidden xs:inline">Enregistrer la configuration</span>
-                          <span className="xs:hidden">Enregistrer</span>
+                          <span className="hidden xs:inline">
+                            {hasMailAccount ? 'Mettre à jour la configuration' : 'Enregistrer la configuration'}
+                          </span>
+                          <span className="xs:hidden">{hasMailAccount ? 'Mettre à jour' : 'Enregistrer'}</span>
                         </>
                       )}
                     </Button>
@@ -1540,7 +2013,7 @@ export default function ClientMailPage() {
                         type="button"
                         variant="destructive"
                         onClick={() => {
-                          if (confirm('Voulez-vous vraiment supprimer ce compte mail ?')) {
+                          if (confirm('Voulez-vous vraiment supprimer ce compte mail ? Tous les emails associés seront également supprimés.')) {
                             toast.info('Fonctionnalité à implémenter');
                           }
                         }}
@@ -1551,36 +2024,13 @@ export default function ClientMailPage() {
                       </Button>
                     )}
                   </div>
-
-                  {/* Informations du compte existant */}
-                  {hasMailAccount && mailAccount && (
-                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                      <div className="flex items-start gap-2">
-                        <FaInfoCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <div>
-                          <p className="text-sm font-medium text-blue-800">Compte configuré</p>
-                          <p className="text-xs text-blue-700">
-                            {mailAccount.email} • {mailAccount.imap_server}:{mailAccount.imap_port}
-                          </p>
-                          <p className="text-xs text-blue-700">
-                            Dernière synchronisation: {mailAccount.last_sync_at ? formatDate(mailAccount.last_sync_at) : 'Jamais'}
-                          </p>
-                          <p className="text-xs text-blue-700">
-                            Statut: {mailAccount.is_connected ? '✅ Connecté' : '❌ Non connecté'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </form>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
 
-        {/* ============================================================
-        MODAL DETAIL
-        ============================================================ */}
+        {/* MODAL DETAIL */}
         {showDetail && selectedEmail && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">

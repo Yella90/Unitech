@@ -10,9 +10,12 @@ import ChatButton from "@/components/public/ChatButton";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { headers } from 'next/headers';
 
-// ✅ Imports des deux agents
+// ✅ Imports des agents existants
 import { initDonaService } from '@/lib/agents/dona/auto-start';
 import { initHarveyService } from '@/lib/agents/harvey/auto-start';
+
+// ✅ Import de Harvey V2
+import { initHarveyV2Service } from '@/lib/agents/harvey-v2/auto-start';
 
 const geist = Geist({ 
   subsets: ['latin'], 
@@ -59,6 +62,7 @@ if (typeof window === 'undefined') {
   try {
     console.log('🚀 Démarrage des agents IA...');
     
+    // 1. Démarrer DONA
     const stopDona = initDonaService({ 
       interval: 60000,
       onError: (error) => {
@@ -66,17 +70,31 @@ if (typeof window === 'undefined') {
       }
     });
     
+    // 2. Démarrer HARVEY (ancienne version)
     const stopHarvey = initHarveyService({ 
       interval: 120000,
       onError: (error) => {
-        console.error('❌ Erreur HARVEY:', error);
+        console.error('❌ Erreur HARVEY (v1):', error);
       }
     });
     
+    // 3. ✅ Démarrer HARVEY V2 (nouvelle version)
+    const stopHarveyV2 = initHarveyV2Service({
+      interval: 120000, // 2 minutes
+      onError: (error) => {
+        console.error('❌ Erreur HARVEY V2:', error);
+      },
+      onProcess: (result) => {
+        console.log(`📊 HARVEY V2: ${result.processed} emails traités pour client ${result.clientId}`);
+      }
+    });
+    
+    // Fonction de nettoyage globale
     const cleanup = () => {
       console.log('🛑 Arrêt des agents...');
       if (stopDona) stopDona();
       if (stopHarvey) stopHarvey();
+      if (stopHarveyV2) stopHarveyV2();
       console.log('✅ Agents arrêtés');
     };
     
@@ -84,7 +102,7 @@ if (typeof window === 'undefined') {
     process.on('SIGINT', cleanup);
     process.on('beforeExit', cleanup);
     
-    console.log('✅ DONA et HARVEY initialisés avec succès');
+    console.log('✅ DONA, HARVEY (v1) et HARVEY V2 initialisés avec succès');
   } catch (error) {
     console.error('❌ Erreur initialisation des agents:', error);
   }

@@ -200,38 +200,46 @@ export default function ClientServicesPage() {
   // ============================================================
   // SOUSCRIPTION (SaaS)
   // ============================================================
-  const handleSubscribe = async (serviceId: string) => {
-    setSubscribing(serviceId);
-    
-    try {
-      const response = await fetch('/api/client/services/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          serviceId,
-          autoRenew: true,
-          expiresInDays: 30
-        })
-      });
+ // Dans handleSubscribe
+const handleSubscribe = async (serviceId: string) => {
+  setSubscribing(serviceId);
+  
+  try {
+    const response = await fetch('/api/client/services/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        serviceId,
+        autoRenew: true,
+        expiresInDays: 30
+      })
+    });
 
-      const result = await response.json();
+    const result = await response.json();
 
-      if (!response.ok) {
-        toast.error(result.error || 'Erreur lors de la souscription');
-        setSubscribing(null);
-        return;
-      }
-
-      toast.success('✅ Souscription réussie !');
-      await fetchData();
-      
-    } catch (error) {
-      console.error('Erreur souscription:', error);
-      toast.error('Erreur serveur');
-    } finally {
+    // ✅ Gérer l'erreur "déjà souscrit"
+    if (response.status === 409 && result.code === 'ALREADY_SUBSCRIBED') {
+      toast.info('ℹ️ Vous êtes déjà souscrit à ce service');
       setSubscribing(null);
+      return;
     }
-  };
+
+    if (!response.ok) {
+      toast.error(result.error || 'Erreur lors de la souscription');
+      setSubscribing(null);
+      return;
+    }
+
+    toast.success('✅ Souscription réussie !');
+    await fetchData();
+    
+  } catch (error) {
+    console.error('Erreur souscription:', error);
+    toast.error('Erreur serveur');
+  } finally {
+    setSubscribing(null);
+  }
+};
 
   // ============================================================
   // ANNULER LA SOUSCRIPTION
