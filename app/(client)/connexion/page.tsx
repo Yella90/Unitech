@@ -183,7 +183,7 @@ export default function ClientLoginPage() {
 
             <p className="text-center text-sm text-slate-500">
               Pas encore de compte ?{' '}
-              <Link href="/clients/register" className="text-[#F97316] hover:underline font-medium">
+              <Link href="/register" className="text-[#F97316] hover:underline font-medium">
                 Créer un compte
               </Link>
             </p>
