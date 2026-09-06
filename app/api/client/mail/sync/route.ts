@@ -5,7 +5,7 @@ import { authenticateAPIRequest } from '@/lib/api/auth';
 import { simpleParser } from 'mailparser';
 import crypto from 'crypto';
 
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'; // 64 caractères hexadécimaux pour AES-256
 
 // ✅ Fonction pour déchiffrer le mot de passe
 function decryptPassword(encrypted: string): string {

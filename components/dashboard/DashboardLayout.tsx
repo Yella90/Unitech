@@ -160,6 +160,13 @@ const navItems: NavItem[] = [
     icon: FaUserTag,
     roles: ['super_admin', 'admin']
   },
+  // leads
+{
+   href: "/admin/leads", 
+   label: "Leads", 
+   icon: FaUserFriends,
+   roles: ['super_admin', 'admin', 'project_manager']
+},
   
   // 📧 Newsletter
   { 
