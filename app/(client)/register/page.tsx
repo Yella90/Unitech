@@ -308,7 +308,7 @@ export default function ClientRegisterPage() {
 
             <p className="text-center text-sm text-slate-500">
               Déjà un compte ?{' '}
-              <Link href="/connexion" className="text-[#F97316] hover:underline font-medium">
+              <Link href="/client/connexion" className="text-[#F97316] hover:underline font-medium">
                 Se connecter
               </Link>
             </p>
