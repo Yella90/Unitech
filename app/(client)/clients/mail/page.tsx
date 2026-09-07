@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,50 +22,29 @@ import {
   FaCheck,
   FaTimes,
   FaBrain,
-  FaFileAlt,
-  FaChartLine,
   FaInbox,
   FaFilter,
   FaTimesCircle,
   FaChevronDown,
   FaChevronUp,
   FaCog,
-  FaKey,
   FaServer,
   FaLock,
   FaMailBulk,
   FaUser,
   FaUserFriends,
-  FaBuilding,
-  FaPhone,
-  FaAddressCard,
   FaGlobe,
-  FaUserTie,
-  FaCreditCard,
   FaRocket,
   FaShieldAlt,
   FaInfoCircle,
   FaSave,
-  FaArrowLeft,
   FaPlus,
   FaTrash,
-  FaEdit,
-  FaDownload,
-  FaPrint,
-  FaShare,
-  FaStar,
-  FaStarHalf,
-  FaRegStar,
-  FaPaperclip,
-  FaCalendarAlt,
-  FaUserCircle,
-  FaAt,
-  FaHashtag,
   FaGoogle,
   FaMicrosoft,
   FaYahoo,
-  FaQuestionCircle,
-  FaExternalLinkAlt
+  FaExternalLinkAlt,
+  FaHashtag
 } from 'react-icons/fa';
 import { toast, Toaster } from 'sonner';
 
@@ -83,7 +61,7 @@ type ClientEmail = {
   subject: string;
   body: string;
   body_html: string;
-  status: 'pending' | 'analyzed' | 'generating' | 'response_ready' | 'approved' | 'sending' | 'sent' | 'archived' | 'error';
+  status: 'pending' | 'analyzed' | 'generating' | 'response_ready' | 'approved' | 'sending' | 'sent' | 'archived' | 'error' | 'review';
   category: string;
   priority: 'low' | 'normal' | 'high' | 'urgent';
   received_at: string;
@@ -142,15 +120,13 @@ type EmailStats = {
   approved: number;
   sent: number;
   archived: number;
+  review: number;
   error: number;
   avgConfidence: number;
   byCategory: Record<string, number>;
   byPriority: Record<string, number>;
 };
 
-// ============================================================
-// TYPE DU PAYLOAD DE CONFIGURATION
-// ============================================================
 type ConfigPayload = {
   email: string;
   imap_server: string;
@@ -189,6 +165,7 @@ const statusColors: Record<string, string> = {
   sent: 'bg-emerald-100 text-emerald-700',
   archived: 'bg-gray-100 text-gray-700',
   error: 'bg-red-100 text-red-700',
+  review: 'bg-yellow-100 text-yellow-700',
 };
 
 const statusLabels: Record<string, string> = {
@@ -201,6 +178,7 @@ const statusLabels: Record<string, string> = {
   sent: '📤 Envoyé',
   archived: '📦 Archivé',
   error: '❌ Erreur',
+  review: '🔄 En revue',
 };
 
 const categoryColors: Record<string, string> = {
@@ -222,7 +200,7 @@ const priorityColors: Record<string, string> = {
 };
 
 // ============================================================
-// CONFIGURATION DES FOURNISSEURS EMAIL
+// FOURNISSEURS EMAIL
 // ============================================================
 const emailProviders = {
   gmail: {
@@ -311,6 +289,7 @@ export default function ClientMailPage() {
     response_ready: 0,
     approved: 0,
     sent: 0,
+    review: 0,
     archived: 0,
     error: 0,
     avgConfidence: 0,
@@ -318,7 +297,7 @@ export default function ClientMailPage() {
     byPriority: {}
   });
 
-  // Formulaire de configuration
+      
   const [configForm, setConfigForm] = useState({
     email: '',
     imap_server: 'imap.gmail.com',
@@ -368,44 +347,64 @@ export default function ClientMailPage() {
     }
   };
 
-  const loadMailAccount = async () => {
-    try {
-      const response = await fetch('/api/client/mail/account');
-      const data = await response.json();
+  
+const loadMailAccount = async () => {
+  try {
+    const response = await fetch('/api/client/mail/account');
+    const data = await response.json();
+    
+    if (data.success && data.data) {
+      setMailAccount(data.data);
+      setHasMailAccount(true);
       
-      if (data.success && data.data) {
-        setMailAccount(data.data);
-        setHasMailAccount(true);
-        
-        setConfigForm(prev => ({
-          ...prev,
-          email: data.data.email || clientEmail || '',
-          imap_server: data.data.imap_server || '',
-          imap_port: data.data.imap_port?.toString() || '993',
-          smtp_server: data.data.smtp_server || '',
-          smtp_port: data.data.smtp_port?.toString() || '587',
-          encryption: data.data.encryption || 'tls',
-          max_emails_per_sync: data.data.max_emails_per_sync?.toString() || '50',
-          prompt_instructions: data.data.prompt_config?.instructions || '',
-          prompt_tone: data.data.prompt_config?.tone || 'professional',
-          prompt_signature: data.data.prompt_config?.signature || "L'équipe UNITECH",
-          prompt_custom_rules: data.data.prompt_config?.custom_rules?.join('\n') || '',
-          blocked_senders: data.data.blocked_senders || [],
-          blocked_domains: data.data.blocked_domains || [],
-          block_spam: data.data.block_rules?.block_spam !== false,
-          block_unknown: data.data.block_rules?.block_unknown || false,
-          block_marketing: data.data.block_rules?.block_marketing !== false
-        }));
-        
-        detectProvider(data.data);
-      } else {
-        setHasMailAccount(false);
+      // ✅ Déchiffrer le mot de passe
+      let decryptedPassword = '';
+      if (data.data.email_password) {
+        try {
+          const decryptResponse = await fetch('/api/client/mail/decrypt-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ encrypted: data.data.email_password })
+          });
+          const decryptData = await decryptResponse.json();
+          if (decryptData.success) {
+            decryptedPassword = decryptData.password;
+          }
+        } catch (error) {
+          console.error('❌ Erreur déchiffrement:', error);
+        }
       }
-    } catch (error) {
-      console.error('Erreur chargement compte mail:', error);
+      
+      setConfigForm(prev => ({
+        ...prev,
+        email: data.data.email || clientEmail || '',
+        imap_server: data.data.imap_server || '',
+        imap_port: data.data.imap_port?.toString() || '993',
+        smtp_server: data.data.smtp_server || '',
+        smtp_port: data.data.smtp_port?.toString() || '587',
+        encryption: data.data.encryption || 'tls',
+        max_emails_per_sync: data.data.max_emails_per_sync?.toString() || '50',
+        password: decryptedPassword, // ✅ Maintenant défini
+        prompt_instructions: data.data.prompt_config?.instructions || '',
+        prompt_tone: data.data.prompt_config?.tone || 'professional',
+        prompt_signature: data.data.prompt_config?.signature || "L'équipe UNITECH",
+        prompt_custom_rules: data.data.prompt_config?.custom_rules?.join('\n') || '',
+        blocked_senders: data.data.blocked_senders || [],
+        blocked_domains: data.data.blocked_domains || [],
+        block_spam: data.data.block_rules?.block_spam !== false,
+        block_unknown: data.data.block_rules?.block_unknown || false,
+        block_marketing: data.data.block_rules?.block_marketing !== false
+      }));
+      
+      detectProvider(data.data);
+    } else {
       setHasMailAccount(false);
     }
-  };
+  } catch (error) {
+    console.error('Erreur chargement compte mail:', error);
+    setHasMailAccount(false);
+  }
+};
 
   const detectProvider = (account: MailAccount) => {
     const server = account.imap_server?.toLowerCase() || '';
@@ -426,19 +425,39 @@ export default function ClientMailPage() {
     }
 
     try {
+      console.log('📧 Chargement des emails...');
+      
       const response = await fetch('/api/client/mail/emails?limit=100');
+      
+      if (!response.ok) {
+        console.error('❌ Erreur HTTP:', response.status, response.statusText);
+        if (!silent) {
+          toast.error(`Erreur ${response.status}: ${response.statusText}`);
+        }
+        return;
+      }
+
       const data = await response.json();
+      console.log('📊 Données reçues:', data);
 
       if (data.success) {
-        setEmails(data.data || []);
-        calculateStats(data.data || []);
+        const emailList = Array.isArray(data.data) ? data.data : [];
+        console.log(`✅ ${emailList.length} emails chargés`);
+        
+        setEmails(emailList);
+        calculateStats(emailList);
+      } else {
+        console.error('❌ Erreur API:', data.error);
+        if (!silent) {
+          toast.error(data.error || 'Erreur lors du chargement des emails');
+        }
       }
 
       setLastUpdate(new Date());
-    } catch (error) {
-      console.error('Erreur chargement emails:', error);
+    } catch (error: any) {
+      console.error('❌ Erreur chargement emails:', error);
       if (!silent) {
-        toast.error('Erreur lors du chargement des emails');
+        toast.error('Erreur réseau ou serveur');
       }
     } finally {
       if (!silent) {
@@ -490,6 +509,7 @@ export default function ClientMailPage() {
       response_ready: 0,
       approved: 0,
       sent: 0,
+      review: 0,
       archived: 0,
       error: 0,
       avgConfidence: 0,
@@ -552,26 +572,34 @@ export default function ClientMailPage() {
   // ACTIONS
   // ============================================================
   const updateEmailStatus = async (id: string, status: string) => {
-    try {
-      const response = await fetch(`/api/client/mail/emails/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
+  try {
+    const response = await fetch(`/api/client/mail/emails/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
 
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success(`✅ Statut mis à jour: ${statusLabels[status] || status}`);
-        loadEmails(true);
-      } else {
-        toast.error(`❌ Erreur: ${data.error}`);
-      }
-    } catch (error: any) {
-      console.error('Erreur mise à jour:', error);
-      toast.error(`❌ Erreur: ${error.message}`);
+    // ✅ Vérifier si la réponse est valide
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('❌ Réponse erreur:', text);
+      toast.error(`Erreur ${response.status}: ${response.statusText}`);
+      return;
     }
-  };
+
+    const data = await response.json();
+
+    if (data.success) {
+      toast.success(`✅ Statut mis à jour: ${statusLabels[status] || status}`);
+      loadEmails(true);
+    } else {
+      toast.error(`❌ Erreur: ${data.error}`);
+    }
+  } catch (error: any) {
+    console.error('Erreur mise à jour:', error);
+    toast.error(`❌ Erreur: ${error.message}`);
+  }
+};
 
   const approveEmail = async (id: string) => {
     await updateEmailStatus(id, 'approved');
@@ -637,7 +665,7 @@ export default function ClientMailPage() {
   };
 
   // ============================================================
-  // CONFIGURATION DU COMPTE MAIL
+  // CONFIGURATION
   // ============================================================
   const applyProviderConfig = (provider: string) => {
     const config = emailProviders[provider as keyof typeof emailProviders];
@@ -684,7 +712,6 @@ export default function ClientMailPage() {
         }
       };
 
-      // ✅ Ajouter le mot de passe seulement s'il est rempli
       if (configForm.password) {
         payload.password = configForm.password;
       }
@@ -714,60 +741,46 @@ export default function ClientMailPage() {
   };
 
   // ============================================================
-  // FILTRES ET RECHERCHE
+  // FILTRES
   // ============================================================
   const getFilteredEmails = () => {
-    let filtered = emails;
-    
-    if (filter === 'pending') {
-      filtered = filtered.filter(e => e.status === 'pending');
-    } else if (filter === 'analyzed') {
-      filtered = filtered.filter(e => e.status === 'analyzed' || e.status === 'generating');
-    } else if (filter === 'response_ready') {
-      filtered = filtered.filter(e => e.status === 'response_ready');
-    } else if (filter === 'approved') {
-      filtered = filtered.filter(e => e.status === 'approved');
-    } else if (filter === 'sent') {
-      filtered = filtered.filter(e => e.status === 'sent');
-    } else if (filter === 'archived') {
-      filtered = filtered.filter(e => e.status === 'archived');
-    } else if (filter === 'error') {
-      filtered = filtered.filter(e => e.status === 'error');
-    } else if (filter === 'unread') {
-      filtered = filtered.filter(e => !e.is_read);
-    } else if (filter === 'support') {
-      filtered = filtered.filter(e => e.category === 'support');
-    } else if (filter === 'commercial') {
-      filtered = filtered.filter(e => e.category === 'commercial');
-    } else if (filter === 'project') {
-      filtered = filtered.filter(e => e.category === 'project');
-    } else if (filter !== 'all') {
-      filtered = filtered.filter(e => e.category === filter);
-    }
+  let filtered = emails;
+  
+  if (filter === 'pending') {
+    filtered = filtered.filter(e => e.status === 'pending');
+  } else if (filter === 'analyzed') {
+    filtered = filtered.filter(e => e.status === 'analyzed' || e.status === 'generating');
+  } else if (filter === 'response_ready') {
+    // ✅ Inclure 'review' dans les réponses prêtes
+    filtered = filtered.filter(e => e.status === 'response_ready' || e.status === 'review');
+  } else if (filter === 'approved') {
+    filtered = filtered.filter(e => e.status === 'approved');
+  } else if (filter === 'sent') {
+    filtered = filtered.filter(e => e.status === 'sent');
+  } else if (filter === 'archived') {
+    filtered = filtered.filter(e => e.status === 'archived');
+  } else if (filter === 'error') {
+    filtered = filtered.filter(e => e.status === 'error');
+  } else if (filter === 'unread') {
+    filtered = filtered.filter(e => !e.is_read);
+  } else if (filter === 'review') {
+    filtered = filtered.filter(e => e.status === 'review');
+  } else if (filter !== 'all') {
+    filtered = filtered.filter(e => e.category === filter);
+  }
 
-    if (searchTerm) {
-      filtered = filtered.filter(e => 
-        (e.from_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (e.from_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (e.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (e.body || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (e.harvey_response || '').toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+  if (searchTerm) {
+    filtered = filtered.filter(e => 
+      (e.from_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.from_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.body || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (e.harvey_response || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }
 
-    return filtered;
-  };
-
-  const toggleExpand = (id: string) => {
-    const newSet = new Set(expandedItems);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    setExpandedItems(newSet);
-  };
-
+  return filtered;
+};
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString('fr-FR', {
@@ -780,12 +793,13 @@ export default function ClientMailPage() {
   };
 
   // ============================================================
-  // COMPOSANTS D'AIDE
+  // COMPOSANT GUIDE MOT DE PASSE
   // ============================================================
   const AppPasswordGuide = () => {
-    const provider = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
+    // ✅ Récupérer le provider sélectionné
+    const selectedProv = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
     
-    if (!provider) return null;
+    if (!selectedProv) return null;
 
     const guides = {
       gmail: {
@@ -825,7 +839,7 @@ export default function ClientMailPage() {
           'Connectez-vous à votre compte Alwaysdata',
           'Allez dans "Emails" → "Comptes emails"',
           'Créez ou sélectionnez un compte email',
-          'Utilisez le mot de passe défini pour ce compte (pas de mot de passe d\'application spécifique)'
+          'Utilisez le mot de passe défini pour ce compte'
         ]
       }
     };
@@ -840,9 +854,9 @@ export default function ClientMailPage() {
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
-              🔐 Générer un mot de passe d'application pour {provider.name}
+              🔐 Générer un mot de passe d'application pour {selectedProv.name}
               <a 
-                href={provider.appPasswordGuide} 
+                href={selectedProv.appPasswordGuide} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1"
@@ -858,8 +872,7 @@ export default function ClientMailPage() {
             </ol>
             <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-xs text-yellow-800">
-                ⚠️ <strong>Important :</strong> Copiez immédiatement le mot de passe généré. 
-                Vous ne pourrez pas le revoir après avoir fermé la page.
+                ⚠️ <strong>Important :</strong> Copiez immédiatement le mot de passe généré.
               </p>
             </div>
             <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
@@ -885,7 +898,6 @@ export default function ClientMailPage() {
   }
 
   const displayedEmails = getFilteredEmails();
-  const provider = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
 
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
@@ -1058,7 +1070,7 @@ export default function ClientMailPage() {
                   <span className="hidden xs:inline">Réponses IA</span>
                   <span className="xs:hidden">🤖</span>
                   <Badge variant="secondary" className="ml-0 sm:ml-1 text-[10px] sm:text-xs">
-                    {stats.response_ready + stats.approved}
+                    {stats.response_ready + stats.approved+ (stats.review || 0)}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="sent" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
@@ -1181,34 +1193,11 @@ export default function ClientMailPage() {
                       >
                         ❌ Erreurs ({stats.error})
                       </Button>
-                      <Button 
-                        variant={filter === 'support' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => setFilter('support')}
-                        className={`text-xs sm:text-sm ${filter === 'support' ? 'bg-blue-600' : ''}`}
-                      >
-                        Support
-                      </Button>
-                      <Button 
-                        variant={filter === 'commercial' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => setFilter('commercial')}
-                        className={`text-xs sm:text-sm ${filter === 'commercial' ? 'bg-orange-600' : ''}`}
-                      >
-                        Commercial
-                      </Button>
-                      <Button 
-                        variant={filter === 'project' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => setFilter('project')}
-                        className={`text-xs sm:text-sm ${filter === 'project' ? 'bg-purple-600' : ''}`}
-                      >
-                        Projet
-                      </Button>
                     </div>
                   </div>
                 </div>
 
+                {/* Liste des emails */}
                 <Card>
                   <CardHeader className="p-3 sm:p-4 md:p-6">
                     <CardTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -1227,11 +1216,28 @@ export default function ClientMailPage() {
                       <div className="text-center py-8 sm:py-12 text-slate-500">
                         <FaInbox className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-slate-300 mb-3" />
                         <p className="text-base sm:text-lg font-medium">Aucun email</p>
-                        <p className="text-xs sm:text-sm">Les emails apparaîtront ici une fois synchronisés.</p>
+                        <p className="text-xs sm:text-sm">
+                          {searchTerm ? 'Aucun résultat pour votre recherche' : 'Les emails apparaîtront ici une fois synchronisés.'}
+                        </p>
+                        {hasMailAccount && displayedEmails.length === 0 && !searchTerm && (
+                          <Button 
+                            className="mt-4"
+                            variant="outline"
+                            onClick={syncEmails}
+                            disabled={syncLoading}
+                          >
+                            {syncLoading ? (
+                              <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <FaSync className="mr-2 h-4 w-4" />
+                            )}
+                            Synchroniser maintenant
+                          </Button>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-3 sm:space-y-4">
-                        {displayedEmails.map(email => (
+                        {displayedEmails.map((email) => (
                           <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="flex-1 min-w-0">
@@ -1256,7 +1262,7 @@ export default function ClientMailPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-sm text-slate-700 truncate mt-1">{email.subject}</p>
+                                <p className="text-sm text-slate-700 truncate mt-1">{email.subject || 'Sans sujet'}</p>
                                 <p className="text-xs text-slate-400 mt-1">{formatDate(email.received_at || email.created_at)}</p>
                               </div>
                               <div className="flex gap-2 flex-shrink-0">
@@ -1301,6 +1307,16 @@ export default function ClientMailPage() {
                                     <FaBrain className="h-4 w-4" />
                                   </Button>
                                 )}
+                                {email.status === 'response_ready' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => regenerateResponse(email.id)}
+                                    className="h-8 w-8 p-0 text-orange-500"
+                                  >
+                                    <FaSync className="h-4 w-4" />
+                                  </Button>
+                                )}
                                 {!['sent', 'archived'].includes(email.status) && (
                                   <Button
                                     variant="ghost"
@@ -1324,75 +1340,77 @@ export default function ClientMailPage() {
           </TabsContent>
 
           {/* TAB: RESPONSES */}
-          <TabsContent value="responses">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Réponses générées par l'IA</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {emails.filter(e => e.status === 'response_ready' || e.status === 'approved').length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">
-                    <FaBrain className="h-12 w-12 mx-auto text-slate-300 mb-3" />
-                    <p className="font-medium">Aucune réponse prête</p>
-                    <p className="text-sm">Les réponses générées par l'IA apparaîtront ici.</p>
+         <TabsContent value="responses">
+  <Card>
+    <CardHeader>
+      <CardTitle className="text-lg">Réponses générées par l'IA</CardTitle>
+      <p className="text-sm text-slate-500">
+        {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').length} réponses disponibles
+      </p>
+    </CardHeader>
+    <CardContent>
+      {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').length === 0 ? (
+        <div className="text-center py-8 text-slate-500">
+          <FaBrain className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+          <p className="font-medium">Aucune réponse prête</p>
+          <p className="text-sm">Les réponses générées par l'IA apparaîtront ici.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').map(email => (
+            <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-slate-800">{email.from_name || email.from_email}</span>
+                    <Badge className={`${statusColors[email.status] || statusColors.pending} text-[10px]`}>
+                      {statusLabels[email.status] || email.status}
+                    </Badge>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {emails.filter(e => e.status === 'response_ready' || e.status === 'approved').map(email => (
-                      <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-slate-800">{email.from_name || email.from_email}</span>
-                              <Badge className={`${statusColors[email.status]} text-[10px]`}>
-                                {statusLabels[email.status]}
-                              </Badge>
-                            </div>
-                            <span className="text-xs text-slate-400">{formatDate(email.received_at)}</span>
-                          </div>
-                          <p className="text-sm font-medium text-slate-700">{email.subject}</p>
-                          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                            <p className="text-sm text-slate-700 line-clamp-2">{email.harvey_response}</p>
-                          </div>
-                          <div className="flex gap-2 mt-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedEmail(email);
-                                setShowDetail(true);
-                              }}
-                            >
-                              <FaEye className="mr-2 h-3 w-3" />
-                              Voir
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700"
-                              onClick={() => sendEmail(email.id)}
-                            >
-                              <FaReply className="mr-2 h-3 w-3" />
-                              Envoyer
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-orange-600 border-orange-200 hover:bg-orange-50"
-                              onClick={() => regenerateResponse(email.id)}
-                            >
-                              <FaSync className="mr-2 h-3 w-3" />
-                              Régénérer
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
+                  <span className="text-xs text-slate-400">{formatDate(email.received_at)}</span>
+                </div>
+                <p className="text-sm font-medium text-slate-700">{email.subject}</p>
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                  <p className="text-sm text-slate-700 line-clamp-2">{email.harvey_response || 'Réponse en attente...'}</p>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedEmail(email);
+                      setShowDetail(true);
+                    }}
+                  >
+                    <FaEye className="mr-2 h-3 w-3" />
+                    Voir
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => sendEmail(email.id)}
+                  >
+                    <FaReply className="mr-2 h-3 w-3" />
+                    Envoyer
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                    onClick={() => regenerateResponse(email.id)}
+                  >
+                    <FaSync className="mr-2 h-3 w-3" />
+                    Régénérer
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </CardContent>
+  </Card>
+</TabsContent>
           {/* TAB: SENT */}
           <TabsContent value="sent">
             <Card>
@@ -1482,11 +1500,11 @@ export default function ClientMailPage() {
                         );
                       })}
                     </div>
-                    {selectedProvider && provider && (
+                    {selectedProvider && (
                       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
                         <p className="text-xs text-green-700 flex items-center gap-2">
                           <FaCheckCircle className="h-4 w-4 text-green-500" />
-                          Configuration {provider.name} appliquée
+                          Configuration {emailProviders[selectedProvider as keyof typeof emailProviders]?.name} appliquée
                         </p>
                       </div>
                     )}
@@ -1659,7 +1677,7 @@ export default function ClientMailPage() {
                     </div>
                   </div>
 
-                  {/* SECTION BLOCAGE DES EMAILS */}
+                  {/* SECTION BLOCAGE */}
                   <div className="border-b border-slate-200 pb-4">
                     <h3 className="text-sm font-semibold text-[#1E3A8A] mb-3 flex items-center gap-2">
                       <FaShieldAlt className="h-4 w-4 text-[#F97316]" />
@@ -1667,7 +1685,6 @@ export default function ClientMailPage() {
                     </h3>
                     
                     <div className="space-y-4">
-                      {/* Règles de blocage automatiques */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                         <h4 className="text-sm font-medium text-slate-700 mb-3">Règles de blocage automatiques</h4>
                         <div className="space-y-2">
@@ -1675,62 +1692,43 @@ export default function ClientMailPage() {
                             <input
                               type="checkbox"
                               checked={configForm.block_spam}
-                              onChange={(e) => setConfigForm({ 
-                                ...configForm, 
-                                block_spam: e.target.checked 
-                              })}
+                              onChange={(e) => setConfigForm({ ...configForm, block_spam: e.target.checked })}
                               className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
                             />
                             <span className="text-sm text-slate-700">🚫 Bloquer les emails identifiés comme spam</span>
                           </label>
-                          
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={configForm.block_marketing}
-                              onChange={(e) => setConfigForm({ 
-                                ...configForm, 
-                                block_marketing: e.target.checked 
-                              })}
+                              onChange={(e) => setConfigForm({ ...configForm, block_marketing: e.target.checked })}
                               className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
                             />
                             <span className="text-sm text-slate-700">📧 Bloquer les emails marketing/publicitaires</span>
                           </label>
-                          
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={configForm.block_unknown}
-                              onChange={(e) => setConfigForm({ 
-                                ...configForm, 
-                                block_unknown: e.target.checked 
-                              })}
+                              onChange={(e) => setConfigForm({ ...configForm, block_unknown: e.target.checked })}
                               className="h-4 w-4 rounded border-slate-300 text-[#1E3A8A] focus:ring-[#1E3A8A]"
                             />
                             <span className="text-sm text-slate-700">👤 Bloquer les expéditeurs inconnus</span>
                           </label>
                         </div>
-                        <p className="text-xs text-slate-400 mt-2">
-                          Ces règles seront appliquées lors de la synchronisation des emails
-                        </p>
                       </div>
 
-                      {/* Expéditeurs bloqués */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                         <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
                           <FaUserFriends className="h-4 w-4 text-red-500" />
                           Expéditeurs bloqués
                         </h4>
-                        
                         <div className="flex gap-2 mb-3">
                           <Input
                             type="email"
                             placeholder="exemple@domaine.com"
                             value={configForm.new_blocked_sender || ''}
-                            onChange={(e) => setConfigForm({ 
-                              ...configForm, 
-                              new_blocked_sender: e.target.value 
-                            })}
+                            onChange={(e) => setConfigForm({ ...configForm, new_blocked_sender: e.target.value })}
                             className="flex-1 text-sm"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -1763,7 +1761,6 @@ export default function ClientMailPage() {
                             Bloquer
                           </Button>
                         </div>
-
                         <div className="space-y-1">
                           {configForm.blocked_senders?.map((sender, index) => (
                             <div key={index} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
@@ -1777,10 +1774,7 @@ export default function ClientMailPage() {
                                 size="sm"
                                 onClick={() => {
                                   const newSenders = (configForm.blocked_senders || []).filter(s => s !== sender);
-                                  setConfigForm({
-                                    ...configForm,
-                                    blocked_senders: newSenders
-                                  });
+                                  setConfigForm({ ...configForm, blocked_senders: newSenders });
                                 }}
                                 className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
                               >
@@ -1794,22 +1788,17 @@ export default function ClientMailPage() {
                         </div>
                       </div>
 
-                      {/* Domaines bloqués */}
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                         <h4 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
                           <FaGlobe className="h-4 w-4 text-red-500" />
                           Domaines bloqués
                         </h4>
-                        
                         <div className="flex gap-2 mb-3">
                           <Input
                             type="text"
                             placeholder="domaine.com"
                             value={configForm.new_blocked_domain || ''}
-                            onChange={(e) => setConfigForm({ 
-                              ...configForm, 
-                              new_blocked_domain: e.target.value 
-                            })}
+                            onChange={(e) => setConfigForm({ ...configForm, new_blocked_domain: e.target.value })}
                             className="flex-1 text-sm"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
@@ -1842,7 +1831,6 @@ export default function ClientMailPage() {
                             Bloquer
                           </Button>
                         </div>
-
                         <div className="space-y-1">
                           {configForm.blocked_domains?.map((domain, index) => (
                             <div key={index} className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
@@ -1856,10 +1844,7 @@ export default function ClientMailPage() {
                                 size="sm"
                                 onClick={() => {
                                   const newDomains = (configForm.blocked_domains || []).filter(d => d !== domain);
-                                  setConfigForm({
-                                    ...configForm,
-                                    blocked_domains: newDomains
-                                  });
+                                  setConfigForm({ ...configForm, blocked_domains: newDomains });
                                 }}
                                 className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
                               >
@@ -1890,7 +1875,6 @@ export default function ClientMailPage() {
                         {showAdvanced ? <FaChevronUp className="h-4 w-4" /> : <FaChevronDown className="h-4 w-4" />}
                       </span>
                     </button>
-                    
                     {showAdvanced && (
                       <div className="mt-4 space-y-4">
                         <div>
@@ -1914,20 +1898,17 @@ export default function ClientMailPage() {
                       <FaBrain className="h-4 w-4 text-[#F97316]" />
                       Configuration de l'IA (HARVEY)
                     </h3>
-                    
                     <div className="space-y-4">
                       <div>
                         <Label htmlFor="config-prompt-instructions">Instructions personnalisées</Label>
                         <Textarea
                           id="config-prompt-instructions"
-                          placeholder="Instructions pour l'IA (ex: Réponds de manière professionnelle, mentionne nos services...)"
+                          placeholder="Instructions pour l'IA..."
                           value={configForm.prompt_instructions}
                           onChange={(e) => setConfigForm({ ...configForm, prompt_instructions: e.target.value })}
                           className="min-h-[80px]"
                         />
-                        <p className="text-xs text-slate-400 mt-1">Ces instructions guident l'IA dans la génération des réponses</p>
                       </div>
-
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="config-prompt-tone">Ton de la réponse</Label>
@@ -1953,17 +1934,15 @@ export default function ClientMailPage() {
                           />
                         </div>
                       </div>
-
                       <div>
                         <Label htmlFor="config-prompt-rules">Règles personnalisées (une par ligne)</Label>
                         <Textarea
                           id="config-prompt-rules"
-                          placeholder="Ex: Ne jamais mentionner les prix sans accord préalable&#10;Toujours proposer un rendez-vous téléphonique"
+                          placeholder="Ex: Ne jamais mentionner les prix sans accord préalable"
                           value={configForm.prompt_custom_rules}
                           onChange={(e) => setConfigForm({ ...configForm, prompt_custom_rules: e.target.value })}
                           className="min-h-[60px]"
                         />
-                        <p className="text-xs text-slate-400 mt-1">Ajoutez des règles spécifiques que l'IA doit respecter</p>
                       </div>
                     </div>
                   </div>
@@ -2007,22 +1986,6 @@ export default function ClientMailPage() {
                         Synchroniser
                       </Button>
                     )}
-
-                    {hasMailAccount && (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={() => {
-                          if (confirm('Voulez-vous vraiment supprimer ce compte mail ? Tous les emails associés seront également supprimés.')) {
-                            toast.info('Fonctionnalité à implémenter');
-                          }
-                        }}
-                        className="text-xs sm:text-sm"
-                      >
-                        <FaTrash className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                        Supprimer
-                      </Button>
-                    )}
                   </div>
                 </form>
               </CardContent>
@@ -2049,7 +2012,6 @@ export default function ClientMailPage() {
               </div>
 
               <div className="p-3 sm:p-4 md:p-6 space-y-4">
-                {/* Message original */}
                 <div>
                   <h3 className="text-xs sm:text-sm font-semibold text-slate-600 mb-2">📧 Email original</h3>
                   <div className="bg-slate-50 rounded-lg p-3 sm:p-4">
@@ -2066,7 +2028,6 @@ export default function ClientMailPage() {
                   </div>
                 </div>
 
-                {/* Réponse générée */}
                 {selectedEmail.harvey_response && (
                   <div>
                     <h3 className="text-xs sm:text-sm font-semibold text-slate-600 mb-2">🤖 Réponse générée</h3>
@@ -2101,7 +2062,6 @@ export default function ClientMailPage() {
                   </div>
                 )}
 
-                {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-200">
                   <Button
                     variant="outline"
@@ -2111,7 +2071,6 @@ export default function ClientMailPage() {
                   >
                     Fermer
                   </Button>
-
                   {selectedEmail.status === 'pending' && (
                     <Button
                       size="sm"
@@ -2124,7 +2083,6 @@ export default function ClientMailPage() {
                       <FaBrain className="mr-1 h-3 w-3" /> Analyser
                     </Button>
                   )}
-
                   {selectedEmail.status === 'response_ready' && (
                     <Button
                       size="sm"
@@ -2137,7 +2095,6 @@ export default function ClientMailPage() {
                       <FaReply className="mr-1 h-3 w-3" /> Envoyer
                     </Button>
                   )}
-
                   {selectedEmail.status === 'response_ready' && (
                     <Button
                       variant="outline"
@@ -2151,7 +2108,6 @@ export default function ClientMailPage() {
                       <FaSync className="mr-1 h-3 w-3" /> Régénérer
                     </Button>
                   )}
-
                   {!['sent', 'archived'].includes(selectedEmail.status) && (
                     <Button
                       variant="outline"

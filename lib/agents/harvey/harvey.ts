@@ -1304,7 +1304,7 @@ L'équipe UNITECH
 
       if (error) {
         if (error.code === '42501') {
-          console.log('⚠️ HARVEY: Notification ignorée à cause des règles RLS');
+          //console.log('⚠️ HARVEY: Notification ignorée à cause des règles RLS');
           return;
         }
         console.error('❌ HARVEY: Erreur notification:', error);
@@ -1332,7 +1332,7 @@ L'équipe UNITECH
       }
 
       if (await this.isContactAlreadyProcessed(contact.id, contact.email)) {
-        console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité, ignoré`);
+        //console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité, ignoré`);
         
         await supabase
           .from('contacts')
@@ -1346,7 +1346,7 @@ L'équipe UNITECH
       }
 
       if (contact.status === 'answered' || contact.status === 'review' || contact.status === 'duplicate') {
-        console.log(`⚠️ HARVEY: Contact déjà traité (status: ${contact.status})`);
+        //console.log(`⚠️ HARVEY: Contact déjà traité (status: ${contact.status})`);
         return null;
       }
 
@@ -1426,7 +1426,7 @@ L'équipe UNITECH
       }
 
       if (await this.isEmailAlreadyProcessed(emailId)) {
-        console.log(`⚠️ HARVEY: Email ${emailId} déjà traité, ignoré`);
+        //console.log(`⚠️ HARVEY: Email ${emailId} déjà traité, ignoré`);
         
         await supabase
           .from('incoming_emails')
@@ -1454,12 +1454,12 @@ L'équipe UNITECH
       }
 
       if (email.status === 'answered' || email.status === 'review' || email.status === 'duplicate') {
-        console.log(`⚠️ HARVEY: Email déjà traité (status: ${email.status})`);
+        //console.log(`⚠️ HARVEY: Email déjà traité (status: ${email.status})`);
         return null;
       }
 
       if (email.status !== 'analyzed' && email.status !== 'processed') {
-        console.log(`⚠️ HARVEY: Email non analysé (status: ${email.status})`);
+        //console.log(`⚠️ HARVEY: Email non analysé (status: ${email.status})`);
         return null;
       }
 
@@ -1624,7 +1624,7 @@ L'équipe UNITECH
       for (const email of data) {
         try {
           if (this.processedEmails.has(email.id)) {
-            console.log(`⚠️ HARVEY: Email ${email.id} déjà traité (skip)`);
+            //console.log(`⚠️ HARVEY: Email ${email.id} déjà traité (skip)`);
             continue;
           }
 
@@ -1684,7 +1684,7 @@ L'équipe UNITECH
       for (const contact of data) {
         try {
           if (this.processedContacts.has(contact.email)) {
-            console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité (skip)`);
+            //console.log(`⚠️ HARVEY: Contact ${contact.id} déjà traité (skip)`);
             continue;
           }
 

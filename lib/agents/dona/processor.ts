@@ -439,16 +439,16 @@ export class Dona implements IDona {
         await this.init();
       }
 
-      console.log(`📧 DONA: Analyse email de ${emailData.from}`);
+      //console.log(`📧 DONA: Analyse email de ${emailData.from}`);
       
       if (emailData.id && this.processedEmails.has(emailData.id)) {
-        console.log(`⚠️ DONA: Email ${emailData.id} déjà traité (cache)`);
+        //console.log(`⚠️ DONA: Email ${emailData.id} déjà traité (cache)`);
         return { action: 'ignored', reason: 'duplicate' };
       }
 
       const isDuplicate = await this.isDuplicateEmail(emailData.from, emailData.subject);
       if (isDuplicate) {
-        console.log(`⚠️ DONA: Email déjà traité: ${emailData.from} - ${emailData.subject}`);
+        //console.log(`⚠️ DONA: Email déjà traité: ${emailData.from} - ${emailData.subject}`);
         
         await supabase
           .from('incoming_emails')
@@ -497,7 +497,7 @@ export class Dona implements IDona {
           .maybeSingle();
 
         if (existing) {
-          console.log(`⚠️ DONA: Email déjà traité (status: ${existing.status})`);
+          //console.log(`⚠️ DONA: Email déjà traité (status: ${existing.status})`);
           this.processedEmails.add(existing.id);
           return { action: 'stored', email_id: existing.id, analysis };
         }
@@ -620,11 +620,11 @@ export class Dona implements IDona {
         await this.init();
       }
 
-      console.log(`📧 DONA: Analyse contact de ${contactData.name}`);
+      //console.log(`📧 DONA: Analyse contact de ${contactData.name}`);
       
       const isDuplicate = await this.isDuplicateEmail(contactData.email, contactData.subject);
       if (isDuplicate) {
-        console.log(`⚠️ DONA: Contact déjà traité: ${contactData.email} - ${contactData.subject}`);
+        //console.log(`⚠️ DONA: Contact déjà traité: ${contactData.email} - ${contactData.subject}`);
         
         await supabase
           .from('contacts')

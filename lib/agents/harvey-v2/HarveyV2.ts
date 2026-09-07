@@ -511,26 +511,48 @@ export class HarveyV2 {
   // ============================================================
 
   private async getClientEmails(clientId: string, limit: number = 50): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from('emails')
-        .select('*')
-        .eq('client_id', clientId)
-        .in('status', ['pending', 'analyzed'])
-        .order('received_at', { ascending: true })
-        .limit(limit);
+  try {
+    // ✅ Récupérer les emails en attente ou analysés
+    const { data, error } = await supabase
+      .from('emails')
+      .select('*')
+      .eq('client_id', clientId)
+      .in('status', ['pending', 'analyzed'])
+      .is('harvey_response', null)  // ✅ Seulement ceux sans réponse
+      .order('received_at', { ascending: true })
+      .limit(limit);
 
-      if (error) {
-        console.error('❌ Erreur récupération emails:', error);
-        return [];
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('❌ Erreur getClientEmails:', error);
+    if (error) {
+      console.error('❌ Erreur récupération emails:', error);
       return [];
     }
+
+    // ✅ Filtrer et mettre à jour le cache
+    const emailsToProcess = [];
+    for (const email of data || []) {
+      // Vérifier si l'email est dans le cache
+      if (this.processedEmails.has(email.id)) {
+        // ✅ Vérifier si l'email a vraiment une réponse
+        if (!email.harvey_response) {
+          console.log(`🔄 Email ${email.id} dans le cache mais sans réponse, retraitement forcé`);
+          // Supprimer du cache pour le retraiter
+          this.processedEmails.delete(email.id);
+          emailsToProcess.push(email);
+        } else {
+          console.log(`⚠️ Email ${email.id} déjà traité avec réponse, ignoré`);
+        }
+      } else {
+        emailsToProcess.push(email);
+      }
+    }
+
+    console.log(`📧 ${emailsToProcess.length} emails à traiter pour client ${clientId}`);
+    return emailsToProcess;
+  } catch (error) {
+    console.error('❌ Erreur getClientEmails:', error);
+    return [];
   }
+}
 
   // ============================================================
   // CLASSIFICATION AVEC CONFIGURATION CLIENT
@@ -901,54 +923,84 @@ ${signature}
   // STOCKAGE DE LA RÉPONSE CLIENT
   // ============================================================
 
-  private async storeClientResponse(
-    emailId: string,
-    analysis: any,
-    emailData: any,
-    clientConfig: any,
-    htmlResponse?: string
-  ): Promise<any> {
-    try {
-      const insertData = {
-        email_id: emailId,
-        client_id: clientConfig.client_id,
-        mail_account_id: clientConfig.id,
-        from_email: emailData.from_email || '',
-        to_email: Array.isArray(emailData.to_email) ? emailData.to_email.join(', ') : emailData.to_email || clientConfig.email,
-        subject: emailData.subject || '',
-        message: emailData.body || '',
-        body: emailData.body || '',
-        agent_response: analysis.content,
-        agent_response_html: htmlResponse || null,
-        response_tone: analysis.tone,
-        confidence: analysis.confidence,
-        actions: analysis.actions || [],
-        status: analysis.requires_human_review ? 'review' : 'response_ready',
-        requires_human_review: analysis.requires_human_review,
-        suggested_agent: analysis.suggested_agent,
-        category: emailData.category || 'information',
-        is_outgoing: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+ // lib/agents/harvey-v2/HarveyV2.ts - storeClientResponse corrigé
 
-      const { data, error } = await supabase
-        .from('email_conversations')
-        .insert(insertData)
-        .select();
+private async storeClientResponse(
+  emailId: string,
+  analysis: any,
+  emailData: any,
+  clientConfig: any,
+  htmlResponse?: string
+): Promise<any> {
+  try {
+    const status = analysis.requires_human_review ? 'review' : 'response_ready';
+    
+    const insertData = {
+      email_id: emailId,
+      client_id: clientConfig.client_id,
+      mail_account_id: clientConfig.id,
+      from_email: emailData.from_email || '',
+      to_email: Array.isArray(emailData.to_email) ? emailData.to_email.join(', ') : emailData.to_email || clientConfig.email,
+      subject: emailData.subject || '',
+      message: emailData.body || '',
+      body: emailData.body || '',
+      agent_response: analysis.content,
+      agent_response_html: htmlResponse || null,
+      response_tone: analysis.tone,
+      confidence: Math.round(analysis.confidence),
+      actions: analysis.actions || [],
+      status: status,
+      requires_human_review: analysis.requires_human_review,
+      suggested_agent: analysis.suggested_agent || 'HUMAN',
+      category: emailData.category || 'information',
+      is_outgoing: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
 
-      if (error) {
-        console.error('❌ Erreur stockage:', error);
-        return null;
-      }
+    // 1. Insérer dans email_conversations
+    const { data, error } = await supabase
+      .from('email_conversations')
+      .insert(insertData)
+      .select();
 
-      this.processedEmails.add(emailId);
-      return data?.[0] || null;
-    } catch (error) {
-      console.error('❌ Erreur storeClientResponse:', error);
+    if (error) {
+      console.error('❌ Erreur stockage conversation:', error);
       return null;
     }
+
+    // ✅ 2. Mettre à jour l'email source IMMÉDIATEMENT
+    if (emailId) {
+      const { error: updateError } = await supabase
+        .from('emails')
+        .update({
+          status: status,
+          harvey_response: analysis.content,
+          harvey_response_html: htmlResponse || null,
+          harvey_confidence: Math.round(analysis.confidence),
+          harvey_tone: analysis.tone,
+          harvey_actions: analysis.actions || [],
+          harvey_suggested_agent: analysis.suggested_agent || 'HUMAN',
+          processed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', emailId);
+
+      if (updateError) {
+        console.error('❌ Erreur mise à jour email source:', updateError);
+        // Ne pas retourner d'erreur, la conversation est déjà sauvegardée
+      } else {
+        console.log(`✅ Email ${emailId} mis à jour avec status: ${status}`);
+      }
+    }
+
+    this.processedEmails.add(emailId);
+    return data?.[0] || null;
+  } catch (error) {
+    console.error('❌ Erreur storeClientResponse:', error);
+    return null;
   }
+}
 
   // ============================================================
   // MISE À JOUR DU STATUT DE L'EMAIL
