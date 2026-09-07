@@ -118,7 +118,7 @@ export default async function RootLayout({
   try {
     const headersList = await headers();
     const pathname = headersList.get('x-pathname') || '';
-    isChatPage = pathname === '/chat';
+    isChatPage = pathname === '';
   } catch (error) {
     console.error('❌ Erreur récupération headers:', error);
   }
@@ -165,7 +165,7 @@ export default async function RootLayout({
           
           <Tracker />
           
-          {!isChatPage && <Footer />}
+          {isChatPage && <Footer />}
           
           <ChatButton />
         </ChatProvider>
