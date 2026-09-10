@@ -17,6 +17,9 @@ import { initHarveyService } from '@/lib/agents/harvey/auto-start';
 // ✅ Import de Harvey V2
 import { initHarveyV2Service } from '@/lib/agents/harvey-v2/auto-start';
 
+// ✅ NOUVEAU : Import du service de sync IMAP
+import { initImapSyncService } from '@/lib/agents/imap-sync/auto-start';
+
 const geist = Geist({ 
   subsets: ['latin'], 
   variable: '--font-sans',
@@ -88,6 +91,22 @@ if (typeof window === 'undefined') {
         console.log(`📊 HARVEY V2: ${result.processed} emails traités pour client ${result.clientId}`);
       }
     });
+
+    // 4. ✅ NOUVEAU : Démarrer le service de sync IMAP
+    const stopImapSync = initImapSyncService({
+      interval: 5 * 60 * 1000, // 5 minutes
+      onError: (error) => {
+        console.error('❌ Erreur Sync IMAP:', error);
+      },
+      onSync: (result) => {
+        if (result.emailsSaved > 0) {
+          console.log(
+            `📧 Sync IMAP: ${result.emailsSaved} emails récupérés ` +
+            `(${result.accounts} comptes, ${result.errors} erreurs)`
+          );
+        }
+      }
+    });
     
     // Fonction de nettoyage globale
     const cleanup = () => {
@@ -95,6 +114,7 @@ if (typeof window === 'undefined') {
       if (stopDona) stopDona();
       if (stopHarvey) stopHarvey();
       if (stopHarveyV2) stopHarveyV2();
+      if (stopImapSync) stopImapSync();
       console.log('✅ Agents arrêtés');
     };
     
@@ -102,7 +122,7 @@ if (typeof window === 'undefined') {
     process.on('SIGINT', cleanup);
     process.on('beforeExit', cleanup);
     
-    console.log('✅ DONA, HARVEY (v1) et HARVEY V2 initialisés avec succès');
+    console.log('✅ DONA, HARVEY (v1), HARVEY V2 et SYNC IMAP initialisés avec succès');
   } catch (error) {
     console.error('❌ Erreur initialisation des agents:', error);
   }

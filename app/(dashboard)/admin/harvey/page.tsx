@@ -53,7 +53,7 @@ type EmailConversation = {
   requires_human_review: boolean;
   confidence: number;
   suggested_agent: string;
-  status: 'pending' | 'review' | 'approved' | 'sent' | 'archived';
+  status: 'pending' | 'review' | 'approved' | 'sent' | 'archived' | 'response_ready';
   created_at: string;
   sent_at: string | null;
   is_outgoing: boolean;
@@ -68,6 +68,7 @@ type HarveyStats = {
   review: number;
   approved: number;
   sent: number;
+  response_ready: number;
   archived: number;
   avgConfidence: number;
   byCategory: Record<string, number>;
@@ -84,6 +85,7 @@ type HarveyStats = {
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
   review: 'bg-orange-100 text-orange-700',
+  response_ready: 'bg-teal-100 text-teal-700',
   approved: 'bg-blue-100 text-blue-700',
   sent: 'bg-green-100 text-green-700',
   archived: 'bg-gray-100 text-gray-700',
@@ -92,6 +94,7 @@ const statusColors: Record<string, string> = {
 const statusLabels: Record<string, string> = {
   pending: '⏳ En attente',
   review: '👀 Relecture',
+  response_ready: '📝 Réponse prête',
   approved: '✅ Approuvé',
   sent: '📤 Envoyé',
   archived: '📦 Archivé',
@@ -138,12 +141,14 @@ export default function AdminHarveyPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [userEmail, setUserEmail] = useState<string>('');
 
   const [stats, setStats] = useState<HarveyStats>({
     total: 0,
     pending: 0,
     review: 0,
     approved: 0,
+    response_ready: 0,
     sent: 0,
     archived: 0,
     avgConfidence: 0,
@@ -163,11 +168,12 @@ export default function AdminHarveyPage() {
         const sessionRes = await fetch('/api/auth/session');
         const sessionData = await sessionRes.json();
 
-        if (!sessionData.user || !['admin', 'super_admin'].includes(sessionData.user.role)) {
+        if (!sessionData.user || !['admin', 'super_admin', 'developer'].includes(sessionData.user.role)) {
           router.push('/login?error=unauthorized&message=Accès réservé aux administrateurs');
           return;
         }
 
+        setUserEmail(sessionData.user.email);
         setIsAdmin(true);
         await loadData();
 
@@ -203,11 +209,18 @@ export default function AdminHarveyPage() {
     }
 
     try {
-      const { data: conversationsData, error: convError } = await supabase
+      let query = supabase
         .from('email_conversations')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
+
+      // ✅ Filtrer par email de l'utilisateur
+      if (userEmail) {
+        query = query.eq('to_email', userEmail);
+      }
+
+      const { data: conversationsData, error: convError } = await query;
 
       if (convError) {
         console.error('Erreur conversations:', convError);
@@ -262,6 +275,7 @@ export default function AdminHarveyPage() {
       review: 0,
       approved: 0,
       sent: 0,
+      response_ready: 0,
       archived: 0,
       avgConfidence: 0,
       byCategory: {},
@@ -276,6 +290,7 @@ export default function AdminHarveyPage() {
       else if (item.status === 'review') stats.review++;
       else if (item.status === 'approved') stats.approved++;
       else if (item.status === 'sent') stats.sent++;
+      else if (item.status === 'response_ready') stats.response_ready++;
       else if (item.status === 'archived') stats.archived++;
 
       totalConfidence += item.confidence || 0;
@@ -345,6 +360,11 @@ export default function AdminHarveyPage() {
         body: JSON.stringify({ conversationId: id })
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Erreur ${response.status}`);
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -375,10 +395,18 @@ export default function AdminHarveyPage() {
   const getFilteredConversations = () => {
     let filtered = conversations;
     
+    // ✅ Filtrer d'abord par to_email
+    if (userEmail) {
+      filtered = filtered.filter(c => c.to_email === userEmail);
+    }
+    
+    // ✅ Appliquer les autres filtres
     if (filter === 'pending') {
       filtered = filtered.filter(c => c.status === 'pending');
     } else if (filter === 'review') {
       filtered = filtered.filter(c => c.status === 'review');
+    } else if (filter === 'response_ready') {
+      filtered = filtered.filter(c => c.status === 'response_ready');
     } else if (filter === 'approved') {
       filtered = filtered.filter(c => c.status === 'approved');
     } else if (filter === 'sent') {
@@ -453,9 +481,7 @@ export default function AdminHarveyPage() {
       <Toaster position="top-right" richColors />
       
       <div className="mx-auto max-w-7xl">
-        {/* ============================================================
-        EN-TÊTE
-        ============================================================ */}
+        {/* EN-TÊTE */}
         <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between mb-4 md:mb-6">
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-[#1E3A8A] flex flex-wrap items-center gap-2 md:gap-3">
@@ -468,6 +494,11 @@ export default function AdminHarveyPage() {
                 </span>
               </Badge>
             </h1>
+            {userEmail && (
+              <p className="text-xs text-slate-400 mt-0.5">
+                📧 Conversations pour: {userEmail}
+              </p>
+            )}
             <p className="text-xs sm:text-sm text-slate-500 flex flex-wrap items-center gap-1 sm:gap-2 mt-0.5">
               Gestion des réponses générées par l'agent IA
               <span className="text-xs text-slate-400 hidden sm:inline">·</span>
@@ -513,9 +544,7 @@ export default function AdminHarveyPage() {
           </div>
         </div>
 
-        {/* ============================================================
-        STATISTIQUES - Version responsive
-        ============================================================ */}
+        {/* STATISTIQUES */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-3 mb-4 md:mb-6">
           <Card className="transition-all hover:shadow-md">
             <CardContent className="p-2 sm:p-3">
@@ -585,11 +614,8 @@ export default function AdminHarveyPage() {
           </Card>
         </div>
 
-        {/* ============================================================
-        FILTRES - Version responsive avec toggle mobile
-        ============================================================ */}
+        {/* FILTRES */}
         <div className="flex flex-col gap-3 sm:gap-4 mb-4">
-          {/* Barre de recherche et bouton filtres */}
           <div className="flex flex-col xs:flex-row gap-2 items-stretch xs:items-center">
             <div className="relative flex-1 min-w-0">
               <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-3 w-3 sm:h-4 sm:w-4" />
@@ -622,7 +648,6 @@ export default function AdminHarveyPage() {
             </Button>
           </div>
 
-          {/* Filtres - visible sur desktop, toggle sur mobile */}
           <div className={`${showFilters ? 'block' : 'hidden'} lg:block`}>
             <div className="flex flex-wrap gap-1 sm:gap-2">
               <Button 
@@ -676,6 +701,16 @@ export default function AdminHarveyPage() {
                 ({stats.review})
               </Button>
               <Button 
+                variant={filter === 'response_ready' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setFilter('response_ready')}
+                className={`text-xs sm:text-sm ${filter === 'response_ready' ? 'bg-teal-600' : ''}`}
+              >
+                📝 <span className="hidden xs:inline">Réponses prêtes</span>
+                <span className="xs:hidden">Prêtes</span>
+                ({stats.response_ready})
+              </Button>
+              <Button 
                 variant={filter === 'approved' ? 'default' : 'outline'} 
                 size="sm"
                 onClick={() => setFilter('approved')}
@@ -695,37 +730,11 @@ export default function AdminHarveyPage() {
                 <span className="xs:hidden">Env.</span>
                 ({stats.sent})
               </Button>
-              <Button 
-                variant={filter === 'support' ? 'default' : 'outline'} 
-                size="sm"
-                onClick={() => setFilter('support')}
-                className={`text-xs sm:text-sm ${filter === 'support' ? 'bg-blue-600' : ''}`}
-              >
-                Support
-              </Button>
-              <Button 
-                variant={filter === 'commercial' ? 'default' : 'outline'} 
-                size="sm"
-                onClick={() => setFilter('commercial')}
-                className={`text-xs sm:text-sm ${filter === 'commercial' ? 'bg-orange-600' : ''}`}
-              >
-                Commercial
-              </Button>
-              <Button 
-                variant={filter === 'project' ? 'default' : 'outline'} 
-                size="sm"
-                onClick={() => setFilter('project')}
-                className={`text-xs sm:text-sm ${filter === 'project' ? 'bg-purple-600' : ''}`}
-              >
-                Projet
-              </Button>
             </div>
           </div>
         </div>
 
-        {/* ============================================================
-        LISTE DES CONVERSATIONS - Version responsive
-        ============================================================ */}
+        {/* LISTE DES CONVERSATIONS */}
         <Card>
           <CardHeader className="p-3 sm:p-4 md:p-6">
             <CardTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -755,9 +764,8 @@ export default function AdminHarveyPage() {
                       key={conv.id}
                       className="border border-slate-200 rounded-lg p-3 sm:p-4 hover:shadow-md transition"
                     >
-                      {/* En-tête de la conversation - toujours visible */}
                       <div className="flex flex-col gap-2">
-                        {/* Ligne 1: Source + Statut + Actions rapides */}
+                        {/* Source + Statut + Actions */}
                         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                           <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
                             <p className="font-medium text-slate-800 text-sm sm:text-base truncate max-w-[120px] xs:max-w-[200px] sm:max-w-[300px]">
@@ -787,7 +795,6 @@ export default function AdminHarveyPage() {
                             )}
                           </div>
                           
-                          {/* Bouton expand sur mobile */}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -798,7 +805,7 @@ export default function AdminHarveyPage() {
                           </Button>
                         </div>
 
-                        {/* Ligne 2: Sujet + Catégorie/Ton/Agent (sur une ligne) */}
+                        {/* Sujet + Métadonnées */}
                         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                           <p className="text-xs sm:text-sm text-slate-600 truncate flex-1 min-w-0">
                             {conv.subject}
@@ -820,12 +827,12 @@ export default function AdminHarveyPage() {
                           </div>
                         </div>
 
-                        {/* Ligne 3: Aperçu de la réponse */}
+                        {/* Aperçu de la réponse */}
                         <div className={`text-xs sm:text-sm text-slate-600 bg-slate-50 p-2 rounded ${isExpanded ? '' : 'line-clamp-2'}`}>
                           {conv.agent_response || conv.message || 'Pas de réponse'}
                         </div>
 
-                        {/* Ligne 4: Actions - toujours visibles */}
+                        {/* Actions */}
                         <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
                           <Button
                             size="sm"
@@ -840,7 +847,7 @@ export default function AdminHarveyPage() {
                             <span className="hidden xs:inline">Voir</span>
                           </Button>
 
-                          {conv.status === 'pending' && (
+                          {(conv.status === 'pending' || conv.status === 'response_ready' || conv.status === 'review') && (
                             <Button
                               size="sm"
                               variant="default"
@@ -849,6 +856,18 @@ export default function AdminHarveyPage() {
                             >
                               <FaCheck className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
                               <span className="hidden xs:inline">Approuver</span>
+                            </Button>
+                          )}
+
+                          {(conv.status === 'response_ready' || conv.status === 'review') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs h-7 sm:h-8"
+                              onClick={() => regenerateResponse(conv.id)}
+                            >
+                              <FaSync className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
+                              <span className="hidden xs:inline">Régénérer</span>
                             </Button>
                           )}
 
@@ -864,29 +883,6 @@ export default function AdminHarveyPage() {
                             </Button>
                           )}
 
-                          {conv.status === 'review' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="default"
-                                className="bg-blue-600 hover:bg-blue-700 text-xs h-7 sm:h-8"
-                                onClick={() => approveResponse(conv.id)}
-                              >
-                                <FaCheck className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
-                                <span className="hidden xs:inline">Approuver</span>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-red-600 border-red-200 hover:bg-red-50 text-xs h-7 sm:h-8"
-                                onClick={() => regenerateResponse(conv.id)}
-                              >
-                                <FaSync className="mr-1 h-2 w-2 sm:h-3 sm:w-3" /> 
-                                <span className="hidden xs:inline">Régénérer</span>
-                              </Button>
-                            </>
-                          )}
-
                           {!['sent', 'archived'].includes(conv.status) && (
                             <Button
                               size="sm"
@@ -900,7 +896,7 @@ export default function AdminHarveyPage() {
                           )}
                         </div>
 
-                        {/* Métadonnées - version compacte */}
+                        {/* Métadonnées */}
                         <div className="flex flex-wrap gap-2 sm:gap-4 text-[10px] sm:text-xs text-slate-400 mt-1">
                           <span>📅 {new Date(conv.created_at).toLocaleString('fr-FR')}</span>
                           {conv.sent_at && (
@@ -920,9 +916,7 @@ export default function AdminHarveyPage() {
         </Card>
       </div>
 
-      {/* ============================================================
-      MODAL DETAIL - Version responsive
-      ============================================================ */}
+      {/* MODAL DETAIL */}
       {showDetail && selectedConversation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
@@ -1003,7 +997,7 @@ export default function AdminHarveyPage() {
                 </div>
               </div>
 
-              {/* Actions - responsive */}
+              {/* Actions */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-200">
                 <Button
                   variant="outline"
@@ -1014,7 +1008,7 @@ export default function AdminHarveyPage() {
                   Fermer
                 </Button>
 
-                {selectedConversation.status === 'pending' && (
+                {(selectedConversation.status === 'pending' || selectedConversation.status === 'response_ready' || selectedConversation.status === 'review') && (
                   <Button
                     size="sm"
                     className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
@@ -1024,6 +1018,20 @@ export default function AdminHarveyPage() {
                     }}
                   >
                     <FaCheck className="mr-1 h-3 w-3" /> Approuver
+                  </Button>
+                )}
+
+                {(selectedConversation.status === 'response_ready' || selectedConversation.status === 'review') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs sm:text-sm"
+                    onClick={() => {
+                      regenerateResponse(selectedConversation.id);
+                      setShowDetail(false);
+                    }}
+                  >
+                    <FaSync className="mr-1 h-3 w-3" /> Régénérer
                   </Button>
                 )}
 
@@ -1038,32 +1046,6 @@ export default function AdminHarveyPage() {
                   >
                     <FaReply className="mr-1 h-3 w-3" /> Envoyer
                   </Button>
-                )}
-
-                {selectedConversation.status === 'review' && (
-                  <>
-                    <Button
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
-                      onClick={() => {
-                        approveResponse(selectedConversation.id);
-                        setShowDetail(false);
-                      }}
-                    >
-                      <FaCheck className="mr-1 h-3 w-3" /> Approuver
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs sm:text-sm"
-                      onClick={() => {
-                        regenerateResponse(selectedConversation.id);
-                        setShowDetail(false);
-                      }}
-                    >
-                      <FaSync className="mr-1 h-3 w-3" /> Régénérer
-                    </Button>
-                  </>
                 )}
 
                 {!['sent', 'archived'].includes(selectedConversation.status) && (

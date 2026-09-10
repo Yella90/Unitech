@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       .select('id, email, first_name, last_name, role, password_hash')
       .eq('email', email)
       .single();
-console.log('User fetched:', user, 'Error:', error);
+//console.log('User fetched:', user, 'Error:', error);
     if (error || !user) {
       return NextResponse.json(
         { error: 'Email ou mot de passe incorrect' },

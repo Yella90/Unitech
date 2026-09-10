@@ -57,7 +57,7 @@ type ClientEmail = {
   client_id: string;
   from_email: string;
   from_name: string;
-  to_email: string[];
+  to_email: string;           // ✅ TEXT dans la DB (pas un tableau)
   subject: string;
   body: string;
   body_html: string;
@@ -79,11 +79,6 @@ type ClientEmail = {
   replied_at: string;
   created_at: string;
   updated_at: string;
-  mail_account?: {
-    email: string;
-    imap_server: string;
-    imap_port: number;
-  };
 };
 
 type MailAccount = {
@@ -165,7 +160,7 @@ const statusColors: Record<string, string> = {
   sent: 'bg-emerald-100 text-emerald-700',
   archived: 'bg-gray-100 text-gray-700',
   error: 'bg-red-100 text-red-700',
-  review: 'bg-yellow-100 text-yellow-700',
+  review: 'bg-amber-100 text-amber-700',
 };
 
 const statusLabels: Record<string, string> = {
@@ -282,6 +277,7 @@ export default function ClientMailPage() {
   const [activeTab, setActiveTab] = useState('inbox');
   const [clientEmail, setClientEmail] = useState<string>('');
 
+  // ✅ État initial avec 'review'
   const [stats, setStats] = useState<EmailStats>({
     total: 0,
     pending: 0,
@@ -289,15 +285,14 @@ export default function ClientMailPage() {
     response_ready: 0,
     approved: 0,
     sent: 0,
-    review: 0,
     archived: 0,
+    review: 0,
     error: 0,
     avgConfidence: 0,
     byCategory: {},
     byPriority: {}
   });
 
-      
   const [configForm, setConfigForm] = useState({
     email: '',
     imap_server: 'imap.gmail.com',
@@ -334,7 +329,7 @@ export default function ClientMailPage() {
     try {
       const response = await fetch('/api/auth/client/session');
       const data = await response.json();
-      
+
       if (data.user && data.user.email) {
         setClientEmail(data.user.email);
         setConfigForm(prev => ({
@@ -347,64 +342,64 @@ export default function ClientMailPage() {
     }
   };
 
-  
-const loadMailAccount = async () => {
-  try {
-    const response = await fetch('/api/client/mail/account');
-    const data = await response.json();
-    
-    if (data.success && data.data) {
-      setMailAccount(data.data);
-      setHasMailAccount(true);
-      
-      // ✅ Déchiffrer le mot de passe
-      let decryptedPassword = '';
-      if (data.data.email_password) {
-        try {
-          const decryptResponse = await fetch('/api/client/mail/decrypt-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ encrypted: data.data.email_password })
-          });
-          const decryptData = await decryptResponse.json();
-          if (decryptData.success) {
-            decryptedPassword = decryptData.password;
+  // ✅ UNE SEULE déclaration de loadMailAccount
+  const loadMailAccount = async () => {
+    try {
+      const response = await fetch('/api/client/mail/account');
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        setMailAccount(data.data);
+        setHasMailAccount(true);
+
+        // ✅ Déchiffrer le mot de passe via l'API dédiée
+        let decryptedPassword = '';
+        if (data.data.email_password) {
+          try {
+            const decryptResponse = await fetch('/api/client/mail/decrypt-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ encrypted: data.data.email_password })
+            });
+            const decryptData = await decryptResponse.json();
+            if (decryptData.success) {
+              decryptedPassword = decryptData.password;
+            }
+          } catch (error) {
+            console.error('❌ Erreur déchiffrement:', error);
           }
-        } catch (error) {
-          console.error('❌ Erreur déchiffrement:', error);
         }
+
+        setConfigForm(prev => ({
+          ...prev,
+          email: data.data.email || clientEmail || '',
+          imap_server: data.data.imap_server || '',
+          imap_port: data.data.imap_port?.toString() || '993',
+          smtp_server: data.data.smtp_server || '',
+          smtp_port: data.data.smtp_port?.toString() || '587',
+          encryption: data.data.encryption || 'tls',
+          max_emails_per_sync: data.data.max_emails_per_sync?.toString() || '50',
+          password: decryptedPassword,
+          prompt_instructions: data.data.prompt_config?.instructions || '',
+          prompt_tone: data.data.prompt_config?.tone || 'professional',
+          prompt_signature: data.data.prompt_config?.signature || "L'équipe UNITECH",
+          prompt_custom_rules: data.data.prompt_config?.custom_rules?.join('\n') || '',
+          blocked_senders: data.data.blocked_senders || [],
+          blocked_domains: data.data.blocked_domains || [],
+          block_spam: data.data.block_rules?.block_spam !== false,
+          block_unknown: data.data.block_rules?.block_unknown || false,
+          block_marketing: data.data.block_rules?.block_marketing !== false
+        }));
+
+        detectProvider(data.data);
+      } else {
+        setHasMailAccount(false);
       }
-      
-      setConfigForm(prev => ({
-        ...prev,
-        email: data.data.email || clientEmail || '',
-        imap_server: data.data.imap_server || '',
-        imap_port: data.data.imap_port?.toString() || '993',
-        smtp_server: data.data.smtp_server || '',
-        smtp_port: data.data.smtp_port?.toString() || '587',
-        encryption: data.data.encryption || 'tls',
-        max_emails_per_sync: data.data.max_emails_per_sync?.toString() || '50',
-        password: decryptedPassword, // ✅ Maintenant défini
-        prompt_instructions: data.data.prompt_config?.instructions || '',
-        prompt_tone: data.data.prompt_config?.tone || 'professional',
-        prompt_signature: data.data.prompt_config?.signature || "L'équipe UNITECH",
-        prompt_custom_rules: data.data.prompt_config?.custom_rules?.join('\n') || '',
-        blocked_senders: data.data.blocked_senders || [],
-        blocked_domains: data.data.blocked_domains || [],
-        block_spam: data.data.block_rules?.block_spam !== false,
-        block_unknown: data.data.block_rules?.block_unknown || false,
-        block_marketing: data.data.block_rules?.block_marketing !== false
-      }));
-      
-      detectProvider(data.data);
-    } else {
+    } catch (error) {
+      console.error('Erreur chargement compte mail:', error);
       setHasMailAccount(false);
     }
-  } catch (error) {
-    console.error('Erreur chargement compte mail:', error);
-    setHasMailAccount(false);
-  }
-};
+  };
 
   const detectProvider = (account: MailAccount) => {
     const server = account.imap_server?.toLowerCase() || '';
@@ -426,9 +421,9 @@ const loadMailAccount = async () => {
 
     try {
       console.log('📧 Chargement des emails...');
-      
+
       const response = await fetch('/api/client/mail/emails?limit=100');
-      
+
       if (!response.ok) {
         console.error('❌ Erreur HTTP:', response.status, response.statusText);
         if (!silent) {
@@ -443,7 +438,7 @@ const loadMailAccount = async () => {
       if (data.success) {
         const emailList = Array.isArray(data.data) ? data.data : [];
         console.log(`✅ ${emailList.length} emails chargés`);
-        
+
         setEmails(emailList);
         calculateStats(emailList);
       } else {
@@ -499,7 +494,7 @@ const loadMailAccount = async () => {
   }, [autoRefresh]);
 
   // ============================================================
-  // CALCUL DES STATISTIQUES
+  // CALCUL DES STATISTIQUES (avec 'review')
   // ============================================================
   const calculateStats = (data: ClientEmail[]) => {
     const stats: EmailStats = {
@@ -509,8 +504,8 @@ const loadMailAccount = async () => {
       response_ready: 0,
       approved: 0,
       sent: 0,
-      review: 0,
       archived: 0,
+      review: 0,
       error: 0,
       avgConfidence: 0,
       byCategory: {},
@@ -523,30 +518,33 @@ const loadMailAccount = async () => {
     data.forEach(item => {
       switch (item.status) {
         case 'pending':
-          stats.pending = (stats.pending || 0) + 1;
+          stats.pending++;
           break;
         case 'analyzed':
         case 'generating':
-          stats.analyzed = (stats.analyzed || 0) + 1;
+          stats.analyzed++;
           break;
         case 'response_ready':
-          stats.response_ready = (stats.response_ready || 0) + 1;
+          stats.response_ready++;
           break;
         case 'approved':
-          stats.approved = (stats.approved || 0) + 1;
+          stats.approved++;
           break;
         case 'sending':
         case 'sent':
-          stats.sent = (stats.sent || 0) + 1;
+          stats.sent++;
           break;
         case 'archived':
-          stats.archived = (stats.archived || 0) + 1;
+          stats.archived++;
           break;
         case 'error':
-          stats.error = (stats.error || 0) + 1;
+          stats.error++;
+          break;
+        case 'review':
+          stats.review++;
           break;
         default:
-          stats.pending = (stats.pending || 0) + 1;
+          stats.pending++;
           break;
       }
 
@@ -572,34 +570,33 @@ const loadMailAccount = async () => {
   // ACTIONS
   // ============================================================
   const updateEmailStatus = async (id: string, status: string) => {
-  try {
-    const response = await fetch(`/api/client/mail/emails/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    });
+    try {
+      const response = await fetch(`/api/client/mail/emails/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
 
-    // ✅ Vérifier si la réponse est valide
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('❌ Réponse erreur:', text);
-      toast.error(`Erreur ${response.status}: ${response.statusText}`);
-      return;
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('❌ Réponse erreur:', text);
+        toast.error(`Erreur ${response.status}: ${response.statusText}`);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`✅ Statut mis à jour: ${statusLabels[status] || status}`);
+        loadEmails(true);
+      } else {
+        toast.error(`❌ Erreur: ${data.error}`);
+      }
+    } catch (error: any) {
+      console.error('Erreur mise à jour:', error);
+      toast.error(`❌ Erreur: ${error.message}`);
     }
-
-    const data = await response.json();
-
-    if (data.success) {
-      toast.success(`✅ Statut mis à jour: ${statusLabels[status] || status}`);
-      loadEmails(true);
-    } else {
-      toast.error(`❌ Erreur: ${data.error}`);
-    }
-  } catch (error: any) {
-    console.error('Erreur mise à jour:', error);
-    toast.error(`❌ Erreur: ${error.message}`);
-  }
-};
+  };
 
   const approveEmail = async (id: string) => {
     await updateEmailStatus(id, 'approved');
@@ -616,7 +613,7 @@ const loadMailAccount = async () => {
   const regenerateResponse = async (id: string) => {
     try {
       toast.info('🔄 Régénération en cours...');
-      
+
       const response = await fetch('/api/client/mail/emails/regenerate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -639,7 +636,7 @@ const loadMailAccount = async () => {
 
   const syncEmails = async () => {
     if (!mailAccount) return;
-    
+
     setSyncLoading(true);
     try {
       const response = await fetch('/api/client/mail/sync', {
@@ -744,43 +741,44 @@ const loadMailAccount = async () => {
   // FILTRES
   // ============================================================
   const getFilteredEmails = () => {
-  let filtered = emails;
-  
-  if (filter === 'pending') {
-    filtered = filtered.filter(e => e.status === 'pending');
-  } else if (filter === 'analyzed') {
-    filtered = filtered.filter(e => e.status === 'analyzed' || e.status === 'generating');
-  } else if (filter === 'response_ready') {
-    // ✅ Inclure 'review' dans les réponses prêtes
-    filtered = filtered.filter(e => e.status === 'response_ready' || e.status === 'review');
-  } else if (filter === 'approved') {
-    filtered = filtered.filter(e => e.status === 'approved');
-  } else if (filter === 'sent') {
-    filtered = filtered.filter(e => e.status === 'sent');
-  } else if (filter === 'archived') {
-    filtered = filtered.filter(e => e.status === 'archived');
-  } else if (filter === 'error') {
-    filtered = filtered.filter(e => e.status === 'error');
-  } else if (filter === 'unread') {
-    filtered = filtered.filter(e => !e.is_read);
-  } else if (filter === 'review') {
-    filtered = filtered.filter(e => e.status === 'review');
-  } else if (filter !== 'all') {
-    filtered = filtered.filter(e => e.category === filter);
-  }
+    let filtered = emails;
 
-  if (searchTerm) {
-    filtered = filtered.filter(e => 
-      (e.from_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (e.from_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (e.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (e.body || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (e.harvey_response || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }
+    if (filter === 'pending') {
+      filtered = filtered.filter(e => e.status === 'pending');
+    } else if (filter === 'analyzed') {
+      filtered = filtered.filter(e => e.status === 'analyzed' || e.status === 'generating');
+    } else if (filter === 'response_ready') {
+      // ✅ Inclure 'review' dans les réponses prêtes
+      filtered = filtered.filter(e => e.status === 'response_ready' || e.status === 'review');
+    } else if (filter === 'approved') {
+      filtered = filtered.filter(e => e.status === 'approved');
+    } else if (filter === 'sent') {
+      filtered = filtered.filter(e => e.status === 'sent');
+    } else if (filter === 'archived') {
+      filtered = filtered.filter(e => e.status === 'archived');
+    } else if (filter === 'error') {
+      filtered = filtered.filter(e => e.status === 'error');
+    } else if (filter === 'unread') {
+      filtered = filtered.filter(e => !e.is_read);
+    } else if (filter === 'review') {
+      filtered = filtered.filter(e => e.status === 'review');
+    } else if (filter !== 'all') {
+      filtered = filtered.filter(e => e.category === filter);
+    }
 
-  return filtered;
-};
+    if (searchTerm) {
+      filtered = filtered.filter(e =>
+        (e.from_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (e.from_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (e.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (e.body || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (e.harvey_response || '').toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString('fr-FR', {
@@ -796,9 +794,8 @@ const loadMailAccount = async () => {
   // COMPOSANT GUIDE MOT DE PASSE
   // ============================================================
   const AppPasswordGuide = () => {
-    // ✅ Récupérer le provider sélectionné
     const selectedProv = selectedProvider ? emailProviders[selectedProvider as keyof typeof emailProviders] : null;
-    
+
     if (!selectedProv) return null;
 
     const guides = {
@@ -855,9 +852,9 @@ const loadMailAccount = async () => {
           <div className="flex-1">
             <h4 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
               🔐 Générer un mot de passe d'application pour {selectedProv.name}
-              <a 
-                href={selectedProv.appPasswordGuide} 
-                target="_blank" 
+              <a
+                href={selectedProv.appPasswordGuide}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1"
               >
@@ -902,7 +899,7 @@ const loadMailAccount = async () => {
   return (
     <main className="min-h-screen bg-[#F5F7FB] p-3 sm:p-4 md:p-6">
       <Toaster position="top-right" richColors />
-      
+
       <div className="mx-auto max-w-7xl">
         {/* EN-TÊTE */}
         <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-center md:justify-between mb-4 md:mb-6">
@@ -928,8 +925,8 @@ const loadMailAccount = async () => {
           <div className="flex flex-wrap gap-2 flex-shrink-0">
             {hasMailAccount && (
               <>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => loadEmails(false)}
                   disabled={refreshing}
@@ -942,8 +939,8 @@ const loadMailAccount = async () => {
                   )}
                   <span className="hidden xs:inline">{refreshing ? 'Chargement...' : 'Rafraîchir'}</span>
                 </Button>
-                <Button 
-                  variant={autoRefresh ? 'default' : 'outline'} 
+                <Button
+                  variant={autoRefresh ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setAutoRefresh(!autoRefresh)}
                   className={`text-xs sm:text-sm ${autoRefresh ? 'bg-[#1E3A8A]' : ''}`}
@@ -982,7 +979,7 @@ const loadMailAccount = async () => {
 
         {/* STATISTIQUES */}
         {hasMailAccount && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 sm:gap-3 md:gap-3 mb-4 md:mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3 md:gap-3 mb-4 md:mb-6">
             <Card className="transition-all hover:shadow-md">
               <CardContent className="p-2 sm:p-3">
                 <div className="flex items-center justify-between">
@@ -1009,10 +1006,32 @@ const loadMailAccount = async () => {
               <CardContent className="p-2 sm:p-3">
                 <div className="flex items-center justify-between">
                   <div>
+                    <p className="text-[10px] sm:text-xs text-slate-500">En revue</p>
+                    <p className="text-base sm:text-lg md:text-xl font-bold text-amber-600">{stats.review}</p>
+                  </div>
+                  <FaEye className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-amber-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="transition-all hover:shadow-md">
+              <CardContent className="p-2 sm:p-3">
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-[10px] sm:text-xs text-slate-500">Réponses prêtes</p>
                     <p className="text-base sm:text-lg md:text-xl font-bold text-indigo-600">{stats.response_ready}</p>
                   </div>
                   <FaBrain className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-indigo-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="transition-all hover:shadow-md">
+              <CardContent className="p-2 sm:p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] sm:text-xs text-slate-500">Approuvés</p>
+                    <p className="text-base sm:text-lg md:text-xl font-bold text-blue-600">{stats.approved}</p>
+                  </div>
+                  <FaCheck className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-blue-500" />
                 </div>
               </CardContent>
             </Card>
@@ -1028,17 +1047,6 @@ const loadMailAccount = async () => {
               </CardContent>
             </Card>
             <Card className="transition-all hover:shadow-md">
-              <CardContent className="p-2 sm:p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] sm:text-xs text-slate-500">Erreurs</p>
-                    <p className="text-base sm:text-lg md:text-xl font-bold text-red-600">{stats.error}</p>
-                  </div>
-                  <FaTimes className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 text-red-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="transition-all hover:shadow-md col-span-2 sm:col-span-1">
               <CardContent className="p-2 sm:p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1070,7 +1078,7 @@ const loadMailAccount = async () => {
                   <span className="hidden xs:inline">Réponses IA</span>
                   <span className="xs:hidden">🤖</span>
                   <Badge variant="secondary" className="ml-0 sm:ml-1 text-[10px] sm:text-xs">
-                    {stats.response_ready + stats.approved+ (stats.review || 0)}
+                    {stats.response_ready + stats.approved + stats.review}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="sent" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
@@ -1090,7 +1098,9 @@ const loadMailAccount = async () => {
             </TabsTrigger>
           </TabsList>
 
+          {/* ============================================================ */}
           {/* TAB: INBOX */}
+          {/* ============================================================ */}
           <TabsContent value="inbox">
             {!hasMailAccount ? (
               <Card>
@@ -1098,7 +1108,7 @@ const loadMailAccount = async () => {
                   <FaMailBulk className="h-16 w-16 mx-auto text-slate-300 mb-4" />
                   <h3 className="text-xl font-semibold text-slate-700 mb-2">Aucun compte mail configuré</h3>
                   <p className="text-slate-500 mb-4">Configurez votre compte mail pour commencer à recevoir et traiter vos emails.</p>
-                  <Button 
+                  <Button
                     className="bg-[#F97316] hover:bg-[#ea580c]"
                     onClick={() => setActiveTab('config')}
                   >
@@ -1130,7 +1140,7 @@ const loadMailAccount = async () => {
                         </button>
                       )}
                     </div>
-                    
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -1145,48 +1155,64 @@ const loadMailAccount = async () => {
 
                   <div className={`${showFilters ? 'block' : 'hidden'} lg:block`}>
                     <div className="flex flex-wrap gap-1 sm:gap-2">
-                      <Button 
-                        variant={filter === 'all' ? 'default' : 'outline'} 
+                      <Button
+                        variant={filter === 'all' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilter('all')}
                         className={`text-xs sm:text-sm ${filter === 'all' ? 'bg-[#1E3A8A]' : ''}`}
                       >
                         📋 Tous ({stats.total})
                       </Button>
-                      <Button 
-                        variant={filter === 'pending' ? 'default' : 'outline'} 
+                      <Button
+                        variant={filter === 'pending' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilter('pending')}
                         className={`text-xs sm:text-sm ${filter === 'pending' ? 'bg-yellow-600' : ''}`}
                       >
                         ⏳ En attente ({stats.pending})
                       </Button>
-                      <Button 
-                        variant={filter === 'response_ready' ? 'default' : 'outline'} 
+                      <Button
+                        variant={filter === 'review' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setFilter('review')}
+                        className={`text-xs sm:text-sm ${filter === 'review' ? 'bg-amber-600' : ''}`}
+                      >
+                        👁️ À relire ({stats.review})
+                      </Button>
+                      <Button
+                        variant={filter === 'response_ready' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilter('response_ready')}
                         className={`text-xs sm:text-sm ${filter === 'response_ready' ? 'bg-indigo-600' : ''}`}
                       >
-                        🤖 Réponses ({stats.response_ready})
+                        🤖 Réponses ({stats.response_ready + stats.review})
                       </Button>
-                      <Button 
-                        variant={filter === 'sent' ? 'default' : 'outline'} 
+                      <Button
+                        variant={filter === 'approved' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setFilter('approved')}
+                        className={`text-xs sm:text-sm ${filter === 'approved' ? 'bg-blue-600' : ''}`}
+                      >
+                        ✅ Approuvés ({stats.approved})
+                      </Button>
+                      <Button
+                        variant={filter === 'sent' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilter('sent')}
                         className={`text-xs sm:text-sm ${filter === 'sent' ? 'bg-green-600' : ''}`}
                       >
-                        ✅ Envoyés ({stats.sent})
+                        📤 Envoyés ({stats.sent})
                       </Button>
-                      <Button 
-                        variant={filter === 'unread' ? 'default' : 'outline'} 
+                      <Button
+                        variant={filter === 'unread' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilter('unread')}
                         className={`text-xs sm:text-sm ${filter === 'unread' ? 'bg-blue-600' : ''}`}
                       >
                         📬 Non lus
                       </Button>
-                      <Button 
-                        variant={filter === 'error' ? 'default' : 'outline'} 
+                      <Button
+                        variant={filter === 'error' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilter('error')}
                         className={`text-xs sm:text-sm ${filter === 'error' ? 'bg-red-600' : ''}`}
@@ -1220,7 +1246,7 @@ const loadMailAccount = async () => {
                           {searchTerm ? 'Aucun résultat pour votre recherche' : 'Les emails apparaîtront ici une fois synchronisés.'}
                         </p>
                         {hasMailAccount && displayedEmails.length === 0 && !searchTerm && (
-                          <Button 
+                          <Button
                             className="mt-4"
                             variant="outline"
                             onClick={syncEmails}
@@ -1277,52 +1303,50 @@ const loadMailAccount = async () => {
                                 >
                                   <FaEye className="h-4 w-4 text-slate-400" />
                                 </Button>
-                                {email.status === 'response_ready' && (
+
+                                {/* ✅ Actions pour response_ready ET review */}
+                                {(email.status === 'response_ready' || email.status === 'review') && (
                                   <>
                                     <Button
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => approveEmail(email.id)}
                                       className="h-8 w-8 p-0 text-green-500"
+                                      title="Approuver"
                                     >
                                       <FaCheck className="h-4 w-4" />
                                     </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => sendEmail(email.id)}
-                                      className="h-8 w-8 p-0 text-blue-500"
+                                      onClick={() => regenerateResponse(email.id)}
+                                      className="h-8 w-8 p-0 text-orange-500"
+                                      title="Régénérer"
                                     >
-                                      <FaReply className="h-4 w-4" />
+                                      <FaSync className="h-4 w-4" />
                                     </Button>
                                   </>
                                 )}
-                                {email.status === 'pending' && (
+
+                                {email.status === 'approved' && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => updateEmailStatus(email.id, 'analyzed')}
-                                    className="h-8 w-8 p-0 text-indigo-500"
+                                    onClick={() => sendEmail(email.id)}
+                                    className="h-8 w-8 p-0 text-blue-500"
+                                    title="Envoyer"
                                   >
-                                    <FaBrain className="h-4 w-4" />
+                                    <FaReply className="h-4 w-4" />
                                   </Button>
                                 )}
-                                {email.status === 'response_ready' && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => regenerateResponse(email.id)}
-                                    className="h-8 w-8 p-0 text-orange-500"
-                                  >
-                                    <FaSync className="h-4 w-4" />
-                                  </Button>
-                                )}
+
                                 {!['sent', 'archived'].includes(email.status) && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => archiveEmail(email.id)}
                                     className="h-8 w-8 p-0 text-red-400"
+                                    title="Archiver"
                                   >
                                     <FaTimes className="h-4 w-4" />
                                   </Button>
@@ -1339,79 +1363,100 @@ const loadMailAccount = async () => {
             )}
           </TabsContent>
 
+          {/* ============================================================ */}
           {/* TAB: RESPONSES */}
-         <TabsContent value="responses">
-  <Card>
-    <CardHeader>
-      <CardTitle className="text-lg">Réponses générées par l'IA</CardTitle>
-      <p className="text-sm text-slate-500">
-        {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').length} réponses disponibles
-      </p>
-    </CardHeader>
-    <CardContent>
-      {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').length === 0 ? (
-        <div className="text-center py-8 text-slate-500">
-          <FaBrain className="h-12 w-12 mx-auto text-slate-300 mb-3" />
-          <p className="font-medium">Aucune réponse prête</p>
-          <p className="text-sm">Les réponses générées par l'IA apparaîtront ici.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').map(email => (
-            <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-800">{email.from_name || email.from_email}</span>
-                    <Badge className={`${statusColors[email.status] || statusColors.pending} text-[10px]`}>
-                      {statusLabels[email.status] || email.status}
-                    </Badge>
+          {/* ============================================================ */}
+          <TabsContent value="responses">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Réponses générées par l'IA</CardTitle>
+                <p className="text-sm text-slate-500">
+                  {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').length} réponses disponibles
+                </p>
+              </CardHeader>
+              <CardContent>
+                {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <FaBrain className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+                    <p className="font-medium">Aucune réponse prête</p>
+                    <p className="text-sm">Les réponses générées par l'IA apparaîtront ici.</p>
                   </div>
-                  <span className="text-xs text-slate-400">{formatDate(email.received_at)}</span>
-                </div>
-                <p className="text-sm font-medium text-slate-700">{email.subject}</p>
-                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                  <p className="text-sm text-slate-700 line-clamp-2">{email.harvey_response || 'Réponse en attente...'}</p>
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedEmail(email);
-                      setShowDetail(true);
-                    }}
-                  >
-                    <FaEye className="mr-2 h-3 w-3" />
-                    Voir
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                    onClick={() => sendEmail(email.id)}
-                  >
-                    <FaReply className="mr-2 h-3 w-3" />
-                    Envoyer
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-orange-600 border-orange-200 hover:bg-orange-50"
-                    onClick={() => regenerateResponse(email.id)}
-                  >
-                    <FaSync className="mr-2 h-3 w-3" />
-                    Régénérer
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </CardContent>
-  </Card>
-</TabsContent>
+                ) : (
+                  <div className="space-y-3">
+                    {emails.filter(e => e.status === 'response_ready' || e.status === 'approved' || e.status === 'review').map(email => (
+                      <div key={email.id} className="bg-white rounded-lg border border-slate-200 p-4 hover:shadow-md transition-shadow">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-800">{email.from_name || email.from_email}</span>
+                              <Badge className={`${statusColors[email.status] || statusColors.pending} text-[10px]`}>
+                                {statusLabels[email.status] || email.status}
+                              </Badge>
+                            </div>
+                            <span className="text-xs text-slate-400">{formatDate(email.received_at)}</span>
+                          </div>
+                          <p className="text-sm font-medium text-slate-700">{email.subject}</p>
+                          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <p className="text-sm text-slate-700 line-clamp-2">{email.harvey_response || 'Réponse en attente...'}</p>
+                          </div>
+                          <div className="flex gap-2 mt-2 flex-wrap">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedEmail(email);
+                                setShowDetail(true);
+                              }}
+                            >
+                              <FaEye className="mr-2 h-3 w-3" />
+                              Voir
+                            </Button>
+
+                            {(email.status === 'response_ready' || email.status === 'review') && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700"
+                                  onClick={() => approveEmail(email.id)}
+                                >
+                                  <FaCheck className="mr-2 h-3 w-3" />
+                                  Approuver
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                                  onClick={() => regenerateResponse(email.id)}
+                                >
+                                  <FaSync className="mr-2 h-3 w-3" />
+                                  Régénérer
+                                </Button>
+                              </>
+                            )}
+
+                            {email.status === 'approved' && (
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700"
+                                onClick={() => sendEmail(email.id)}
+                              >
+                                <FaReply className="mr-2 h-3 w-3" />
+                                Envoyer
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ============================================================ */}
           {/* TAB: SENT */}
+          {/* ============================================================ */}
           <TabsContent value="sent">
             <Card>
               <CardHeader>
@@ -1446,7 +1491,9 @@ const loadMailAccount = async () => {
             </Card>
           </TabsContent>
 
+          {/* ============================================================ */}
           {/* TAB: CONFIGURATION */}
+          {/* ============================================================ */}
           <TabsContent value="config">
             <Card>
               <CardHeader className="p-3 sm:p-4 md:p-6">
@@ -1455,7 +1502,7 @@ const loadMailAccount = async () => {
                   <span>Configuration du compte mail</span>
                 </CardTitle>
                 <p className="text-sm text-slate-500">
-                  {hasMailAccount 
+                  {hasMailAccount
                     ? 'Modifiez les paramètres de votre compte mail et gérez les filtres de blocage'
                     : 'Configurez votre compte mail pour l\'automatisation des réponses'
                   }
@@ -1516,7 +1563,7 @@ const loadMailAccount = async () => {
                       <FaUser className="h-4 w-4 text-[#F97316]" />
                       Informations du compte
                     </h3>
-                    
+
                     {hasMailAccount && mailAccount && (
                       <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
                         <div className="flex items-start gap-2">
@@ -1683,7 +1730,7 @@ const loadMailAccount = async () => {
                       <FaShieldAlt className="h-4 w-4 text-[#F97316]" />
                       Filtrage et blocage des emails
                     </h3>
-                    
+
                     <div className="space-y-4">
                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                         <h4 className="text-sm font-medium text-slate-700 mb-3">Règles de blocage automatiques</h4>
@@ -1993,7 +2040,9 @@ const loadMailAccount = async () => {
           </TabsContent>
         </Tabs>
 
+        {/* ============================================================ */}
         {/* MODAL DETAIL */}
+        {/* ============================================================ */}
         {showDetail && selectedEmail && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
             <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
@@ -2071,22 +2120,38 @@ const loadMailAccount = async () => {
                   >
                     Fermer
                   </Button>
-                  {selectedEmail.status === 'pending' && (
+
+                  {/* ✅ Actions pour response_ready ET review */}
+                  {(selectedEmail.status === 'response_ready' || selectedEmail.status === 'review') && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
+                        onClick={() => {
+                          approveEmail(selectedEmail.id);
+                          setShowDetail(false);
+                        }}
+                      >
+                        <FaCheck className="mr-1 h-3 w-3" /> Approuver
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs sm:text-sm"
+                        onClick={() => {
+                          regenerateResponse(selectedEmail.id);
+                          setShowDetail(false);
+                        }}
+                      >
+                        <FaSync className="mr-1 h-3 w-3" /> Régénérer
+                      </Button>
+                    </>
+                  )}
+
+                  {selectedEmail.status === 'approved' && (
                     <Button
                       size="sm"
                       className="bg-blue-600 hover:bg-blue-700 text-xs sm:text-sm"
-                      onClick={() => {
-                        updateEmailStatus(selectedEmail.id, 'analyzed');
-                        setShowDetail(false);
-                      }}
-                    >
-                      <FaBrain className="mr-1 h-3 w-3" /> Analyser
-                    </Button>
-                  )}
-                  {selectedEmail.status === 'response_ready' && (
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm"
                       onClick={() => {
                         sendEmail(selectedEmail.id);
                         setShowDetail(false);
@@ -2095,19 +2160,7 @@ const loadMailAccount = async () => {
                       <FaReply className="mr-1 h-3 w-3" /> Envoyer
                     </Button>
                   )}
-                  {selectedEmail.status === 'response_ready' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-orange-600 border-orange-200 hover:bg-orange-50 text-xs sm:text-sm"
-                      onClick={() => {
-                        regenerateResponse(selectedEmail.id);
-                        setShowDetail(false);
-                      }}
-                    >
-                      <FaSync className="mr-1 h-3 w-3" /> Régénérer
-                    </Button>
-                  )}
+
                   {!['sent', 'archived'].includes(selectedEmail.status) && (
                     <Button
                       variant="outline"

@@ -1,22 +1,58 @@
 // app/api/mail/sync/route.ts
+// Synchronisation des emails clients depuis IMAP vers la table "emails"
+
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { authenticateAPIRequest } from '@/lib/api/auth';
 import { simpleParser } from 'mailparser';
 import crypto from 'crypto';
 
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'; // 64 caractères hexadécimaux pour AES-256
+// ============================================================
+// CONFIGURATION
+// ============================================================
 
-// ✅ Fonction pour déchiffrer le mot de passe
+const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '8f3a7c2e91d64b508a17c9e4f62b3d8a0c5e71f94a26d83b6e19f047c3a5d82e';
+
+const IMAP_TIMEOUT = 30000;        // 30 secondes
+const IMAP_MAX_EMAILS = 50;        // Nombre max d'emails par sync
+
+// ============================================================
+// DÉCHIFFREMENT DU MOT DE PASSE
+// ============================================================
+
 function decryptPassword(encrypted: string): string {
-  const [ivHex, encryptedHex] = encrypted.split(':');
-  const iv = Buffer.from(ivHex, 'hex');
-  const encryptedText = Buffer.from(encryptedHex, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
-  let decrypted = decipher.update(encryptedText, undefined, 'utf8');
-decrypted += decipher.final('utf8');
-  return decrypted;
+  try {
+    if (!encrypted || !encrypted.includes(':')) {
+      throw new Error('Format de mot de passe chiffré invalide');
+    }
+
+    const [ivHex, encryptedHex] = encrypted.split(':');
+    if (!ivHex || !encryptedHex) {
+      throw new Error('IV ou texte chiffré manquant');
+    }
+
+    const iv = Buffer.from(ivHex, 'hex');
+    const encryptedText = Buffer.from(encryptedHex, 'hex');
+
+    const decipher = crypto.createDecipheriv(
+      'aes-256-cbc',
+      Buffer.from(ENCRYPTION_KEY, 'hex'),
+      iv
+    );
+
+    let decrypted = decipher.update(encryptedText, undefined, 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error: any) {
+    console.error('❌ Erreur déchiffrement:', error.message);
+    throw new Error('Impossible de déchiffrer le mot de passe du compte mail');
+  }
 }
+
+// ============================================================
+// CLIENT ADMIN SUPABASE
+// ============================================================
 
 function getAdminClient() {
   if (!supabaseAdmin) {
@@ -25,50 +61,94 @@ function getAdminClient() {
   return supabaseAdmin;
 }
 
-// ✅ Récupérer les emails depuis IMAP
+// ============================================================
+// RÉCUPÉRATION DES EMAILS DEPUIS IMAP
+// ============================================================
+
 async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const Imap = require('imap');
+
+    // Déchiffrer le mot de passe
+    let password: string;
+    try {
+      password = decryptPassword(mailAccount.email_password);
+    } catch (error: any) {
+      reject(new Error(`Erreur de déchiffrement: ${error.message}`));
+      return;
+    }
+
     const imap = new Imap({
       user: mailAccount.email,
-      password: decryptPassword(mailAccount.email_password),
+      password: password,
       host: mailAccount.imap_server,
       port: mailAccount.imap_port || 993,
       tls: mailAccount.encryption === 'tls' || mailAccount.encryption === 'ssl',
-      tlsOptions: { rejectUnauthorized: false }
+      tlsOptions: { rejectUnauthorized: false },
+      connTimeout: IMAP_TIMEOUT,
+      authTimeout: IMAP_TIMEOUT,
+      keepalive: false
     });
 
     const emails: any[] = [];
+    let isConnected = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // Timeout global
+    timeoutId = setTimeout(() => {
+      console.log('⏰ Timeout IMAP, fermeture...');
+      try {
+        if (isConnected) imap.end();
+      } catch (e) {}
+      reject(new Error('Timeout de connexion IMAP'));
+    }, IMAP_TIMEOUT);
 
     imap.once('ready', () => {
+      isConnected = true;
+      console.log('✅ Connexion IMAP établie');
+
       imap.openBox('INBOX', true, (err: any, box: any) => {
         if (err) {
+          if (timeoutId) clearTimeout(timeoutId);
           imap.end();
           reject(err);
           return;
         }
 
+        console.log(`📬 Boîte ouverte: ${box.messages.total} messages`);
+
+        // Récupérer uniquement les emails NON LUS
         const searchCriteria = ['UNSEEN'];
         const fetchOptions = {
           bodies: ['HEADER', 'TEXT', ''],
           struct: true,
-          markSeen: false
+          markSeen: false  // Ne pas marquer comme lu
         };
 
         imap.search(searchCriteria, (err: any, results: any) => {
           if (err) {
+            if (timeoutId) clearTimeout(timeoutId);
             imap.end();
             reject(err);
             return;
           }
 
-          if (results.length === 0) {
+          if (!results || results.length === 0) {
+            console.log('📭 Aucun email non lu');
+            if (timeoutId) clearTimeout(timeoutId);
             imap.end();
             resolve([]);
             return;
           }
 
-          const fetch = imap.fetch(results.slice(0, mailAccount.max_emails_per_sync || 50), fetchOptions);
+          // Limiter le nombre d'emails
+          const limit = Math.min(results.length, mailAccount.max_emails_per_sync || IMAP_MAX_EMAILS);
+          const emailIds = results.slice(0, limit);
+
+          console.log(`📧 Récupération de ${emailIds.length} emails (sur ${results.length} non lus)`);
+
+          const fetch = imap.fetch(emailIds, fetchOptions);
+          let emailCount = 0;
 
           fetch.on('message', (msg: any, seqno: any) => {
             const emailData: any = {};
@@ -96,16 +176,21 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
             msg.once('end', () => {
               if (emailData.parsed) {
                 emails.push(emailData.parsed);
+                emailCount++;
               }
             });
           });
 
           fetch.once('error', (err: any) => {
+            console.error('❌ Erreur fetch:', err);
+            if (timeoutId) clearTimeout(timeoutId);
             imap.end();
             reject(err);
           });
 
           fetch.once('end', () => {
+            console.log(`✅ ${emailCount} emails récupérés`);
+            if (timeoutId) clearTimeout(timeoutId);
             imap.end();
             resolve(emails);
           });
@@ -114,25 +199,39 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
     });
 
     imap.once('error', (err: any) => {
-      reject(err);
+      if (timeoutId) clearTimeout(timeoutId);
+      console.error('❌ Erreur IMAP:', err);
+      if (!isConnected) {
+        reject(err);
+      }
     });
 
+    imap.once('end', () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.log('📪 Connexion IMAP fermée');
+    });
+
+    console.log(`🔗 Connexion IMAP à ${mailAccount.imap_server}:${mailAccount.imap_port || 993}...`);
     imap.connect();
   });
 }
 
-// ✅ Sauvegarder les emails dans la base
-async function saveEmailsToDatabase(mailAccountId: string, clientId: string, emails: any[]): Promise<{
-  saved: number;
-  errors: number;
-}> {
+// ============================================================
+// SAUVEGARDE DES EMAILS DANS LA BASE (table "emails")
+// ============================================================
+
+async function saveEmailsToDatabase(
+  mailAccountId: string,
+  clientId: string,
+  emails: any[]
+): Promise<{ saved: number; errors: number }> {
   let saved = 0;
   let errors = 0;
   const adminClient = getAdminClient();
 
   for (const email of emails) {
     try {
-      // Vérifier si l'email existe déjà
+      // 1. Vérifier si l'email existe déjà (par message_id)
       const { data: existing } = await adminClient
         .from('emails')
         .select('id')
@@ -140,43 +239,65 @@ async function saveEmailsToDatabase(mailAccountId: string, clientId: string, ema
         .maybeSingle();
 
       if (existing) {
+        console.log(`⏭️ Email ${email.messageId} déjà présent, ignoré`);
         continue;
       }
 
+      // 2. Extraire les données de l'email
       const from = email.from?.value?.[0] || { address: 'unknown', name: '' };
       const to = email.to?.value?.map((v: any) => v.address) || [];
       const cc = email.cc?.value?.map((v: any) => v.address) || [];
       const bcc = email.bcc?.value?.map((v: any) => v.address) || [];
 
+      // ✅ CORRECTION : "to_email" est de type TEXT (pas ARRAY)
+      // On joint les adresses avec une virgule
+      const toEmailString = to.join(', ');
+
+      // 3. Insérer dans la table "emails"
       const { error: insertError } = await adminClient
         .from('emails')
         .insert({
+          // Identifiants
           mail_account_id: mailAccountId,
           client_id: clientId,
-          message_id: email.messageId,
-          thread_id: email.threadId || email.messageId,
+          message_id: email.messageId || null,
+          thread_id: email.threadId || email.messageId || null,
+          message_id_unique: email.messageId || null,
+
+          // Expéditeur / destinataires
           from_email: from.address || 'unknown',
           from_name: from.name || '',
-          to_email: to,
-          cc_email: cc,
-          bcc_email: bcc,
-          subject: email.subject || '',
+          to_email: toEmailString,           // ✅ TEXT (pas ARRAY)
+          cc_email: cc,                      // ARRAY
+          bcc_email: bcc,                    // ARRAY
+
+          // Contenu
+          subject: email.subject || 'Sans sujet',
           body: email.text || '',
-          body_html: email.html || '',
           body_text: email.text || '',
+          body_html: email.html || '',
+
+          // Pièces jointes & headers
           attachments: email.attachments?.map((a: any) => ({
             filename: a.filename,
             contentType: a.contentType,
             size: a.size
           })) || [],
           headers: email.headers || {},
+
+          // Dates
           received_at: email.date || new Date().toISOString(),
-          sent_at: email.date || new Date().toISOString(),
+          sent_at: null,                     // ✅ NULL car c'est un email REÇU
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+
+          // Statuts & flags
+          status: 'pending',
           is_read: false,
           is_replied: false,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          priority: 'normal',
+          retry_count: 0,
+          max_retries: 3
         });
 
       if (insertError) {
@@ -184,10 +305,11 @@ async function saveEmailsToDatabase(mailAccountId: string, clientId: string, ema
         errors++;
       } else {
         saved++;
+        console.log(`✅ Email sauvegardé: ${email.subject}`);
       }
 
-    } catch (error) {
-      console.error('❌ Erreur sauvegarde email:', error);
+    } catch (error: any) {
+      console.error('❌ Erreur sauvegarde email:', error.message);
       errors++;
     }
   }
@@ -195,8 +317,11 @@ async function saveEmailsToDatabase(mailAccountId: string, clientId: string, ema
   return { saved, errors };
 }
 
+// ============================================================
+// ROUTE POST - SYNCHRONISATION
+// ============================================================
+
 export async function POST(req: NextRequest) {
-  // ✅ Déclarer mailAccountId en dehors du try/catch
   let mailAccountId: string | null = null;
 
   try {
@@ -242,7 +367,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Mettre à jour le statut
+    // 4. Marquer "is_connected = false" pendant la synchro
     await adminClient
       .from('mail_accounts')
       .update({
@@ -251,13 +376,36 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', mailAccountId);
 
-    // 5. Récupérer les emails
-    const emails = await fetchEmailsFromIMAP(mailAccount);
+    // 5. Récupérer les emails depuis IMAP
+    let emails: any[] = [];
+    try {
+      emails = await fetchEmailsFromIMAP(mailAccount);
+    } catch (imapError: any) {
+      console.error('❌ Erreur IMAP:', imapError.message);
 
-    // 6. Sauvegarder les emails
-    const result = await saveEmailsToDatabase(mailAccountId, authResult.client.id, emails);
+      // Mettre à jour le statut d'erreur
+      await adminClient
+        .from('mail_accounts')
+        .update({
+          is_connected: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', mailAccountId);
 
-    // 7. Mettre à jour le statut
+      return NextResponse.json(
+        { error: imapError.message || 'Erreur de connexion IMAP' },
+        { status: 500 }
+      );
+    }
+
+    // 6. Sauvegarder les emails dans la table "emails"
+    const result = await saveEmailsToDatabase(
+      mailAccountId,
+      authResult.client.id,
+      emails
+    );
+
+    // 7. Marquer "is_connected = true" après succès
     await adminClient
       .from('mail_accounts')
       .update({
@@ -278,8 +426,8 @@ export async function POST(req: NextRequest) {
 
   } catch (error: any) {
     console.error('❌ Erreur synchronisation:', error);
-    
-    // ✅ Utiliser mailAccountId qui est maintenant accessible
+
+    // Mettre à jour le statut en cas d'erreur
     if (mailAccountId) {
       try {
         const adminClient = getAdminClient();

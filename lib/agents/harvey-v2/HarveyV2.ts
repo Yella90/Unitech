@@ -1,5 +1,8 @@
 // lib/agents/harvey-v2/HarveyV2.ts
 // Harvey V2 - Service d'automatisation des emails client-specific
+// ✅ Architecture : TOUT passe par la table "emails"
+//    (lecture, écriture, réponses, statuts)
+// ❌ Ne touche PAS à "email_conversations" ni "incoming_emails"
 
 import { supabase } from '@/lib/supabase';
 import { keyManagement } from '@/lib/services/KeyManagementService';
@@ -20,7 +23,9 @@ import {
   WebhookPayload
 } from './types';
 
-// Configuration par défaut
+// ============================================================
+// CONFIGURATION PAR DÉFAUT
+// ============================================================
 const DEFAULT_CONFIG: HarveyV2Config = {
   maxEmailsPerRun: 50,
   minConfidence: 60,
@@ -87,10 +92,10 @@ export class HarveyV2 {
   async init(): Promise<{ success: boolean; error?: string }> {
     try {
       if (this.initialized) return { success: true };
-      
+
       console.log('🦸‍♂️ Harvey V2: Chargement des données...');
       await this.loadProcessedEmails();
-      
+
       this.initialized = true;
       console.log('✅ Harvey V2: Prêt pour le service client');
       return { success: true };
@@ -104,9 +109,6 @@ export class HarveyV2 {
   // API PRINCIPALE - TRAITER LES EMAILS D'UN CLIENT
   // ============================================================
 
-  /**
-   * Traite les emails pour un client spécifique en utilisant sa configuration
-   */
   async processClientEmails(
     clientId: string,
     options?: {
@@ -135,7 +137,7 @@ export class HarveyV2 {
 
       // 2. Récupérer les emails non traités du client
       const emails = await this.getClientEmails(clientId, options?.limit || 50);
-      
+
       if (emails.length === 0) {
         console.log(`📭 Harvey V2: Aucun email à traiter pour le client ${clientId}`);
         return {
@@ -163,17 +165,15 @@ export class HarveyV2 {
 
           // Traiter l'email avec la configuration du client
           const response = await this.processEmailWithClientConfig(email, clientConfig);
-          
+
           if (response.success) {
             processed++;
-            // Marquer l'email comme traité
-            await this.markEmailAsProcessed(email.id, response);
           } else {
             errors++;
           }
-          
+
           responses.push(response);
-          
+
         } catch (error: any) {
           errors++;
           console.error(`❌ Erreur email ${email.id}:`, error.message);
@@ -209,9 +209,6 @@ export class HarveyV2 {
   // GÉNÉRER UNE RÉPONSE RAPIDE (SANS STOCKAGE)
   // ============================================================
 
-  /**
-   * Génère une réponse rapide sans stockage (pour aperçu)
-   */
   async generateReply(request: EmailRequest): Promise<{
     success: boolean;
     response?: string;
@@ -220,24 +217,18 @@ export class HarveyV2 {
     error?: string;
   }> {
     try {
-      // 1. Initialisation
       if (!this.initialized) {
         await this.init();
       }
 
-      // 2. Validation
       const validation = this.validateRequest(request);
       if (!validation.valid) {
         return { success: false, error: validation.error };
       }
 
-      // 3. Classification
       const classification = await this.classifyEmail(request);
-      
-      // 4. Analyse de sentiment
       const sentiment = this.analyzeSentiment(request.body);
 
-      // 5. Construction des données
       const emailData = {
         id: request.id || `temp_${Date.now()}`,
         from_email: request.from_email,
@@ -263,7 +254,6 @@ export class HarveyV2 {
         }
       };
 
-      // 6. Générer la réponse
       const responseContent = await this.generateClientResponse(emailData, {
         prompt_config: {
           instructions: '',
@@ -279,7 +269,6 @@ export class HarveyV2 {
         return { success: false, error: 'Échec de génération' };
       }
 
-      // 7. Analyser la réponse
       const analysis = this.analyzeResponse(responseContent, emailData);
 
       return {
@@ -384,7 +373,7 @@ export class HarveyV2 {
       // 8. Générer le HTML avec le branding du client
       const htmlResponse = await this.generateClientHtmlResponse(analysis, emailData, clientConfig);
 
-      // 9. Stocker la réponse
+      // 9. ✅ Stocker la réponse UNIQUEMENT dans la table "emails"
       const stored = await this.storeClientResponse(
         email.id,
         analysis,
@@ -401,19 +390,7 @@ export class HarveyV2 {
         };
       }
 
-      // 10. Mettre à jour l'email source
-      await this.updateEmailStatus(email.id, {
-        status: analysis.requires_human_review ? 'review' : 'response_ready',
-        assigned_agent: analysis.suggested_agent || 'HARVEY',
-        harvey_response: analysis.content,
-        harvey_response_html: htmlResponse,
-        harvey_confidence: analysis.confidence,
-        harvey_tone: analysis.tone,
-        harvey_actions: analysis.actions || [],
-        processed_at: new Date().toISOString()
-      });
-
-      // 11. Mettre à jour les métriques
+      // 10. Mettre à jour les métriques
       this.metrics.totalProcessed++;
       this.metrics.totalConfidence += analysis.confidence;
       this.metrics.averageConfidence = this.metrics.totalConfidence / this.metrics.totalProcessed;
@@ -486,8 +463,8 @@ export class HarveyV2 {
         prompt_config: mailAccount.prompt_config || {
           instructions: '',
           tone: 'professional',
-          signature: mailAccount.clients?.company_name 
-            ? `L'équipe ${mailAccount.clients.company_name}` 
+          signature: mailAccount.clients?.company_name
+            ? `L'équipe ${mailAccount.clients.company_name}`
             : "L'équipe UNITECH",
           custom_rules: []
         },
@@ -507,52 +484,49 @@ export class HarveyV2 {
   }
 
   // ============================================================
-  // RÉCUPÉRATION DES EMAILS DU CLIENT
+  // RÉCUPÉRATION DES EMAILS DU CLIENT (depuis "emails")
   // ============================================================
 
   private async getClientEmails(clientId: string, limit: number = 50): Promise<any[]> {
-  try {
-    // ✅ Récupérer les emails en attente ou analysés
-    const { data, error } = await supabase
-      .from('emails')
-      .select('*')
-      .eq('client_id', clientId)
-      .in('status', ['pending', 'analyzed'])
-      .is('harvey_response', null)  // ✅ Seulement ceux sans réponse
-      .order('received_at', { ascending: true })
-      .limit(limit);
+    try {
+      // ✅ Récupérer uniquement les emails SANS réponse générée
+      const { data, error } = await supabase
+        .from('emails')
+        .select('*')
+        .eq('client_id', clientId)
+        .in('status', ['pending', 'analyzed'])
+        .is('harvey_response', null)  // ✅ Seulement ceux sans réponse
+        .order('received_at', { ascending: true })
+        .limit(limit);
 
-    if (error) {
-      console.error('❌ Erreur récupération emails:', error);
+      if (error) {
+        console.error('❌ Erreur récupération emails:', error);
+        return [];
+      }
+
+      // ✅ Filtrer et gérer le cache
+      const emailsToProcess: any[] = [];
+      for (const email of data || []) {
+        if (this.processedEmails.has(email.id)) {
+          if (!email.harvey_response) {
+            console.log(`🔄 Email ${email.id} dans le cache mais sans réponse, retraitement forcé`);
+            this.processedEmails.delete(email.id);
+            emailsToProcess.push(email);
+          } else {
+            console.log(`⚠️ Email ${email.id} déjà traité avec réponse, ignoré`);
+          }
+        } else {
+          emailsToProcess.push(email);
+        }
+      }
+
+      console.log(`📧 ${emailsToProcess.length} emails à traiter pour client ${clientId}`);
+      return emailsToProcess;
+    } catch (error) {
+      console.error('❌ Erreur getClientEmails:', error);
       return [];
     }
-
-    // ✅ Filtrer et mettre à jour le cache
-    const emailsToProcess = [];
-    for (const email of data || []) {
-      // Vérifier si l'email est dans le cache
-      if (this.processedEmails.has(email.id)) {
-        // ✅ Vérifier si l'email a vraiment une réponse
-        if (!email.harvey_response) {
-          console.log(`🔄 Email ${email.id} dans le cache mais sans réponse, retraitement forcé`);
-          // Supprimer du cache pour le retraiter
-          this.processedEmails.delete(email.id);
-          emailsToProcess.push(email);
-        } else {
-          console.log(`⚠️ Email ${email.id} déjà traité avec réponse, ignoré`);
-        }
-      } else {
-        emailsToProcess.push(email);
-      }
-    }
-
-    console.log(`📧 ${emailsToProcess.length} emails à traiter pour client ${clientId}`);
-    return emailsToProcess;
-  } catch (error) {
-    console.error('❌ Erreur getClientEmails:', error);
-    return [];
   }
-}
 
   // ============================================================
   // CLASSIFICATION AVEC CONFIGURATION CLIENT
@@ -815,8 +789,8 @@ ${promptConfig.instructions || 'Aucune instruction spécifique'}`;
 ${history.slice(0, 3).map((conv: any, index: number) => `
 ### Conversation ${index + 1}
 Sujet : ${conv.subject}
-Message : ${conv.message?.substring(0, 300) || ''}
-Réponse : ${conv.agent_response?.substring(0, 300) || ''}
+Message : ${conv.body?.substring(0, 300) || conv.message?.substring(0, 300) || ''}
+Réponse : ${conv.harvey_response?.substring(0, 300) || ''}
 `).join('')}`;
     }
 
@@ -847,7 +821,6 @@ Signature : ${promptConfig.signature || `L'équipe ${companyName}`}`;
   private getClientFallbackResponse(emailData: any, clientConfig: any): string {
     const name = emailData.from_name || emailData.from_email.split('@')[0] || 'Client';
     const signature = clientConfig.prompt_config?.signature || `L'équipe ${clientConfig.company_name || 'UNITECH'}`;
-    const companyName = clientConfig.company_name || 'UNITECH';
 
     return `
 Bonjour ${name},
@@ -895,7 +868,7 @@ ${signature}
   }
 
   // ============================================================
-  // HISTORIQUE DES CONVERSATIONS CLIENT
+  // HISTORIQUE DES CONVERSATIONS CLIENT (depuis "emails")
   // ============================================================
 
   private async getClientConversationHistory(
@@ -904,12 +877,14 @@ ${signature}
     limit: number = 5
   ): Promise<any[]> {
     try {
+      // ✅ Lire l'historique depuis "emails" (tous les échanges avec cet expéditeur)
       const { data, error } = await supabase
-        .from('email_conversations')
-        .select('*')
+        .from('emails')
+        .select('id, from_email, subject, body, harvey_response, received_at, category, harvey_tone')
         .eq('client_id', clientId)
         .eq('from_email', fromEmail)
-        .order('created_at', { ascending: false })
+        .not('harvey_response', 'is', null)
+        .order('received_at', { ascending: false })
         .limit(limit);
 
       if (error) return [];
@@ -920,87 +895,66 @@ ${signature}
   }
 
   // ============================================================
-  // STOCKAGE DE LA RÉPONSE CLIENT
+  // STOCKAGE DE LA RÉPONSE CLIENT (UNIQUEMENT dans "emails")
   // ============================================================
 
- // lib/agents/harvey-v2/HarveyV2.ts - storeClientResponse corrigé
+  private async storeClientResponse(
+    emailId: string,
+    analysis: any,
+    emailData: any,
+    clientConfig: any,
+    htmlResponse?: string
+  ): Promise<any> {
+    try {
+      const status = analysis.requires_human_review ? 'review' : 'response_ready';
 
-private async storeClientResponse(
-  emailId: string,
-  analysis: any,
-  emailData: any,
-  clientConfig: any,
-  htmlResponse?: string
-): Promise<any> {
-  try {
-    const status = analysis.requires_human_review ? 'review' : 'response_ready';
-    
-    const insertData = {
-      email_id: emailId,
-      client_id: clientConfig.client_id,
-      mail_account_id: clientConfig.id,
-      from_email: emailData.from_email || '',
-      to_email: Array.isArray(emailData.to_email) ? emailData.to_email.join(', ') : emailData.to_email || clientConfig.email,
-      subject: emailData.subject || '',
-      message: emailData.body || '',
-      body: emailData.body || '',
-      agent_response: analysis.content,
-      agent_response_html: htmlResponse || null,
-      response_tone: analysis.tone,
-      confidence: Math.round(analysis.confidence),
-      actions: analysis.actions || [],
-      status: status,
-      requires_human_review: analysis.requires_human_review,
-      suggested_agent: analysis.suggested_agent || 'HUMAN',
-      category: emailData.category || 'information',
-      is_outgoing: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    // 1. Insérer dans email_conversations
-    const { data, error } = await supabase
-      .from('email_conversations')
-      .insert(insertData)
-      .select();
-
-    if (error) {
-      console.error('❌ Erreur stockage conversation:', error);
-      return null;
-    }
-
-    // ✅ 2. Mettre à jour l'email source IMMÉDIATEMENT
-    if (emailId) {
-      const { error: updateError } = await supabase
+      // ✅ Mettre à jour UNIQUEMENT la table "emails"
+      const { data, error } = await supabase
         .from('emails')
         .update({
-          status: status,
+          // Réponse générée
           harvey_response: analysis.content,
           harvey_response_html: htmlResponse || null,
+          harvey_response_json: {
+            tone: analysis.tone,
+            confidence: analysis.confidence,
+            actions: analysis.actions,
+            metadata: analysis.metadata
+          },
           harvey_confidence: Math.round(analysis.confidence),
           harvey_tone: analysis.tone,
           harvey_actions: analysis.actions || [],
+          harvey_requires_review: analysis.requires_human_review,
           harvey_suggested_agent: analysis.suggested_agent || 'HUMAN',
+
+          // Statut : review ou response_ready
+          status: status,
+
+          // Métadonnées de traitement
+          category: emailData.category || 'information',
+          priority: emailData.priority || 'normal',
+          ai_analysis: emailData.ai_analysis || {},
           processed_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
-        .eq('id', emailId);
+        .eq('id', emailId)
+        .select()
+        .single();
 
-      if (updateError) {
-        console.error('❌ Erreur mise à jour email source:', updateError);
-        // Ne pas retourner d'erreur, la conversation est déjà sauvegardée
-      } else {
-        console.log(`✅ Email ${emailId} mis à jour avec status: ${status}`);
+      if (error) {
+        console.error('❌ Erreur stockage réponse dans emails:', error);
+        return null;
       }
-    }
 
-    this.processedEmails.add(emailId);
-    return data?.[0] || null;
-  } catch (error) {
-    console.error('❌ Erreur storeClientResponse:', error);
-    return null;
+      console.log(`✅ Email ${emailId} mis à jour avec status: ${status}`);
+      this.processedEmails.add(emailId);
+      return data;
+
+    } catch (error) {
+      console.error('❌ Erreur storeClientResponse:', error);
+      return null;
+    }
   }
-}
 
   // ============================================================
   // MISE À JOUR DU STATUT DE L'EMAIL
@@ -1027,7 +981,7 @@ private async storeClientResponse(
   private async markEmailAsProcessed(emailId: string, response: EmailResponse): Promise<void> {
     try {
       this.processedEmails.add(emailId);
-      
+
       await supabase
         .from('emails')
         .update({
@@ -1049,24 +1003,27 @@ private async storeClientResponse(
   }
 
   // ============================================================
-  // CHARGEMENT DES EMAILS DÉJÀ TRAITÉS
+  // CHARGEMENT DES EMAILS DÉJÀ TRAITÉS (depuis "emails")
   // ============================================================
 
   private async loadProcessedEmails(): Promise<void> {
     try {
+      // ✅ Charger les emails qui ont déjà une réponse générée
       const { data, error } = await supabase
-        .from('email_conversations')
-        .select('email_id')
-        .not('email_id', 'is', null)
+        .from('emails')
+        .select('id')
+        .not('harvey_response', 'is', null)
         .limit(1000);
 
       if (error) return;
 
       data?.forEach((item: any) => {
-        if (item.email_id) {
-          this.processedEmails.add(item.email_id);
+        if (item.id) {
+          this.processedEmails.add(item.id);
         }
       });
+
+      console.log(`📚 Harvey V2: ${this.processedEmails.size} emails déjà traités (chargés depuis "emails")`);
     } catch (error) {
       // Silently fail
     }
@@ -1105,7 +1062,7 @@ private async storeClientResponse(
 
   private analyzeSentiment(text: string): { sentiment: 'positive' | 'neutral' | 'negative'; score: number } {
     const lower = text.toLowerCase();
-    
+
     const positiveWords = [
       'bonjour', 'merci', 'bravo', 'excellent', 'super', 'content', 'heureux', 'ravi',
       'agréable', 'intéressé', 'bien', 'parfait', 'satisfait', 'plaisir', 'apprécier'
@@ -1277,7 +1234,7 @@ private async storeClientResponse(
 
   private async sendWebhook(payload: WebhookPayload): Promise<void> {
     const webhookUrl = process.env.HARVEY_WEBHOOK_URL;
-    
+
     if (webhookUrl) {
       try {
         await fetch(webhookUrl, {
