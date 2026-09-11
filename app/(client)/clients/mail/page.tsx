@@ -422,7 +422,7 @@ export default function ClientMailPage() {
     try {
       console.log('📧 Chargement des emails...');
 
-      const response = await fetch('/api/client/mail/emails?limit=100');
+      const response = await fetch('/api/client/mail/emails?limit=11100');
 
       if (!response.ok) {
         console.error('❌ Erreur HTTP:', response.status, response.statusText);

@@ -1,5 +1,7 @@
 // app/api/mail/sync/route.ts
 // Synchronisation des emails clients depuis IMAP vers la table "emails"
+// ✅ Marque les emails comme lus après récupération
+// ✅ Pas de vérification de doublon
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, supabaseAdmin } from '@/lib/supabase';
@@ -14,7 +16,7 @@ import crypto from 'crypto';
 const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '8f3a7c2e91d64b508a17c9e4f62b3d8a0c5e71f94a26d83b6e19f047c3a5d82e';
 
 const IMAP_TIMEOUT = 30000;        // 30 secondes
-const IMAP_MAX_EMAILS = 50;        // Nombre max d'emails par sync
+const IMAP_MAX_EMAILS = 50;         // Nombre max d'emails par sync
 
 // ============================================================
 // DÉCHIFFREMENT DU MOT DE PASSE
@@ -107,7 +109,8 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
       isConnected = true;
       console.log('✅ Connexion IMAP établie');
 
-      imap.openBox('INBOX', true, (err: any, box: any) => {
+      // ✅ Ouvrir en mode lecture/écriture (false) pour pouvoir marquer comme lu
+      imap.openBox('INBOX', false, (err: any, box: any) => {
         if (err) {
           if (timeoutId) clearTimeout(timeoutId);
           imap.end();
@@ -122,7 +125,7 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
         const fetchOptions = {
           bodies: ['HEADER', 'TEXT', ''],
           struct: true,
-          markSeen: false  // Ne pas marquer comme lu
+          markSeen: true  // ✅ Marquer comme lu après récupération
         };
 
         imap.search(searchCriteria, (err: any, results: any) => {
@@ -142,7 +145,10 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
           }
 
           // Limiter le nombre d'emails
-          const limit = Math.min(results.length, mailAccount.max_emails_per_sync || IMAP_MAX_EMAILS);
+          const limit = Math.min(
+            results.length,
+            mailAccount.max_emails_per_sync || IMAP_MAX_EMAILS
+          );
           const emailIds = results.slice(0, limit);
 
           console.log(`📧 Récupération de ${emailIds.length} emails (sur ${results.length} non lus)`);
@@ -189,7 +195,7 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
           });
 
           fetch.once('end', () => {
-            console.log(`✅ ${emailCount} emails récupérés`);
+            console.log(`✅ ${emailCount} emails récupérés et marqués comme lus`);
             if (timeoutId) clearTimeout(timeoutId);
             imap.end();
             resolve(emails);
@@ -218,6 +224,8 @@ async function fetchEmailsFromIMAP(mailAccount: any): Promise<any[]> {
 
 // ============================================================
 // SAUVEGARDE DES EMAILS DANS LA BASE (table "emails")
+// ✅ Pas de vérification de doublon (les emails sont marqués
+//    comme lus côté Gmail, donc ils ne seront plus récupérés)
 // ============================================================
 
 async function saveEmailsToDatabase(
@@ -231,29 +239,16 @@ async function saveEmailsToDatabase(
 
   for (const email of emails) {
     try {
-      // 1. Vérifier si l'email existe déjà (par message_id)
-      const { data: existing } = await adminClient
-        .from('emails')
-        .select('id')
-        .eq('message_id', email.messageId)
-        .maybeSingle();
-
-      if (existing) {
-        console.log(`⏭️ Email ${email.messageId} déjà présent, ignoré`);
-        continue;
-      }
-
-      // 2. Extraire les données de l'email
+      // 1. Extraire les données de l'email
       const from = email.from?.value?.[0] || { address: 'unknown', name: '' };
       const to = email.to?.value?.map((v: any) => v.address) || [];
       const cc = email.cc?.value?.map((v: any) => v.address) || [];
       const bcc = email.bcc?.value?.map((v: any) => v.address) || [];
 
-      // ✅ CORRECTION : "to_email" est de type TEXT (pas ARRAY)
-      // On joint les adresses avec une virgule
+      // ✅ "to_email" est de type TEXT (pas ARRAY)
       const toEmailString = to.join(', ');
 
-      // 3. Insérer dans la table "emails"
+      // 2. ✅ Insertion DIRECTE sans vérification de doublon
       const { error: insertError } = await adminClient
         .from('emails')
         .insert({
@@ -301,8 +296,13 @@ async function saveEmailsToDatabase(
         });
 
       if (insertError) {
-        console.error('❌ Erreur insertion email:', insertError);
-        errors++;
+        // ✅ Gérer l'erreur de contrainte UNIQUE (code 23505)
+        if (insertError.code === '23505') {
+          console.log(`⏭️ Email déjà présent (contrainte UNIQUE): ${email.subject}`);
+        } else {
+          console.error('❌ Erreur insertion email:', insertError);
+          errors++;
+        }
       } else {
         saved++;
         console.log(`✅ Email sauvegardé: ${email.subject}`);
