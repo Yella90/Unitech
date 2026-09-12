@@ -20,6 +20,7 @@ import {
   FaExternalLinkAlt
 } from 'react-icons/fa';
 import Link from 'next/link';
+import QRCode from 'qrcode';
 
 interface PageProps {
   params: Promise<{
@@ -80,6 +81,23 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
   const status = statusMap[project.status] || statusMap['planning'];
 
+  // ✅ Génération du QR code si le site existe
+  let qrCodeDataUrl: string | null = null;
+  if (project.site) {
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(project.site, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#1E3A8A',
+          light: '#FFFFFF',
+        },
+      });
+    } catch (err) {
+      console.error('Erreur lors de la génération du QR code :', err);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-16">
       {/* Hero du projet */}
@@ -120,6 +138,30 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             </span>
           )}
         </div>
+
+        {/* ✅ QR Code pour ouvrir le site facilement */}
+        {qrCodeDataUrl && project.site && (
+          <div className="mt-6 flex flex-col sm:flex-row items-center gap-4 rounded-xl bg-white/10 p-4 backdrop-blur-sm border border-white/20">
+            <img
+              src={qrCodeDataUrl}
+              alt={`QR Code pour ${project.name}`}
+              className="h-24 w-24 rounded-lg bg-white p-1 shadow-md"
+            />
+            <div className="text-center sm:text-left">
+              <p className="text-sm font-semibold text-white">📱 Scannez pour ouvrir le site</p>
+              <p className="text-xs text-white/80 break-all">{project.site}</p>
+              <a
+                href={project.site}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-white underline hover:text-white/90"
+              >
+                <FaExternalLinkAlt className="h-3 w-3" />
+                Ouvrir directement
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Problème / Solution / Bénéfices */}
