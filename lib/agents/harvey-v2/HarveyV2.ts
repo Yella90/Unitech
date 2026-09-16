@@ -284,6 +284,230 @@ export class HarveyV2 {
     }
   }
 
+
+  // ============================================================
+  // ✅ NOUVEAU : GÉNÉRATION DE RÉPONSE POUR LE CHAT PUBLIC
+  // Utilise les 5 dernières paires Q/R pour contextualiser
+  // ============================================================
+
+  async generateChatReply(
+    userMessage: string,
+    history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    options?: {
+      tone?: 'friendly' | 'professional' | 'concise' | 'technical';
+      sessionId?: string;
+      language?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    content?: string;
+    category?: string;
+    confidence?: number;
+    requiresHumanReview?: boolean;
+    shouldNotifyLead?: boolean;
+    error?: string;
+  }> {
+    try {
+      if (!this.initialized) {
+        await this.init();
+      }
+
+      const tone = options?.tone || 'friendly';
+
+      // ✅ Limiter strictement à 5 paires Q/R (10 messages max)
+      // On garde l'ordre chronologique et on s'assure d'avoir
+      // des paires cohérentes (user → assistant).
+      const cleanedHistory = this.sanitizeChatHistory(history, 5);
+
+      // 1. Classification rapide du message utilisateur
+      const classification = await this.classifyEmail({
+        from_email: 'chat-user@unitech.local',
+        to_email: 'contact@unitech.com',
+        subject: userMessage.slice(0, 80),
+        body: userMessage,
+      } as EmailRequest);
+
+      // 2. Détection d'intérêt lead
+      const leadIntent = this.detectChatLeadIntent(userMessage);
+
+      // 3. Construction du prompt système
+      const systemPrompt = this.getChatSystemPrompt(tone);
+
+      // 4. Construction des messages pour le LLM
+      const llmMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: systemPrompt },
+        ...cleanedHistory.map(h => ({
+          role: h.role as 'user' | 'assistant',
+          content: h.content,
+        })),
+        { role: 'user', content: userMessage },
+      ];
+
+      // 5. Appel LLM
+      const result = await generateWithFallback({
+        messages: llmMessages,
+        temperature: this.config.temperature ?? 0.7,
+        max_tokens: this.config.maxTokens ?? 800,
+      });
+
+      const content = result.content?.trim();
+      if (!content) {
+        return {
+          success: false,
+          error: 'Réponse vide du LLM',
+        };
+      }
+
+      // 6. Analyse de la réponse
+      const analysis = this.analyzeResponse(content, {
+        category: classification.category,
+        priority: classification.priority,
+        ai_analysis: {
+          confidence: classification.confidence,
+        },
+      });
+
+      console.log(
+        `💬 Chat: réponse générée (${cleanedHistory.length} msg d'historique, ` +
+        `score lead: ${leadIntent.score})`
+      );
+
+      return {
+        success: true,
+        content: analysis.content,
+        category: classification.category,
+        confidence: analysis.confidence,
+        requiresHumanReview: analysis.requires_human_review,
+        shouldNotifyLead: leadIntent.isLead,
+      };
+    } catch (error: any) {
+      console.error('❌ Erreur generateChatReply:', error);
+      return {
+        success: false,
+        error: error.message || 'Erreur génération chat',
+      };
+    }
+  }
+
+  // ============================================================
+  // ✅ HELPER : Nettoie et limite l'historique du chat
+  // ============================================================
+
+  private sanitizeChatHistory(
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    maxPairs: number = 5
+  ): Array<{ role: 'user' | 'assistant'; content: string }> {
+    if (!Array.isArray(history) || history.length === 0) return [];
+
+    // Filtrer uniquement user/assistant non vides
+    const valid = history.filter(
+      h =>
+        (h.role === 'user' || h.role === 'assistant') &&
+        typeof h.content === 'string' &&
+        h.content.trim().length > 0 &&
+        h.content !== '...'
+    );
+
+    // Tronquer le contenu très long pour économiser des tokens
+    const truncated = valid.map(h => ({
+      role: h.role,
+      content: h.content.length > 1500 ? h.content.slice(0, 1500) + '…' : h.content,
+    }));
+
+    // 1 paire = 2 messages → on garde les derniers (maxPairs * 2)
+    return truncated.slice(-(maxPairs * 2));
+  }
+
+  // ============================================================
+  // ✅ HELPER : Détection d'intention lead côté serveur
+  // (miroir de la logique client, pour sécurité)
+  // ============================================================
+
+  private detectChatLeadIntent(text: string): {
+    isLead: boolean;
+    score: number;
+    matched: string[];
+  } {
+    const lower = text.toLowerCase();
+    const groups: Array<{ weight: number; words: string[] }> = [
+      { weight: 3, words: ['devis', 'tarif', 'prix', 'budget', 'coût', 'cout', 'tarification', 'facturation'] },
+      { weight: 3, words: ['contrat', 'commande', 'achat', 'souscrire', 'abonnement', 'prestation'] },
+      { weight: 2, words: ['contact', 'rappel', 'appel', 'rendez-vous', 'rdv', 'rencontrer', 'téléphone', 'telephone'] },
+      { weight: 2, words: ['projet', 'collaboration', 'partenariat', 'mission', 'formation', 'audit', 'consulting'] },
+      { weight: 1, words: ['urgent', 'urgence', 'rapidement', 'asap', 'vite'] },
+    ];
+
+    const matched: string[] = [];
+    let score = 0;
+
+    for (const g of groups) {
+      for (const w of g.words) {
+        if (lower.includes(w)) {
+          matched.push(w);
+          score += g.weight;
+          break;
+        }
+      }
+    }
+
+    return { isLead: score >= 2, score, matched };
+  }
+
+  // ============================================================
+  // ✅ HELPER : Prompt système dédié au chat public
+  // ============================================================
+
+  private getChatSystemPrompt(
+    tone: 'friendly' | 'professional' | 'concise' | 'technical'
+  ): string {
+    const companyName = this.config.companyName || 'UNITECH';
+    const signature = this.config.signature || `L'équipe ${companyName}`;
+
+    const toneLabel = {
+      friendly: 'amical et chaleureux',
+      professional: 'professionnel et courtois',
+      concise: 'concis et direct',
+      technical: 'technique et précis',
+    }[tone];
+
+    return `Tu es l'assistant intelligent officiel de ${companyName}.
+
+## IDENTITÉ
+- Tu t'appelles "Assistant ${companyName}".
+- Tu n'es PAS une IA générique, tu représentes ${companyName}.
+- Tu tutoies ou vouvoies selon le ton de l'utilisateur.
+
+## STYLE
+- Ton : ${toneLabel}.
+- Réponses claires, utiles, structurées (listes, gras Markdown).
+- Réponds dans la même langue que l'utilisateur.
+- Sois bref : pas plus de 200 mots sauf si nécessaire.
+
+## CONTEXTE
+Tu disposes de l'historique des 5 derniers échanges (Question/Réponse).
+Utilise-le pour :
+- Éviter de redemander une information déjà donnée.
+- Garder la cohérence (ex : si l'utilisateur a donné son nom, réutilise-le).
+- Approfondir une demande en cours.
+RÈGLE ABSOLUE SUR LES SALUTATIONS :
+- Tu ne dis "Bonjour", "Salut", "Bonsoir", "Hello" QU'UNE SEULE FOIS, au tout premier message de la conversation.
+- Si l'HISTORIQUE contient déjà un message de toi (HARVEY) OU de l'utilisateur, tu NE SALues PLUS. Tu enchaînes directement sur le fond.
+- Pas d'emoji 👋 en début de message si la conversation est déjà entamée.
+- Pas de formule creuse type "Je suis ravi de..." / "N'hésitez pas à..." à chaque réponse.
+- Sois direct, va droit au but, comme dans une vraie discussion continue.
+
+## RÈGLES
+1. Ne jamais dire que tu es "une IA" ou "un modèle de langage".
+2. Ne jamais inventer d'informations sur ${companyName}.
+3. Si tu ne sais pas, propose un contact humain.
+4. Termine par une question ou une proposition d'action quand c'est pertinent.
+5. Signature (uniquement si réponse formelle) : ${signature}
+
+## SPÉCIALITÉS DE ${companyName}
+Solutions technologiques, agents IA (DONA, HARVEY), projets, formations, automatisation, conseil.`;
+  }
+
+
   // ============================================================
   // TRAITER UN EMAIL AVEC LA CONFIGURATION DU CLIENT
   // ============================================================

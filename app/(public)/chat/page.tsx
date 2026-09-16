@@ -4,11 +4,45 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { FaArrowLeft, FaRobot, FaPaperPlane, FaSpinner, FaTrash } from 'react-icons/fa';
+import {
+  FaArrowLeft, FaRobot, FaPaperPlane, FaSpinner, FaTrash,
+} from 'react-icons/fa';
 import { toast } from 'sonner';
-import { chatStorage } from '@/lib/services/chat-storage';
+import {
+  chatStorage,
+  CHAT_STORAGE_CONFIG,
+  type LLMHistoryMessage,
+} from '@/lib/services/chat-storage';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+// ============================================================
+// CONSTANTES
+// ============================================================
+
+const WELCOME_TEXT = `👋 Bonjour ! Je suis l'assistant intelligent d'**UNITECH**.
+
+Je peux vous renseigner en temps réel sur :
+• Nos services et solutions technologiques
+• Nos agents IA (DONA et HARVEY)
+• Nos projets et formations
+• Toute question sur UNITECH
+
+Comment puis-je vous aider aujourd'hui ?`;
+
+/**
+ * Mots-clés qui indiquent un lead "intéressant".
+ * Amélioration : pondération par catégorie.
+ */
+const LEAD_KEYWORDS: { words: string[]; weight: number }[] = [
+  { weight: 3, words: ['devis', 'tarif', 'prix', 'budget', 'coût', 'cout', 'tarification', 'facturation'] },
+  { weight: 3, words: ['contrat', 'commande', 'achat', 'souscrire', 'abonnement', 'prestation'] },
+  { weight: 2, words: ['contact', 'rappel', 'appel', 'rendez-vous', 'rdv', 'rencontrer', 'téléphone', 'telephone'] },
+  { weight: 2, words: ['projet', 'collaboration', 'partenariat', 'mission', 'formation', 'audit', 'consulting'] },
+  { weight: 1, words: ['urgent', 'urgence', 'rapidement', 'asap', 'vite'] },
+];
+
+const LEAD_THRESHOLD = 2; // Score minimum pour déclencher l'envoi
 
 interface Message {
   id: string;
@@ -20,174 +54,290 @@ interface Message {
   isTyping?: boolean;
 }
 
+// ============================================================
+// DÉTECTION D'INTENTION LEAD
+// ============================================================
+
+function detectLeadIntent(text: string): { isLead: boolean; score: number; matched: string[] } {
+  const lower = text.toLowerCase();
+  const matched: string[] = [];
+  let score = 0;
+
+  for (const group of LEAD_KEYWORDS) {
+    for (const word of group.words) {
+      if (lower.includes(word)) {
+        matched.push(word);
+        score += group.weight;
+        break; // 1 match suffit par groupe
+      }
+    }
+  }
+
+  return { isLead: score >= LEAD_THRESHOLD, score, matched };
+}
+
+// ============================================================
+// COMPOSANT
+// ============================================================
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [sessionId] = useState(`chat-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+  const [isHydrated, setIsHydrated] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sessionIdRef = useRef<string>(
+    `chat-${Date.now()}-${Math.random().toString(36).substring(7)}`
+  );
 
-  // This page is dedicated to the conversation: focus the composer as soon as
-  // it is rendered instead of leaving focus on surrounding site chrome.
+  // ------------------------------------------------------------
+  // INIT : charge depuis localStorage, crée conv + welcome si besoin
+  // ------------------------------------------------------------
   useEffect(() => {
-    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 100);
-    return () => window.clearTimeout(focusTimer);
-  }, []);
+    let current = chatStorage.getCurrentConversation();
 
-  // Charger l'historique depuis localStorage
-  useEffect(() => {
-    const convs = chatStorage.getConversations();
-    if (convs.length > 0) {
-      const current = chatStorage.getCurrentConversation();
-      if (current) {
-        const msgs = current.messages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-          isTyping: false
-        }));
-        setMessages(msgs);
-      }
-    } else {
-      // Message de bienvenue
-      setMessages([{
-        id: 'welcome',
-        role: 'assistant',
-        content: `👋 Bonjour ! Je suis l'assistant intelligent d'**UNITECH**.
-        
-Je peux vous renseigner en temps réel sur :
-• Nos services et solutions technologiques
-• Nos agents IA (DONA et HARVEY)
-• Nos projets et formations
-• Toute question sur UNITECH
-
-Comment puis-je vous aider aujourd'hui ?`,
-        timestamp: new Date(),
-        agent: 'both'
-      }]);
+    // Aucune conversation → en créer une
+    if (!current) {
+      current = chatStorage.createConversation();
     }
+
+    // Conversation vide → persister le welcome
+    if (current.messages.length === 0) {
+      chatStorage.addMessage({
+        role: 'assistant',
+        content: WELCOME_TEXT,
+        agent: 'both',
+      });
+      current = chatStorage.getCurrentConversation()!;
+    }
+
+    // Hydrater le state React depuis le storage
+    const msgs: Message[] = current.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: new Date(m.timestamp),
+      agent: m.agent,
+      category: m.category,
+      isTyping: false,
+    }));
+
+    setMessages(msgs);
+    setIsHydrated(true);
   }, []);
 
-  // Scroll automatique
+  // Focus auto
+  useEffect(() => {
+    if (!isHydrated) return;
+    const t = window.setTimeout(() => inputRef.current?.focus(), 100);
+    return () => window.clearTimeout(t);
+  }, [isHydrated]);
+
+  // Scroll auto
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const addMessage = useCallback(async (message: Omit<Message, 'id' | 'timestamp'>) => {
-    const newMessage: Message = {
-      ...message,
-      id: `msg-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-      timestamp: new Date()
-    };
+  // ------------------------------------------------------------
+  // ENVOI AU LEAD (si intéressant)
+  // ------------------------------------------------------------
+  const maybeNotifyLead = useCallback(async (triggerMessage: string) => {
+    const detection = detectLeadIntent(triggerMessage);
+    if (!detection.isLead) return;
 
-    setMessages(prev => [...prev, newMessage]);
+    // Éviter les doublons : 1 lead par conversation
+    if (chatStorage.wasLeadNotified()) return;
 
-    // Sauvegarder dans localStorage
-    chatStorage.addMessage({
-      role: message.role,
-      content: message.content,
-      agent: message.agent,
-      category: message.category
-    });
-
-    return newMessage;
-  }, []);
-
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading) return;
-
-    await addMessage({
-      role: 'user',
-      content: text.trim()
-    });
-
-    setInput('');
-    setIsLoading(true);
-    setIsTyping(true);
-
-    const typingId = `typing-${Date.now()}`;
-    setMessages(prev => [...prev, {
-      id: typingId,
-      role: 'assistant',
-      content: '...',
-      timestamp: new Date(),
-      isTyping: true
-    }]);
+    const transcript = chatStorage.getConversationTranscript();
+    if (!transcript) return;
 
     try {
-      const history = messages.slice(-10).map(m => ({
-        role: m.role,
-        content: m.content
-      }));
-
-      const response = await fetch('/api/ai/chat', {
+      const res = await fetch('/api/leads/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text.trim(),
-          history: history,
-          sessionId: sessionId,
-          tone: 'friendly'
-        })
+          sessionId: sessionIdRef.current,
+          trigger: triggerMessage,
+          score: detection.score,
+          matchedKeywords: detection.matched,
+          transcript,
+          source: 'chat_widget',
+          detectedAt: new Date().toISOString(),
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      setMessages(prev => prev.filter(m => m.id !== typingId));
-      setIsTyping(false);
-
-      if (data.success && data.content) {
-        await addMessage({
-          role: 'assistant',
-          content: data.content,
-          agent: 'harvey',
-          category: data.category || 'general'
-        });
+      if (res.ok) {
+        chatStorage.markLeadNotified();
+        console.log('📨 Lead notifié avec succès (score:', detection.score, ')');
       } else {
+        console.warn('⚠️ Envoi lead échoué:', res.status);
+      }
+    } catch (error) {
+      console.error('❌ Erreur notification lead:', error);
+      // Pas de toast : on ne dérange pas l'utilisateur
+    }
+  }, []);
+
+  // ------------------------------------------------------------
+  // AJOUTER UN MESSAGE (state + storage)
+  // ------------------------------------------------------------
+  const addMessage = useCallback(
+    async (message: Omit<Message, 'id' | 'timestamp'>) => {
+      const newMessage: Message = {
+        ...message,
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, newMessage]);
+
+      // Persiste dans localStorage
+      chatStorage.addMessage({
+        role: message.role,
+        content: message.content,
+        agent: message.agent,
+        category: message.category,
+      });
+
+      return newMessage;
+    },
+    []
+  );
+
+  // ------------------------------------------------------------
+  // ENVOYER UN MESSAGE
+  // ------------------------------------------------------------
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim() || isLoading) return;
+
+      const trimmed = text.trim();
+
+      await addMessage({ role: 'user', content: trimmed });
+
+      setInput('');
+      setIsLoading(true);
+      setIsTyping(true);
+
+      // Vérifier si c'est un lead intéressant (en parallèle, non bloquant)
+      maybeNotifyLead(trimmed);
+
+      // Placeholder typing
+      const typingId = `typing-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: typingId,
+          role: 'assistant',
+          content: '...',
+          timestamp: new Date(),
+          isTyping: true,
+        },
+      ]);
+
+      try {
+        // ✅ Historique depuis localStorage : 5 dernières paires Q/R
+        const history: LLMHistoryMessage[] = chatStorage.getRecentHistory(
+          CHAT_STORAGE_CONFIG.HISTORY_PAIRS_FOR_LLM
+        );
+
+        const response = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: trimmed,
+            history, // 5 dernières Q/R
+            sessionId: sessionIdRef.current,
+            tone: 'friendly',
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        setMessages((prev) => prev.filter((m) => m.id !== typingId));
+        setIsTyping(false);
+
+        if (data.success && data.content) {
+          await addMessage({
+            role: 'assistant',
+            content: data.content,
+            agent: data.agent || 'harvey',
+            category: data.category || 'general',
+          });
+        } else {
+          await addMessage({
+            role: 'assistant',
+            content:
+              data.content ||
+              "Je suis désolé, je n'ai pas pu traiter votre demande.",
+          });
+        }
+      } catch (error: any) {
+        console.error('❌ Erreur:', error);
+        setMessages((prev) => prev.filter((m) => m.id !== typingId));
+        setIsTyping(false);
+
         await addMessage({
           role: 'assistant',
-          content: data.content || "Je suis désolé, je n'ai pas pu traiter votre demande."
+          content:
+            'Je rencontre un problème technique. Veuillez réessayer dans quelques instants.',
         });
+
+        toast.error('Erreur de communication');
+      } finally {
+        setIsLoading(false);
+        setIsTyping(false);
+        requestAnimationFrame(() => inputRef.current?.focus());
       }
+    },
+    [isLoading, addMessage, maybeNotifyLead]
+  );
 
-    } catch (error: any) {
-      console.error('❌ Erreur:', error);
-      setMessages(prev => prev.filter(m => m.id !== typingId));
-      setIsTyping(false);
-
-      await addMessage({
-        role: 'assistant',
-        content: "Je rencontre un problème technique. Veuillez réessayer dans quelques instants."
-      });
-      
-      toast.error('Erreur de communication');
-    } finally {
-      setIsLoading(false);
-      setIsTyping(false);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [isLoading, addMessage, messages, sessionId]);
-
+  // ------------------------------------------------------------
+  // EFFACER
+  // ------------------------------------------------------------
   const clearHistory = () => {
-    if (confirm('Voulez-vous effacer toute la conversation ?')) {
-      chatStorage.clearAll();
-      setMessages([{
-        id: 'welcome',
-        role: 'assistant',
-        content: `👋 Bonjour ! Je suis l'assistant intelligent d'**UNITECH**.
-        
-Comment puis-je vous aider aujourd'hui ?`,
-        timestamp: new Date(),
-        agent: 'both'
-      }]);
-      toast.info('Conversation réinitialisée');
-    }
+    if (!confirm('Voulez-vous effacer toute la conversation ?')) return;
+
+    chatStorage.clearAll();
+    chatStorage.createConversation();
+    chatStorage.addMessage({
+      role: 'assistant',
+      content: WELCOME_TEXT,
+      agent: 'both',
+    });
+
+    const current = chatStorage.getCurrentConversation();
+    const msgs: Message[] = (current?.messages || []).map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      timestamp: new Date(m.timestamp),
+      agent: m.agent,
+      category: m.category,
+    }));
+
+    setMessages(msgs);
+    toast.info('Conversation réinitialisée');
   };
+
+  // ------------------------------------------------------------
+  // RENDER
+  // ------------------------------------------------------------
+  if (!isHydrated) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#F5F7FB]">
+        <FaSpinner className="h-6 w-6 animate-spin text-[#1E3A8A]" />
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex min-h-[100dvh] flex-col overflow-hidden bg-[#F5F7FB]">
@@ -195,10 +345,7 @@ Comment puis-je vous aider aujourd'hui ?`,
       <header className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
         <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2 rounded-lg hover:bg-slate-100 transition"
-            >
+            <Link href="/" className="p-2 rounded-lg hover:bg-slate-100 transition">
               <FaArrowLeft className="h-5 w-5 text-slate-600" />
             </Link>
             <div className="flex items-center gap-2">
@@ -209,15 +356,13 @@ Comment puis-je vous aider aujourd'hui ?`,
               En ligne
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={clearHistory}
-              className="p-2 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition"
-              title="Effacer l'historique"
-            >
-              <FaTrash className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            onClick={clearHistory}
+            className="p-2 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition"
+            title="Effacer l'historique"
+          >
+            <FaTrash className="h-4 w-4" />
+          </button>
         </div>
       </header>
 
@@ -283,7 +428,7 @@ Comment puis-je vous aider aujourd'hui ?`,
                   <div className="mt-1 text-[9px] opacity-50">
                     {new Date(message.timestamp).toLocaleTimeString('fr-FR', {
                       hour: '2-digit',
-                      minute: '2-digit'
+                      minute: '2-digit',
                     })}
                   </div>
                 )}
