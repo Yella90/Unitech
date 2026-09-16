@@ -65,21 +65,9 @@ if (typeof window === 'undefined') {
   try {
     console.log('🚀 Démarrage des agents IA...');
     
-    // 1. Démarrer DONA
-    const stopDona = initDonaService({ 
-      interval: 60000,
-      onError: (error) => {
-        console.error('❌ Erreur DONA:', error);
-      }
-    });
     
-    // 2. Démarrer HARVEY (ancienne version)
-    const stopHarvey = initHarveyService({ 
-      interval: 120000,
-      onError: (error) => {
-        console.error('❌ Erreur HARVEY (v1):', error);
-      }
-    });
+    
+    
     
     // 3. ✅ Démarrer HARVEY V2 (nouvelle version)
     const stopHarveyV2 = initHarveyV2Service({
@@ -111,8 +99,6 @@ if (typeof window === 'undefined') {
     // Fonction de nettoyage globale
     const cleanup = () => {
       console.log('🛑 Arrêt des agents...');
-      if (stopDona) stopDona();
-      if (stopHarvey) stopHarvey();
       if (stopHarveyV2) stopHarveyV2();
       if (stopImapSync) stopImapSync();
       console.log('✅ Agents arrêtés');

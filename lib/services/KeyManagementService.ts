@@ -29,7 +29,7 @@ export class KeyManagementService {
       let query = supabase
         .from('api_keys')
         .select('*, provider:ai_providers(*)')
-        .eq('status', 'active');
+        
 
       // 2. Si un provider spécifique est demandé
       if (providerName) {
@@ -53,7 +53,7 @@ export class KeyManagementService {
       const { data: keys, error } = await query
         .order('is_primary', { ascending: false })
         .order('usage_count', { ascending: true })
-        .limit(10);
+       
 
       if (error) {
         console.error('❌ Erreur récupération clés:', error);
@@ -61,7 +61,7 @@ export class KeyManagementService {
       }
 
       if (!keys || keys.length === 0) {
-        console.warn('⚠️ Aucune clé API disponible');
+        console.warn('4⚠️ Aucune clé API disponible');
         return null;
       }
 
