@@ -4,7 +4,8 @@ import { dona } from '@/lib/agents/dona/processor';
 import { generateWithFallback } from '@/lib/config/llm';
 import { keyManagement } from '@/lib/services/KeyManagementService';
 import { leadManagement } from '@/lib/services/LeadManagementService';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
+import { clientIp, takeToken } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -17,6 +18,10 @@ const HISTORY_PAIRS = 5;              // 5 paires Q/R = 10 messages
 const MAX_MESSAGE_CHARS = 4000;       // troncature de sécurité
 const MAX_HISTORY_ITEM_CHARS = 1500;  // troncature par message d'historique
 const LEAD_KEYWORD_THRESHOLD = 2;     // score minimum pour flaguer un lead
+const MAX_RESPONSE_TOKENS = 800;      // plafond imposé quel que soit le client
+const CHAT_WINDOW_MS = 10 * 60 * 1000; // fenêtre de 10 minutes
+const CHAT_LIMIT_PER_IP = 30;         // messages par IP et par fenêtre
+const CHAT_LIMIT_GLOBAL = 600;        // messages tous visiteurs confondus
 
 // ============================================================
 // TYPES
@@ -577,15 +582,26 @@ RÉPONSE:`;
 
 export async function POST(request: NextRequest) {
   try {
+    // Chatbot public : limite par IP et plafond global pour préserver les quotas IA
+    const ip = clientIp(request);
+    if (
+      !takeToken(`chat:ip:${ip}`, CHAT_LIMIT_PER_IP, CHAT_WINDOW_MS) ||
+      !takeToken('chat:global', CHAT_LIMIT_GLOBAL, CHAT_WINDOW_MS)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          content: 'Vous envoyez beaucoup de messages. Merci de patienter quelques minutes avant de réessayer.',
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
-    const {
-      message,
-      history = [],
-      sessionId,
-      tone = 'friendly',
-      temperature = 0.7,
-      maxTokens = 600,
-    } = body;
+    const { message, history = [], sessionId, tone = 'friendly' } = body;
+    // Bornés côté serveur : le client ne choisit pas le coût d'une réponse
+    const temperature = Math.min(Math.max(Number(body.temperature) || 0.7, 0), 1);
+    const maxTokens = Math.min(Math.max(Number(body.maxTokens) || 600, 1), MAX_RESPONSE_TOKENS);
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(

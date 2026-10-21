@@ -4,7 +4,7 @@
 //    (lecture, écriture, réponses, statuts)
 // ❌ Ne touche PAS à "email_conversations" ni "incoming_emails"
 
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { keyManagement } from '@/lib/services/KeyManagementService';
 import { generateWithFallback } from '@/lib/config/llm';
 import { generateEmailHtml } from './templates';

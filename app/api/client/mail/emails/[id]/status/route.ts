@@ -1,6 +1,6 @@
 // app/api/client/mail/emails/[id]/status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateClient } from '@/lib/api/auth';
 
 export async function PATCH(

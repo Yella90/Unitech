@@ -1,18 +1,8 @@
 // app/api/client/mail/configure/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
-import crypto from 'crypto';
-
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'; // 64 caractères hexadécimaux pour AES-256
-
-// ✅ Fonction pour chiffrer le mot de passe
-function encryptPassword(password: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
-  let encrypted = cipher.update(password, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return iv.toString('hex') + ':' + encrypted;
-}
+import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
+import { encryptPassword } from '@/lib/encryption';
 
 function getAdminClient() {
   if (!supabaseAdmin) {

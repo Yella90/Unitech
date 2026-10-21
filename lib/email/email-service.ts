@@ -1,5 +1,5 @@
 // lib/email/email-service.ts
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { getEmailTemplate, getCategoryContent, getCategoryHeader } from './templates/EmailTemplates';
 import { EmailTemplateData } from './templates/types';
 

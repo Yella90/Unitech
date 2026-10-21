@@ -1,19 +1,18 @@
 // app/api/harvey/trigger/route.ts
 import { NextResponse } from 'next/server';
 import { harvey } from '@/lib/agents/harvey/harvey';
+import { requireTriggerAccess } from '@/lib/api/trigger-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes maximum
 
 export async function POST(request: Request) {
     try {
-        // 🔒 Sécurité
-        const authHeader = request.headers.get('authorization');
-        const expectedToken = process.env.CRON_SECRET;
-        
-        if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+        // 🔒 Sécurité : cron (CRON_SECRET) ou admin autorisé
+        const denied = await requireTriggerAccess(request, 'email.create_response');
+        if (denied) {
             console.error('❌ HARVEY: Accès non autorisé');
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return denied;
         }
 
         console.log('🔄 HARVEY: Début du traitement manuel...');

@@ -1,6 +1,6 @@
 // lib/agents/harvey/harvey.ts
 
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { keyManagement } from '@/lib/services/KeyManagementService';
 import { generateWithFallback } from '@/lib/config/llm';
 import {

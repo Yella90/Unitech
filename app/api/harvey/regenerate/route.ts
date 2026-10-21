@@ -1,6 +1,6 @@
 // app/api/harvey/regenerate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { cookies } from 'next/headers';
 
 export async function POST(req: NextRequest) {

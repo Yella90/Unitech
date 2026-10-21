@@ -1,5 +1,5 @@
 // lib/agents/dona/processor-service.ts
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { dona } from './processor';
 import { ProcessOptions, DonaStatus, DonaConfig } from './types';
 

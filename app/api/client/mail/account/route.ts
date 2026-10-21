@@ -1,6 +1,6 @@
 // app/api/client/mail/account/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateAPIRequest } from '@/lib/api/auth';
 
 export async function GET(req: NextRequest) {
@@ -30,9 +30,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Le mot de passe chiffré ne sort jamais du serveur
+    let account = null;
+    if (data) {
+      const { email_password, ...rest } = data;
+      account = { ...rest, has_password: !!email_password };
+    }
+
     return NextResponse.json({
       success: true,
-      data: data || null
+      data: account
     });
 
   } catch (error) {

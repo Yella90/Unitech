@@ -4,16 +4,15 @@
 // ✅ Pas de vérification de doublon
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateAPIRequest } from '@/lib/api/auth';
 import { simpleParser } from 'mailparser';
-import crypto from 'crypto';
+import { decryptPassword as decryptStoredPassword } from '@/lib/encryption';
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
-
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '8f3a7c2e91d64b508a17c9e4f62b3d8a0c5e71f94a26d83b6e19f047c3a5d82e';
 
 const IMAP_TIMEOUT = 30000;        // 30 secondes
 const IMAP_MAX_EMAILS = 50;         // Nombre max d'emails par sync
@@ -23,33 +22,11 @@ const IMAP_MAX_EMAILS = 50;         // Nombre max d'emails par sync
 // ============================================================
 
 function decryptPassword(encrypted: string): string {
-  try {
-    if (!encrypted || !encrypted.includes(':')) {
-      throw new Error('Format de mot de passe chiffré invalide');
-    }
-
-    const [ivHex, encryptedHex] = encrypted.split(':');
-    if (!ivHex || !encryptedHex) {
-      throw new Error('IV ou texte chiffré manquant');
-    }
-
-    const iv = Buffer.from(ivHex, 'hex');
-    const encryptedText = Buffer.from(encryptedHex, 'hex');
-
-    const decipher = crypto.createDecipheriv(
-      'aes-256-cbc',
-      Buffer.from(ENCRYPTION_KEY, 'hex'),
-      iv
-    );
-
-    let decrypted = decipher.update(encryptedText, undefined, 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
-  } catch (error: any) {
-    console.error('❌ Erreur déchiffrement:', error.message);
+  const decrypted = decryptStoredPassword(encrypted);
+  if (!decrypted) {
     throw new Error('Impossible de déchiffrer le mot de passe du compte mail');
   }
+  return decrypted;
 }
 
 // ============================================================

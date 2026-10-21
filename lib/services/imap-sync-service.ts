@@ -3,15 +3,14 @@
 // ✅ Marque les emails comme lus après récupération
 // ✅ Pas de vérification de doublon (car les emails ne sont plus non-lus)
 
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import Imap from 'imap';
 import { simpleParser } from 'mailparser';
-import crypto from 'crypto';
+import { decryptPassword as decryptStoredPassword } from '@/lib/encryption';
 
 // ============================================================
 // CONFIGURATION
 // ============================================================
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || '';
 const IMAP_TIMEOUT = 30000;            // 30 secondes
 const MAX_EMAILS = 50;                 // Nombre max d'emails par sync par défaut
 const DELAY_BETWEEN_ACCOUNTS = 3000;   // 3 secondes entre chaque compte
@@ -20,35 +19,7 @@ const DELAY_BETWEEN_ACCOUNTS = 3000;   // 3 secondes entre chaque compte
 // DÉCHIFFREMENT DU MOT DE PASSE
 // ============================================================
 function decryptPassword(encrypted: string): string | null {
-  try {
-    if (!encrypted || !encrypted.includes(':')) {
-      console.error('   ❌ Format de mot de passe invalide');
-      return null;
-    }
-
-    const [ivHex, encryptedHex] = encrypted.split(':');
-    if (!ivHex || !encryptedHex) {
-      console.error('   ❌ IV ou texte chiffré manquant');
-      return null;
-    }
-
-    const iv = Buffer.from(ivHex, 'hex');
-    const encryptedText = Buffer.from(encryptedHex, 'hex');
-
-    const decipher = crypto.createDecipheriv(
-      'aes-256-cbc',
-      Buffer.from(ENCRYPTION_KEY, 'hex'),
-      iv
-    );
-
-    let decrypted = decipher.update(encryptedText, undefined, 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
-  } catch (error: any) {
-    console.error('   ❌ Erreur déchiffrement:', error.message);
-    return null;
-  }
+  return decryptStoredPassword(encrypted) || null;
 }
 
 // ============================================================

@@ -1,6 +1,6 @@
 // agents/harvey/harvey-service.ts
 import { harvey } from './harvey';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
 let isRunning = false;
 

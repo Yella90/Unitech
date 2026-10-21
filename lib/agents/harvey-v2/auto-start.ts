@@ -2,7 +2,7 @@
 // Auto-start pour Harvey V2 - Service d'automatisation des emails
 
 import { harveyV2 } from './HarveyV2';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
 let isRunning = false;
 let intervalId: NodeJS.Timeout | null = null;

@@ -1,6 +1,7 @@
 // app/api/client/services/subscribe/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateAPIRequest } from '@/lib/api/auth';
 
 // ✅ Fonction utilitaire pour vérifier supabaseAdmin

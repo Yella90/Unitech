@@ -1,6 +1,6 @@
 // lib/api/auth.ts
 import { NextRequest } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
 // ============================================================
 // TYPES

@@ -1,6 +1,6 @@
 // app/api/client/services/list/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateAPIRequest } from '@/lib/api/auth';
 
 export async function GET(req: NextRequest) {

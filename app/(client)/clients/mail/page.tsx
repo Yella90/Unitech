@@ -352,24 +352,7 @@ export default function ClientMailPage() {
         setMailAccount(data.data);
         setHasMailAccount(true);
 
-        // ✅ Déchiffrer le mot de passe via l'API dédiée
-        let decryptedPassword = '';
-        if (data.data.email_password) {
-          try {
-            const decryptResponse = await fetch('/api/client/mail/decrypt-password', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ encrypted: data.data.email_password })
-            });
-            const decryptData = await decryptResponse.json();
-            if (decryptData.success) {
-              decryptedPassword = decryptData.password;
-            }
-          } catch (error) {
-            console.error('❌ Erreur déchiffrement:', error);
-          }
-        }
-
+        // Le mot de passe ne quitte jamais le serveur : champ vide = mot de passe conservé
         setConfigForm(prev => ({
           ...prev,
           email: data.data.email || clientEmail || '',
@@ -379,7 +362,7 @@ export default function ClientMailPage() {
           smtp_port: data.data.smtp_port?.toString() || '587',
           encryption: data.data.encryption || 'tls',
           max_emails_per_sync: data.data.max_emails_per_sync?.toString() || '50',
-          password: decryptedPassword,
+          password: '',
           prompt_instructions: data.data.prompt_config?.instructions || '',
           prompt_tone: data.data.prompt_config?.tone || 'professional',
           prompt_signature: data.data.prompt_config?.signature || "L'équipe UNITECH",

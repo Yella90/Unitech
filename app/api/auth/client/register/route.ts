@@ -1,6 +1,7 @@
 // app/api/auth/client/register/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 

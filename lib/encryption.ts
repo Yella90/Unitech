@@ -8,7 +8,18 @@ import crypto from 'crypto';
  * Pour générer une nouvelle clé: 
  * node -e "console.log(crypto.randomBytes(32).toString('hex'))"
  */
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+/**
+ * Lit la clé au moment de l'usage : sans clé valide on refuse de chiffrer
+ * plutôt que d'utiliser une clé aléatoire (perdue au redémarrage) ou une
+ * clé écrite dans le code (lisible par quiconque voit le dépôt).
+ */
+function getEncryptionKey(): Buffer {
+  const key = process.env.EMAIL_ENCRYPTION_KEY;
+  if (!key || !/^[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error('EMAIL_ENCRYPTION_KEY manquante ou invalide (64 caractères hexadécimaux attendus)');
+  }
+  return Buffer.from(key, 'hex');
+}
 
 /**
  * Taille de l'IV (vecteur d'initialisation) en bytes
@@ -39,7 +50,7 @@ export function encryptPassword(password: string): string {
     // Créer le chiffreur
     const cipher = crypto.createCipheriv(
       ALGORITHM,
-      Buffer.from(ENCRYPTION_KEY, 'hex'),
+      getEncryptionKey(),
       iv
     );
     
@@ -95,7 +106,7 @@ export function decryptPassword(encryptedData: string): string {
 
     // Vérifier que la clé est valide
     try {
-      Buffer.from(ENCRYPTION_KEY, 'hex');
+      getEncryptionKey();
     } catch (error) {
       console.error('❌ Clé de chiffrement invalide');
       return '';
@@ -105,7 +116,7 @@ export function decryptPassword(encryptedData: string): string {
     const iv = Buffer.from(ivHex, 'hex');
     const decipher = crypto.createDecipheriv(
       ALGORITHM,
-      Buffer.from(ENCRYPTION_KEY, 'hex'),
+      getEncryptionKey(),
       iv
     );
     

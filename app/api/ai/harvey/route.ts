@@ -1,12 +1,17 @@
 // app/api/ai/harvey/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { harvey } from '@/lib/agents/harvey/harvey';
+import { requireTriggerAccess } from '@/lib/api/trigger-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
+    // 0. Réservé au cron (CRON_SECRET) et aux admins : chaque appel consomme le quota LLM
+    const denied = await requireTriggerAccess(request, 'email.create_response');
+    if (denied) return denied;
+
     // 1. Récupérer les paramètres
     const body = await request.json();
     const {

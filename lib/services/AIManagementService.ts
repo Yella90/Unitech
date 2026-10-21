@@ -1,5 +1,5 @@
 // lib/services/AIManagementService.ts
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import type { 
   AIProvider, 
   APIKey, 

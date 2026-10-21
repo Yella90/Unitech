@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { harveyV2 } from '@/lib/agents/harvey-v2/HarveyV2';
 import { authenticateClient } from '@/lib/api/auth';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
 // Configuration CORS
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [

@@ -1,39 +1,17 @@
-﻿// middleware.ts (Version simplifiée avec gestion de supabaseAdmin null)
-import { createServerClient } from '@supabase/ssr';
+﻿// middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseServer } from '@/lib/supabase-admin';
 
 const ADMIN_ROLES = ['admin', 'super_admin', 'developer'];
 
-// ✅ Fonction pour obtenir un client Supabase
-function getClient(req: NextRequest, res: NextResponse) {
-  if (supabaseAdmin) return supabaseAdmin;
-  
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll().map((cookie) => ({
-            name: cookie.name,
-            value: cookie.value,
-          }));
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            res.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
+// Les tables de sessions ne sont lisibles qu'avec la clé service (RLS)
+function getClient() {
+  return supabaseServer;
 }
 
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
-  const response = NextResponse.next({ request: { headers: req.headers } });
   
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-pathname', pathname);
@@ -57,7 +35,7 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL('/login', req.url));
     }
 
-    const client = getClient(req, response);
+    const client = getClient();
     const { data: session } = await client
       .from('sessions')
       .select('*, users(*)')
@@ -93,7 +71,7 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL('/connexion', req.url));
     }
 
-    const client = getClient(req, response);
+    const client = getClient();
     const { data: session } = await client
       .from('client_sessions')
       .select('*, clients(*)')
@@ -102,7 +80,7 @@ export async function middleware(req: NextRequest) {
       .single();
 
     if (!session) {
-      const redirectRes = NextResponse.redirect(new URL('/connexions', req.url));
+      const redirectRes = NextResponse.redirect(new URL('/connexion', req.url));
       redirectRes.cookies.delete('client_session_token');
       return redirectRes;
     }

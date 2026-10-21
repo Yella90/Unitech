@@ -1,6 +1,6 @@
 // app/api/client/mail/emails/regenerate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateClient } from '@/lib/api/auth';
 import { harveyV2 } from '@/lib/agents/harvey-v2/HarveyV2';
 

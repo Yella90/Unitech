@@ -1,7 +1,8 @@
 // app/api/auth/session/route.ts
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
 export async function GET() {
   try {
