@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   FaArrowLeft, FaRobot, FaPaperPlane, FaSpinner, FaTrash,
+  FaGraduationCap, FaCog, FaFileInvoice, FaHandshake,
 } from 'react-icons/fa';
 import { toast } from 'sonner';
 import {
@@ -13,36 +14,30 @@ import {
   CHAT_STORAGE_CONFIG,
   type LLMHistoryMessage,
 } from '@/lib/services/chat-storage';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { askHarvey, getChatSessionId, resetChatSessionId } from '@/lib/chat/client';
+import ChatMarkdown from '@/components/public/ChatMarkdown';
 
 // ============================================================
 // CONSTANTES
 // ============================================================
 
-const WELCOME_TEXT = `👋 Bonjour ! Je suis l'assistant intelligent d'**UNITECH**.
+const WELCOME_TEXT = `👋 Bonjour ! Je suis **HARVEY**, l'assistant d'**UNITECH**.
 
-Je peux vous renseigner en temps réel sur :
-• Nos services et solutions technologiques
-• Nos agents IA (DONA et HARVEY)
-• Nos projets et formations
-• Toute question sur UNITECH
+Je peux vous renseigner sur :
+- Nos services et solutions technologiques
+- Nos formations : programmes, tarifs et dates
+- Nos projets et nos agents IA
+- Un devis ou un rendez-vous avec l'équipe
 
 Comment puis-je vous aider aujourd'hui ?`;
 
-/**
- * Mots-clés qui indiquent un lead "intéressant".
- * Amélioration : pondération par catégorie.
- */
-const LEAD_KEYWORDS: { words: string[]; weight: number }[] = [
-  { weight: 3, words: ['devis', 'tarif', 'prix', 'budget', 'coût', 'cout', 'tarification', 'facturation'] },
-  { weight: 3, words: ['contrat', 'commande', 'achat', 'souscrire', 'abonnement', 'prestation'] },
-  { weight: 2, words: ['contact', 'rappel', 'appel', 'rendez-vous', 'rdv', 'rencontrer', 'téléphone', 'telephone'] },
-  { weight: 2, words: ['projet', 'collaboration', 'partenariat', 'mission', 'formation', 'audit', 'consulting'] },
-  { weight: 1, words: ['urgent', 'urgence', 'rapidement', 'asap', 'vite'] },
+// Proposées tant que le visiteur n'a rien écrit
+const SUGGESTIONS = [
+  { label: 'Formations et tarifs', icon: FaGraduationCap, value: 'Quelles formations proposez-vous, avec les tarifs et les dates ?' },
+  { label: 'Nos services', icon: FaCog, value: 'Présente-moi les services de UNITECH' },
+  { label: 'Demander un devis', icon: FaFileInvoice, value: "J'aimerais un devis pour un projet" },
+  { label: 'Parler à un conseiller', icon: FaHandshake, value: 'Comment puis-je contacter un conseiller UNITECH ?' },
 ];
-
-const LEAD_THRESHOLD = 2; // Score minimum pour déclencher l'envoi
 
 interface Message {
   id: string;
@@ -55,28 +50,6 @@ interface Message {
 }
 
 // ============================================================
-// DÉTECTION D'INTENTION LEAD
-// ============================================================
-
-function detectLeadIntent(text: string): { isLead: boolean; score: number; matched: string[] } {
-  const lower = text.toLowerCase();
-  const matched: string[] = [];
-  let score = 0;
-
-  for (const group of LEAD_KEYWORDS) {
-    for (const word of group.words) {
-      if (lower.includes(word)) {
-        matched.push(word);
-        score += group.weight;
-        break; // 1 match suffit par groupe
-      }
-    }
-  }
-
-  return { isLead: score >= LEAD_THRESHOLD, score, matched };
-}
-
-// ============================================================
 // COMPOSANT
 // ============================================================
 
@@ -84,19 +57,18 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const sessionIdRef = useRef<string>(
-    `chat-${Date.now()}-${Math.random().toString(36).substring(7)}`
-  );
+  const sessionIdRef = useRef<string>('');
 
   // ------------------------------------------------------------
   // INIT : charge depuis localStorage, crée conv + welcome si besoin
   // ------------------------------------------------------------
   useEffect(() => {
+    sessionIdRef.current = getChatSessionId();
+
     let current = chatStorage.getCurrentConversation();
 
     // Aucune conversation → en créer une
@@ -109,7 +81,7 @@ export default function ChatPage() {
       chatStorage.addMessage({
         role: 'assistant',
         content: WELCOME_TEXT,
-        agent: 'both',
+        agent: 'harvey',
       });
       current = chatStorage.getCurrentConversation()!;
     }
@@ -129,9 +101,9 @@ export default function ChatPage() {
     setIsHydrated(true);
   }, []);
 
-  // Focus auto
+  // Focus auto (sauf sur mobile : le clavier masquerait le message d'accueil)
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || window.matchMedia('(pointer: coarse)').matches) return;
     const t = window.setTimeout(() => inputRef.current?.focus(), 100);
     return () => window.clearTimeout(t);
   }, [isHydrated]);
@@ -142,50 +114,10 @@ export default function ChatPage() {
   }, [messages]);
 
   // ------------------------------------------------------------
-  // ENVOI AU LEAD (si intéressant)
-  // ------------------------------------------------------------
-  const maybeNotifyLead = useCallback(async (triggerMessage: string) => {
-    const detection = detectLeadIntent(triggerMessage);
-    if (!detection.isLead) return;
-
-    // Éviter les doublons : 1 lead par conversation
-    if (chatStorage.wasLeadNotified()) return;
-
-    const transcript = chatStorage.getConversationTranscript();
-    if (!transcript) return;
-
-    try {
-      const res = await fetch('/api/leads/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: sessionIdRef.current,
-          trigger: triggerMessage,
-          score: detection.score,
-          matchedKeywords: detection.matched,
-          transcript,
-          source: 'chat_widget',
-          detectedAt: new Date().toISOString(),
-        }),
-      });
-
-      if (res.ok) {
-        chatStorage.markLeadNotified();
-        console.log('📨 Lead notifié avec succès (score:', detection.score, ')');
-      } else {
-        console.warn('⚠️ Envoi lead échoué:', res.status);
-      }
-    } catch (error) {
-      console.error('❌ Erreur notification lead:', error);
-      // Pas de toast : on ne dérange pas l'utilisateur
-    }
-  }, []);
-
-  // ------------------------------------------------------------
   // AJOUTER UN MESSAGE (state + storage)
   // ------------------------------------------------------------
   const addMessage = useCallback(
-    async (message: Omit<Message, 'id' | 'timestamp'>) => {
+    (message: Omit<Message, 'id' | 'timestamp'>) => {
       const newMessage: Message = {
         ...message,
         id: `msg-${Date.now()}-${Math.random().toString(36).substring(7)}`,
@@ -212,92 +144,40 @@ export default function ChatPage() {
   // ------------------------------------------------------------
   const sendMessage = useCallback(
     async (text: string) => {
-      if (!text.trim() || isLoading) return;
-
       const trimmed = text.trim();
+      if (!trimmed || isLoading) return;
 
-      await addMessage({ role: 'user', content: trimmed });
+      // Historique lu avant d'ajouter le message : 5 dernières paires Q/R
+      const history: LLMHistoryMessage[] = chatStorage.getRecentHistory(
+        CHAT_STORAGE_CONFIG.HISTORY_PAIRS_FOR_LLM
+      );
 
+      addMessage({ role: 'user', content: trimmed });
       setInput('');
       setIsLoading(true);
-      setIsTyping(true);
-
-      // Vérifier si c'est un lead intéressant (en parallèle, non bloquant)
-      maybeNotifyLead(trimmed);
 
       // Placeholder typing
       const typingId = `typing-${Date.now()}`;
       setMessages((prev) => [
         ...prev,
-        {
-          id: typingId,
-          role: 'assistant',
-          content: '...',
-          timestamp: new Date(),
-          isTyping: true,
-        },
+        { id: typingId, role: 'assistant', content: '...', timestamp: new Date(), isTyping: true },
       ]);
 
-      try {
-        // ✅ Historique depuis localStorage : 5 dernières paires Q/R
-        const history: LLMHistoryMessage[] = chatStorage.getRecentHistory(
-          CHAT_STORAGE_CONFIG.HISTORY_PAIRS_FOR_LLM
-        );
+      const reply = await askHarvey({ message: trimmed, history, sessionId: sessionIdRef.current });
 
-        const response = await fetch('/api/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: trimmed,
-            history, // 5 dernières Q/R
-            sessionId: sessionIdRef.current,
-            tone: 'friendly',
-          }),
-        });
+      setMessages((prev) => prev.filter((m) => m.id !== typingId));
+      addMessage({
+        role: 'assistant',
+        content: reply.content,
+        agent: reply.agent,
+        category: reply.category,
+      });
+      if (!reply.ok) toast.error('Le message n\'a pas pu être traité');
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        setMessages((prev) => prev.filter((m) => m.id !== typingId));
-        setIsTyping(false);
-
-        if (data.success && data.content) {
-          await addMessage({
-            role: 'assistant',
-            content: data.content,
-            agent: data.agent || 'harvey',
-            category: data.category || 'general',
-          });
-        } else {
-          await addMessage({
-            role: 'assistant',
-            content:
-              data.content ||
-              "Je suis désolé, je n'ai pas pu traiter votre demande.",
-          });
-        }
-      } catch (error: any) {
-        console.error('❌ Erreur:', error);
-        setMessages((prev) => prev.filter((m) => m.id !== typingId));
-        setIsTyping(false);
-
-        await addMessage({
-          role: 'assistant',
-          content:
-            'Je rencontre un problème technique. Veuillez réessayer dans quelques instants.',
-        });
-
-        toast.error('Erreur de communication');
-      } finally {
-        setIsLoading(false);
-        setIsTyping(false);
-        requestAnimationFrame(() => inputRef.current?.focus());
-      }
+      setIsLoading(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
     },
-    [isLoading, addMessage, maybeNotifyLead]
+    [isLoading, addMessage]
   );
 
   // ------------------------------------------------------------
@@ -311,8 +191,9 @@ export default function ChatPage() {
     chatStorage.addMessage({
       role: 'assistant',
       content: WELCOME_TEXT,
-      agent: 'both',
+      agent: 'harvey',
     });
+    sessionIdRef.current = resetChatSessionId();
 
     const current = chatStorage.getCurrentConversation();
     const msgs: Message[] = (current?.messages || []).map((m) => ({
@@ -328,6 +209,8 @@ export default function ChatPage() {
     toast.info('Conversation réinitialisée');
   };
 
+  const hasUserMessage = messages.some((m) => m.role === 'user');
+
   // ------------------------------------------------------------
   // RENDER
   // ------------------------------------------------------------
@@ -340,26 +223,37 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex min-h-[100dvh] flex-col overflow-hidden bg-[#F5F7FB]">
+    <div className="fixed inset-0 z-[60] flex h-[100dvh] flex-col overflow-hidden bg-[#F5F7FB]">
       {/* En-tête */}
-      <header className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
-        <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="p-2 rounded-lg hover:bg-slate-100 transition">
+      <header className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm">
+        <div className="mx-auto max-w-4xl px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <Link
+              href="/"
+              aria-label="Retour au site"
+              className="p-2 rounded-lg hover:bg-slate-100 transition flex-shrink-0"
+            >
               <FaArrowLeft className="h-5 w-5 text-slate-600" />
             </Link>
-            <div className="flex items-center gap-2">
-              <FaRobot className="h-6 w-6 text-[#1E3A8A]" />
-              <h1 className="text-lg font-bold text-[#1E3A8A]">Assistant UNITECH</h1>
+            <div className="relative flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-[#1E3A8A] text-white">
+              <FaRobot className="h-5 w-5" />
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-green-500" />
             </div>
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-              En ligne
-            </span>
+            <div className="min-w-0">
+              <h1 className="truncate text-base sm:text-lg font-bold leading-tight text-[#1E3A8A]">
+                HARVEY<span className="hidden sm:inline"> · Assistant UNITECH</span>
+              </h1>
+              <p className="truncate text-xs text-slate-500 leading-tight">
+                {isLoading ? 'Écrit une réponse…' : 'En ligne'}
+                <span className="hidden sm:inline">{isLoading ? '' : ' · répond en quelques secondes'}</span>
+              </p>
+            </div>
           </div>
           <button
             onClick={clearHistory}
-            className="p-2 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition"
-            title="Effacer l'historique"
+            aria-label="Nouvelle conversation"
+            title="Nouvelle conversation"
+            className="p-2 rounded-lg hover:bg-red-50 text-slate-500 hover:text-red-600 transition flex-shrink-0"
           >
             <FaTrash className="h-4 w-4" />
           </button>
@@ -367,8 +261,8 @@ export default function ChatPage() {
       </header>
 
       {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl space-y-3 px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
+        <div className="mx-auto max-w-4xl space-y-3 px-3 sm:px-4 py-4">
           {messages.map((message) => (
             <motion.div
               key={message.id}
@@ -377,55 +271,30 @@ export default function ChatPage() {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
+                className={`max-w-[88%] sm:max-w-[80%] rounded-2xl px-4 py-2.5 ${
                   message.role === 'user'
                     ? 'bg-[#1E3A8A] text-white rounded-br-none'
-                    : message.isTyping
-                    ? 'bg-white border border-slate-200 rounded-bl-none shadow-sm'
                     : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-sm'
                 }`}
               >
-                {message.role === 'assistant' && !message.isTyping && message.agent && (
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-[10px] font-medium text-[#F97316]">
-                      {message.agent === 'harvey' ? '🤖 HARVEY' : '🧠 DONA'}
-                    </span>
-                    {message.category && (
-                      <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">
-                        {message.category}
-                      </span>
-                    )}
+                {message.role === 'assistant' && !message.isTyping && (
+                  <div className="mb-1 text-[11px] font-semibold text-[#F97316]">
+                    {message.agent === 'dona' ? '🧠 DONA' : '🤖 HARVEY'}
                   </div>
                 )}
                 {message.isTyping ? (
-                  <div className="flex items-center gap-1.5 py-1">
+                  <div className="flex items-center gap-1.5 py-1" aria-label="HARVEY écrit">
                     <div className="h-2 w-2 bg-[#1E3A8A] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="h-2 w-2 bg-[#1E3A8A] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                     <div className="h-2 w-2 bg-[#1E3A8A] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
+                ) : message.role === 'user' ? (
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                 ) : (
-                  <div className="text-sm leading-relaxed">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-                        ul: ({ children }) => <ul className="list-disc pl-4 my-1">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal pl-4 my-1">{children}</ol>,
-                        li: ({ children }) => <li>{children}</li>,
-                        p: ({ children }) => <span className="block my-1">{children}</span>,
-                        a: ({ href, children }) => (
-                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#1E3A8A] underline hover:text-[#F97316]">
-                            {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
-                  </div>
+                  <ChatMarkdown content={message.content} />
                 )}
                 {!message.isTyping && (
-                  <div className="mt-1 text-[9px] opacity-50">
+                  <div className={`mt-1 text-[10px] ${message.role === 'user' ? 'text-white/60' : 'text-slate-400'}`}>
                     {new Date(message.timestamp).toLocaleTimeString('fr-FR', {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -435,13 +304,33 @@ export default function ChatPage() {
               </div>
             </motion.div>
           ))}
+
+          {/* Suggestions avant le premier message */}
+          {!hasUserMessage && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s.label}
+                  onClick={() => sendMessage(s.value)}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 rounded-full border border-[#1E3A8A]/20 bg-white px-3.5 py-2 text-sm font-medium text-[#1E3A8A] shadow-sm transition hover:border-[#F97316] hover:text-[#F97316] disabled:opacity-50"
+                >
+                  <s.icon className="h-3.5 w-3.5" />
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Input */}
-      <div className="flex-shrink-0 bg-white border-t border-slate-200 shadow-lg">
-        <div className="mx-auto max-w-4xl px-4 py-3">
+      {/* Saisie */}
+      <div
+        className="flex-shrink-0 bg-white border-t border-slate-200"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="mx-auto max-w-4xl px-3 sm:px-4 py-3">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -454,14 +343,18 @@ export default function ChatPage() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Posez votre question..."
-              className="flex-1 px-4 py-2 text-sm border bg-green-100 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
-              disabled={isLoading}
+              placeholder="Écrivez votre question…"
+              aria-label="Votre message"
+              autoComplete="off"
+              enterKeyHint="send"
+              maxLength={4000}
+              className="min-w-0 flex-1 px-4 py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
             />
             <button
               type="submit"
+              aria-label="Envoyer"
               disabled={isLoading || !input.trim()}
-              className="p-2.5 bg-[#1E3A8A] text-white rounded-xl hover:bg-[#1A2F6A] transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3.5 bg-[#F97316] text-white rounded-xl hover:bg-[#ea580c] transition disabled:bg-slate-300 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <FaSpinner className="h-4 w-4 animate-spin" />
@@ -470,8 +363,8 @@ export default function ChatPage() {
               )}
             </button>
           </form>
-          <p className="text-center text-[10px] text-slate-400 mt-1.5">
-            L'assistant est propulsé par DONA et HARVEY • {messages.length} messages
+          <p className="text-center text-[11px] text-slate-400 mt-1.5">
+            HARVEY est une IA : faites confirmer les informations importantes par l&apos;équipe.
           </p>
         </div>
       </div>

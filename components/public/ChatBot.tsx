@@ -25,8 +25,8 @@ import {
 } from 'react-icons/fa';
 import { toast } from 'sonner';
 import { chatStorage, type StoredMessage, type StoredConversation } from '@/lib/services/chat-storage';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { askHarvey, getChatSessionId, resetChatSessionId } from '@/lib/chat/client';
+import ChatMarkdown from './ChatMarkdown';
 
 // ============================================================
 // TYPES
@@ -74,9 +74,14 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   const [storageStats, setStorageStats] = useState({ totalConversations: 0, totalMessages: 0, storageSize: 0 });
   const [leadId, setLeadId] = useState<string | null>(null);
   
-  const sessionId = useRef(`chat-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+  // Même conversation que la page /chat, conservée entre les pages
+  const sessionId = useRef('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    sessionId.current = getChatSessionId();
+  }, []);
 
   // ============================================================
   // CHARGEMENT DES DONNÉES STOCKÉES
@@ -175,7 +180,9 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
     setMessages([]);
     setConversations(chatStorage.getConversations());
     setStorageStats(chatStorage.getStats());
-    
+    sessionId.current = resetChatSessionId();
+    setLeadId(null);
+
     toast.info('Conversation réinitialisée');
   }, [currentConversationId]);
 
@@ -236,75 +243,26 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       isTyping: true
     }]);
 
-    try {
-      const history = messages.slice(-10).map(m => ({
-        role: m.role,
-        content: m.content
-      }));
+    const history = messages
+      .filter(m => !m.isTyping)
+      .slice(-10)
+      .map(m => ({ role: m.role, content: m.content }));
 
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text.trim(),
-          history: history,
-          sessionId: sessionId.current,
-          tone: 'friendly'
-        })
-      });
+    // askHarvey renvoie toujours un texte : réponse, refus du serveur
+    // (limite de messages) ou message d'erreur
+    const reply = await askHarvey({ message: text.trim(), history, sessionId: sessionId.current });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+    setMessages(prev => prev.filter(m => m.id !== typingId));
+    await addMessage({
+      role: 'assistant',
+      content: reply.content,
+      agent: reply.agent,
+      category: reply.category
+    });
+    if (!reply.ok) toast.error('Le message n\'a pas pu être traité');
 
-      const data = await response.json();
-
-      setMessages(prev => prev.filter(m => m.id !== typingId));
-      setIsTyping(false);
-
-      if (data.success && data.content) {
-        await addMessage({
-          role: 'assistant',
-          content: data.content,
-          agent: 'harvey',
-          category: data.category || 'general'
-        });
-
-        // ✅ Si le lead a été mis à jour, afficher une notification discrète
-        if (data.leadInfo && Object.keys(data.leadInfo).length > 0) {
-          console.log('📋 Informations lead collectées:', data.leadInfo);
-        }
-      } else {
-        await addMessage({
-          role: 'assistant',
-          content: data.content || "Je suis désolé, je n'ai pas pu traiter votre demande. Veuillez réessayer."
-        });
-      }
-
-    } catch (error: any) {
-      console.error('❌ Erreur chat:', error);
-      
-      setMessages(prev => prev.filter(m => m.id !== typingId));
-      setIsTyping(false);
-
-      let errorMessage = "Je rencontre actuellement un problème technique. Veuillez réessayer dans quelques instants.";
-      
-      if (error.message.includes('HTTP 404')) {
-        errorMessage = "Le service de chat est temporairement indisponible. Notre équipe technique a été informée.";
-      } else if (error.message.includes('HTTP 500')) {
-        errorMessage = "Le serveur rencontre un problème. Veuillez réessayer dans quelques minutes.";
-      }
-
-      await addMessage({
-        role: 'assistant',
-        content: errorMessage
-      });
-      
-      toast.error('Erreur de communication');
-    } finally {
-      setIsLoading(false);
-      setIsTyping(false);
-    }
+    setIsLoading(false);
+    setIsTyping(false);
   }, [isLoading, addMessage, messages]);
 
   // ============================================================
@@ -322,41 +280,11 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
       );
     }
 
-    return (
-      <div className="text-sm leading-relaxed whitespace-pre-wrap">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({ href, children }) => {
-              const isMailto = href?.startsWith('mailto:');
-              return (
-                <a
-                  href={href}
-                  target={isMailto ? '_self' : '_blank'}
-                  rel={isMailto ? '' : 'noopener noreferrer'}
-                  className="text-[#1E3A8A] underline hover:text-[#F97316] transition-colors font-medium"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {children}
-                </a>
-              );
-            },
-            ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 my-2">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 my-2">{children}</ol>,
-            li: ({ children }) => <li className="text-slate-700">{children}</li>,
-            h1: ({ children }) => <h1 className="text-xl font-bold text-[#1E3A8A] mt-4 mb-2">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-lg font-semibold text-[#1E3A8A] mt-3 mb-2">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-base font-semibold text-[#1E3A8A] mt-2 mb-1">{children}</h3>,
-            strong: ({ children }) => <strong className="font-bold text-[#1E3A8A]">{children}</strong>,
-            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-            blockquote: ({ children }) => <blockquote className="border-l-4 border-[#1E3A8A] pl-4 my-2 text-slate-600 italic">{children}</blockquote>,
-            code: ({ children }) => <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
-          }}
-        >
-          {message.content}
-        </ReactMarkdown>
-      </div>
-    );
+    if (message.role === 'user') {
+      return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>;
+    }
+
+    return <ChatMarkdown content={message.content} />;
   };
 
   // ============================================================
@@ -371,7 +299,8 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 50, scale: 0.9 }}
           transition={{ duration: 0.3, type: 'spring', damping: 25 }}
-          className="fixed bottom-24 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] sm:w-[420px] max-h-[600px] sm:max-h-[700px] bg-white rounded-2xl shadow-2xl border border-slate-200/50 flex flex-col overflow-hidden"
+          // Hauteur bornée par l'écran : l'en-tête (fermer, effacer) reste toujours visible
+          className="fixed bottom-24 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] sm:w-[420px] h-[min(640px,calc(100dvh-7.5rem))] bg-white rounded-2xl shadow-2xl border border-slate-200/50 flex flex-col overflow-hidden"
         >
           {/* En-tête */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#1E3A8A] to-[#1E40AF] text-white flex-shrink-0">
@@ -383,10 +312,10 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                 )}
               </div>
               <div>
-                <h3 className="font-semibold text-sm">Assistant UNITECH</h3>
-                <p className="text-[10px] text-white/70 flex items-center gap-1">
+                <h3 className="font-semibold text-sm">HARVEY · Assistant UNITECH</h3>
+                <p className="text-[11px] text-white/75 flex items-center gap-1">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
-                  {isLoading ? 'En cours...' : 'En ligne'} • {messages.length} messages
+                  {isLoading ? 'Écrit une réponse…' : 'En ligne'}
                 </p>
               </div>
             </div>
@@ -395,12 +324,14 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                 onClick={clearHistory}
                 className="p-1.5 rounded-lg hover:bg-white/20 transition text-white/70 hover:text-white"
                 title="Nouvelle conversation"
+                aria-label="Nouvelle conversation"
               >
                 <FaTrash className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-lg hover:bg-white/20 transition"
+                aria-label="Fermer le chat"
               >
                 <FaTimes className="h-4 w-4" />
               </button>
@@ -408,7 +339,7 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F8FAFC] min-h-[300px] max-h-[400px] sm:max-h-[500px] chat-scroll">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-[#F8FAFC] chat-scroll" aria-live="polite">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400">
                 <FaRobot className="h-12 w-12 mb-3 opacity-50" />
@@ -432,24 +363,16 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                         : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-sm'
                     }`}
                   >
-                    {message.role === 'assistant' && !message.isTyping && message.agent && (
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-[10px] font-medium text-[#F97316]">
-                          {message.agent === 'harvey' ? '🤖 HARVEY' : '🧠 DONA'}
-                          {message.agent === 'both' && '⚡'}
-                        </span>
-                        {message.category && (
-                          <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">
-                            {message.category}
-                          </span>
-                        )}
+                    {message.role === 'assistant' && !message.isTyping && (
+                      <div className="mb-1 text-[11px] font-semibold text-[#F97316]">
+                        {message.agent === 'dona' ? '🧠 DONA' : '🤖 HARVEY'}
                       </div>
                     )}
-                    
+
                     {renderMessageContent(message)}
-                    
+
                     {!message.isTyping && (
-                      <div className="mt-1 text-[9px] opacity-50">
+                      <div className={`mt-1 text-[10px] ${message.role === 'user' ? 'text-white/60' : 'text-slate-400'}`}>
                         {new Date(message.timestamp).toLocaleTimeString('fr-FR', {
                           hour: '2-digit',
                           minute: '2-digit'
@@ -465,13 +388,13 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
           {/* Actions Rapides */}
           <div className="px-3 py-2 bg-white border-t border-slate-100 flex-shrink-0">
-            <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 chat-scroll">
               {QUICK_ACTIONS.map((action) => (
                 <button
                   key={action.label}
                   onClick={() => sendMessage(action.value)}
                   disabled={isLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium text-[#1E3A8A] bg-[#1E3A8A]/10 rounded-full hover:bg-[#1E3A8A]/20 transition disabled:opacity-50 whitespace-nowrap"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#1E3A8A] bg-[#1E3A8A]/10 rounded-full hover:bg-[#1E3A8A]/20 transition disabled:opacity-50 whitespace-nowrap"
                 >
                   <action.icon className="h-3 w-3" />
                   {action.label}
@@ -494,14 +417,18 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Posez votre question..."
-                className="flex-1 px-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
-                disabled={isLoading}
+                placeholder="Écrivez votre question…"
+                aria-label="Votre message"
+                autoComplete="off"
+                enterKeyHint="send"
+                maxLength={4000}
+                className="min-w-0 flex-1 px-4 py-2 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#1E3A8A] focus:border-transparent"
               />
               <button
                 type="submit"
+                aria-label="Envoyer"
                 disabled={isLoading || !input.trim()}
-                className="p-2.5 bg-[#1E3A8A] text-white rounded-xl hover:bg-[#1A2F6A] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 bg-[#F97316] text-white rounded-xl hover:bg-[#ea580c] transition disabled:bg-slate-300 disabled:cursor-not-allowed"
               >
                 {isLoading ? (
                   <FaSpinner className="h-4 w-4 animate-spin" />
@@ -512,15 +439,6 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
             </form>
           </div>
 
-          {/* Infos stockage */}
-          <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[9px] text-slate-400 flex-shrink-0">
-            <span>
-              {storageStats.totalConversations} conv. • {storageStats.totalMessages} messages
-            </span>
-            <span>
-              {(storageStats.storageSize / 1024).toFixed(1)} KB
-            </span>
-          </div>
         </motion.div>
       )}
     </AnimatePresence>
