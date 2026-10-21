@@ -2,8 +2,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { leadManagement } from '@/lib/services/LeadManagementService';
+import { adminDb as supabase } from '@/lib/admin-db/client';
+import { LeadManagementService } from '@/lib/services/LeadManagementService';
+
+const leadManagement = new LeadManagementService(supabase);
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

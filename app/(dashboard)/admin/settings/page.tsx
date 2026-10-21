@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { adminDb as supabase } from '@/lib/admin-db/client';
 import { 
   FaSave, 
   FaUserCog, 
@@ -34,7 +34,6 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { toast, Toaster } from 'sonner';
-import bcrypt from 'bcryptjs';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -161,44 +160,28 @@ export default function AdminSettingsPage() {
         return;
       }
 
-      if (passwordData.newPassword.length < 6) {
-        toast.error('Le mot de passe doit contenir au moins 6 caractères');
+      if (passwordData.newPassword.length < 8) {
+        toast.error('Le mot de passe doit contenir au moins 8 caractères');
         setChangingPassword(false);
         return;
       }
 
-      const { data: userData, error: fetchError } = await supabase
-        .from('users')
-        .select('password_hash')
-        .eq('id', user.id)
-        .single();
+      // Vérification et hachage côté serveur : le hash ne sort jamais
+      const response = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
 
-      if (fetchError) {
-        console.error('Erreur récupération utilisateur:', fetchError);
-        toast.error('Erreur lors de la vérification');
+      if (!response.ok) {
+        toast.error(result.error || 'Erreur lors du changement de mot de passe');
         setChangingPassword(false);
         return;
       }
-
-      const isValid = await bcrypt.compare(passwordData.currentPassword, userData.password_hash);
-      if (!isValid) {
-        toast.error('Mot de passe actuel incorrect');
-        setChangingPassword(false);
-        return;
-      }
-
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(passwordData.newPassword, salt);
-
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          password_hash: hashedPassword,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
-
-      if (updateError) throw updateError;
 
       toast.success('✅ Mot de passe modifié avec succès !');
       

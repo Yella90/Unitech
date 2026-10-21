@@ -1,5 +1,5 @@
 // lib/dona/processor-service.ts
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { dona } from './processor-tfidf';
 
 let isProcessing = false;

@@ -25,7 +25,6 @@ import {
 } from 'react-icons/fa';
 import { toast } from 'sonner';
 import { chatStorage, type StoredMessage, type StoredConversation } from '@/lib/services/chat-storage';
-import { leadManagement } from '@/lib/services/LeadManagementService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -187,19 +186,25 @@ export default function ChatBot({ isOpen, onClose }: ChatBotProps) {
   useEffect(() => {
     if (messages.length >= 5 && !leadId) {
       const saveLead = async () => {
-        const lead = await leadManagement.createLead({
-          session_id: sessionId.current,
-          source: 'chatbot',
-          messages: messages.map(m => ({
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp.toISOString()
-          })),
-          conversation_summary: messages.map(m => m.content).join(' ').substring(0, 500),
-          status: 'new'
-        });
-        if (lead) {
-          setLeadId(lead.id || null);
+        try {
+          const response = await fetch('/api/leads/chatbot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sessionId.current,
+              messages: messages.map(m => ({
+                role: m.role,
+                content: m.content,
+                timestamp: m.timestamp.toISOString()
+              }))
+            })
+          });
+          const lead = await response.json();
+          if (lead?.id) {
+            setLeadId(lead.id);
+          }
+        } catch (error) {
+          console.error('❌ Erreur sauvegarde lead:', error);
         }
       };
       saveLead();

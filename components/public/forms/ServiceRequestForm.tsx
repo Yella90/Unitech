@@ -103,7 +103,8 @@ export default function ServiceRequestForm({ services = [] }: ServiceRequestForm
       }
 
       // ✅ Insertion avec gestion d'erreur améliorée
-      const { data, error: insertError } = await supabase
+      // Sans .select() : un visiteur peut créer une demande, pas relire la table
+      const { error: insertError } = await supabase
         .from('service_requests')
         .insert({
           service_id: formData.service_id || null,
@@ -118,8 +119,7 @@ export default function ServiceRequestForm({ services = [] }: ServiceRequestForm
           status: 'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
-        .select();
+        });
 
       if (insertError) {
         console.error('❌ Erreur insertion détaillée:', {

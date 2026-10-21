@@ -3,7 +3,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { adminDb as supabase } from '@/lib/admin-db/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -276,29 +276,22 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
         return;
       }
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${projectId}_${Date.now()}.${fileExt}`;
-      const filePath = `projects/${fileName}`;
+      // Upload par le serveur : le bucket n'accepte plus la clé anon
+      const body = new FormData();
+      body.append('file', file);
+      body.append('projectId', String(projectId));
 
-      const { data, error } = await supabase.storage
-        .from('project-images')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      const response = await fetch('/api/admin/upload', { method: 'POST', body });
+      const result = await response.json().catch(() => ({}));
 
-      if (error) {
-        console.error('Erreur upload:', error);
-        toast.error('Erreur lors de l\'upload de l\'image');
+      if (!response.ok || !result.url) {
+        console.error('Erreur upload:', result.error);
+        toast.error(result.error || 'Erreur lors de l\'upload de l\'image');
         setUploading(false);
         return;
       }
 
-      const { data: publicUrlData } = supabase.storage
-        .from('project-images')
-        .getPublicUrl(filePath);
-
-      const imageUrl = publicUrlData.publicUrl;
+      const imageUrl = result.url;
 
       setFormData((prev) => ({
         ...prev,

@@ -1,5 +1,5 @@
 // lib/services/LeadManagementService.ts
-import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ============================================================
 // TYPES
@@ -57,15 +57,10 @@ export interface Appointment {
 // SERVICE DE GESTION DES LEADS
 // ============================================================
 
-class LeadManagementService {
-  private static instance: LeadManagementService;
-
-  static getInstance(): LeadManagementService {
-    if (!LeadManagementService.instance) {
-      LeadManagementService.instance = new LeadManagementService();
-    }
-    return LeadManagementService.instance;
-  }
+// Le client est fourni par l'appelant : clé service côté serveur
+// (lead-management-server.ts), adminDb dans le back-office.
+export class LeadManagementService {
+  constructor(private readonly db: SupabaseClient) {}
 
   // ============================================================
   // GESTION DES LEADS
@@ -73,7 +68,7 @@ class LeadManagementService {
 
   async createLead(lead: Lead): Promise<Lead | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .insert({
           session_id: lead.session_id,
@@ -131,7 +126,7 @@ class LeadManagementService {
         console.warn(`⚠️ Statut invalide: ${status}, utilisation du statut actuel`);
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .update(updateData)
         .eq('id', id)
@@ -153,7 +148,7 @@ class LeadManagementService {
   // ✅ NOUVELLE MÉTHODE - Mise à jour du statut uniquement
   async updateLeadStatus(id: string, status: LeadStatus): Promise<Lead | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .update({
           status: status,
@@ -179,7 +174,7 @@ class LeadManagementService {
   // ✅ RÉINITIALISATION DES STATUTS (optionnel)
   async resetLeadStatus(id: string): Promise<Lead | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .update({
           status: 'new',
@@ -204,7 +199,7 @@ class LeadManagementService {
 
   async getLeadBySession(sessionId: string): Promise<Lead | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .select('*')
         .eq('session_id', sessionId)
@@ -226,7 +221,7 @@ class LeadManagementService {
 
   async getLeadById(id: string): Promise<Lead | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .select('*')
         .eq('id', id)
@@ -246,7 +241,7 @@ class LeadManagementService {
 
   async addMessageToLead(leadId: string, message: any): Promise<Lead | null> {
     try {
-      const { data: lead } = await supabase
+      const { data: lead } = await this.db
         .from('leads')
         .select('messages')
         .eq('id', leadId)
@@ -257,7 +252,7 @@ class LeadManagementService {
       const messages = lead.messages || [];
       messages.push(message);
 
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .update({
           messages: messages,
@@ -282,7 +277,7 @@ class LeadManagementService {
 
   async getAllLeads(limit: number = 100): Promise<Lead[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .select('*')
         .order('created_at', { ascending: false })
@@ -302,7 +297,7 @@ class LeadManagementService {
 
   async getLeadsByStatus(status: LeadStatus): Promise<Lead[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .select('*')
         .eq('status', status)
@@ -333,7 +328,7 @@ class LeadManagementService {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     
-    const { count } = await supabase
+    const { count } = await this.db
       .from('quotes')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', startOfDay.toISOString());
@@ -345,7 +340,7 @@ class LeadManagementService {
 
   async createQuote(quote: Quote): Promise<Quote | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('quotes')
         .insert({
           lead_id: quote.lead_id,
@@ -376,7 +371,7 @@ class LeadManagementService {
 
   async getQuotesByLead(leadId: string): Promise<Quote[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('quotes')
         .select('*')
         .eq('lead_id', leadId)
@@ -400,7 +395,7 @@ class LeadManagementService {
 
   async createAppointment(appointment: Appointment): Promise<Appointment | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('appointments')
         .insert({
           lead_id: appointment.lead_id,
@@ -431,7 +426,7 @@ class LeadManagementService {
 
   async getAppointmentsByLead(leadId: string): Promise<Appointment[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('appointments')
         .select('*')
         .eq('lead_id', leadId)
@@ -464,7 +459,7 @@ class LeadManagementService {
     lost: number;
   }> {
     try {
-      const { data: leads } = await supabase
+      const { data: leads } = await this.db
         .from('leads')
         .select('status');
 
@@ -490,7 +485,7 @@ class LeadManagementService {
 
   async searchLeads(query: string): Promise<Lead[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.db
         .from('leads')
         .select('*')
         .or(`name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%,conversation_summary.ilike.%${query}%`)
@@ -514,7 +509,7 @@ class LeadManagementService {
 
   async deleteLead(id: string): Promise<boolean> {
     try {
-      const { error } = await supabase
+      const { error } = await this.db
         .from('leads')
         .delete()
         .eq('id', id);
@@ -533,8 +528,3 @@ class LeadManagementService {
   }
 }
 
-// ============================================================
-// EXPORT DE L'INSTANCE
-// ============================================================
-
-export const leadManagement = LeadManagementService.getInstance();

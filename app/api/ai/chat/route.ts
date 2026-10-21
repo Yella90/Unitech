@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dona } from '@/lib/agents/dona/processor';
 import { generateWithFallback } from '@/lib/config/llm';
 import { keyManagement } from '@/lib/services/KeyManagementService';
-import { leadManagement } from '@/lib/services/LeadManagementService';
+import { leadManagement } from '@/lib/services/lead-management-server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { clientIp, takeToken } from '@/lib/api/rate-limit';
 

@@ -1,5 +1,5 @@
 // lib/dona/processor-tfidf.ts
-import { supabase } from '@/lib/supabase';
+import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
 type KeywordConfig = {
   id: string;

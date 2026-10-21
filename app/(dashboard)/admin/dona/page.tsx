@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { adminDb as supabase } from '@/lib/admin-db/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -250,24 +250,9 @@ export default function AdminDonaPage() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    const contactsChannel = supabase
-      .channel('contacts-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => {
-        loadData(true);
-      })
-      .subscribe();
-
-    const emailsChannel = supabase
-      .channel('emails-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_emails' }, () => {
-        loadData(true);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(contactsChannel);
-      supabase.removeChannel(emailsChannel);
-    };
+    // Le temps réel Supabase ne passe plus avec RLS : rafraîchissement périodique
+    const interval = setInterval(() => loadData(true), 30_000);
+    return () => clearInterval(interval);
   }, [isAdmin]);
 
   const getFilteredContacts = () => {
