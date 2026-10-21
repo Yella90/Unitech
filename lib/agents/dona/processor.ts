@@ -1,7 +1,7 @@
 // lib/agents/dona/processor.ts
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
-import { 
-  KeywordConfig, 
+import type {
+  KeywordConfig,
   AnalysisResult, 
   EmailData, 
   ContactData,
@@ -57,6 +57,21 @@ const defaultConfig: DonaConfig = {
       ], 
       priority: 1, 
       is_active: true 
+    },
+    // ==========================================================
+    // FORMATION - Formations, cours, inscriptions
+    // ==========================================================
+    {
+      id: 'default-formation',
+      category: 'formation',
+      keywords: [
+        'formation', 'cours', 'apprendre', 'apprentissage', 'programme',
+        'certificat', 'certification', 'stage', 'inscrire', 'inscription',
+        'session', 'module', 'diplome', 'enseignement', 'etudiant',
+        'debutant', 'niveau', 'horaires', 'dates'
+      ],
+      priority: 1,
+      is_active: true
     },
     // ==========================================================
     // SUPPORT - Aide, assistance, problèmes
@@ -156,6 +171,32 @@ const defaultConfig: DonaConfig = {
 };
 
 // ============================================================
+// CORRESPONDANCE DES MOTS-CLÉS
+// ============================================================
+
+// Minuscules sans accents : « Problème » et « probleme » se comparent
+function normalize(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+const patternCache = new Map<string, RegExp>();
+
+// Mot-clé trouvé en début de mot : « formation » reconnaît « formations »,
+// mais « des » ne reconnaît plus « desinscription »
+function keywordPattern(keyword: string): RegExp {
+  let pattern = patternCache.get(keyword);
+  if (!pattern) {
+    const escaped = normalize(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    pattern = new RegExp(`(^|[^a-z0-9])${escaped}`);
+    patternCache.set(keyword, pattern);
+  }
+  return pattern;
+}
+
+// Termes qui suffisent seuls à classer un message en spam
+const STRONG_SPAM = new Set(['viagra', 'casino', 'porn', 'phishing', 'lottery', '$$$', 'argent facile']);
+
+// ============================================================
 // CLASSE DONA AMÉLIORÉE
 // ============================================================
 export class Dona implements IDona {
@@ -251,12 +292,14 @@ export class Dona implements IDona {
         return;
       }
 
-      this.keywordConfigs = data && data.length > 0 ? data : this.config.defaultCategories;
-      
-      if (this.keywordConfigs.length === 0) {
-        console.warn('⚠️ DONA: Aucune catégorie, utilisation des defaults');
-        this.keywordConfigs = this.config.defaultCategories;
-      }
+      // La base prime ; les catégories qu'elle ne définit pas (fondateur,
+      // salutations...) gardent leurs mots-clés par défaut
+      const fromDb: KeywordConfig[] = data || [];
+      const known = new Set(fromDb.map(c => c.category));
+      this.keywordConfigs = [
+        ...fromDb,
+        ...this.config.defaultCategories.filter(c => !known.has(c.category)),
+      ];
 
       console.log(`📋 DONA: ${this.keywordConfigs.length} catégories chargées`);
     } catch (error) {
@@ -278,53 +321,34 @@ export class Dona implements IDona {
       await this.init();
     }
 
-    const text = `${input.subject || ''} ${input.body}`.toLowerCase();
-    const words = text.split(/\s+/).filter(w => w.length > 2);
+    const text = normalize(`${input.subject || ''} ${input.body}`);
+    const opening = text.split(/\s+/).slice(0, 12).join(' ');
 
-    // ✅ Score par catégorie avec poids
-    const results: { 
-      category: string; 
-      score: number; 
+    // ✅ Score par catégorie : nombre de mots-clés trouvés, bonus s'ils
+    // apparaissent en début de message
+    const results: {
+      category: string;
+      score: number;
       matched: string[];
-      weight: number;
+      priority: number;
     }[] = [];
 
     for (const config of this.keywordConfigs) {
-      const matched = config.keywords.filter(kw => 
-        words.some(w => w.includes(kw) || kw.includes(w))
-      );
-      
-      if (matched.length > 0) {
-        // ✅ Score basé sur le nombre de mots-clés trouvés
-        let score = matched.length / config.keywords.length;
-        
-        // ✅ Bonus pour les correspondances exactes
-        const exactMatches = config.keywords.filter(kw => 
-          text.includes(kw)
-        );
-        if (exactMatches.length > 0) {
-          score += exactMatches.length * 0.05;
-        }
-        
-        // ✅ Bonus pour les mots-clés en début de message (plus importants)
-        const firstWords = text.split(' ').slice(0, 10).join(' ');
-        const firstMatches = config.keywords.filter(kw => 
-          firstWords.includes(kw)
-        );
-        if (firstMatches.length > 0) {
-          score += firstMatches.length * 0.03;
-        }
+      const matched = [...new Set(config.keywords)].filter(kw => keywordPattern(kw).test(text));
+      if (matched.length === 0) continue;
 
-        // ✅ Poids selon la priorité de la catégorie
-        const weight = config.priority > 0 ? config.priority / 10 : 0.1;
-        
-        results.push({
-          category: config.category,
-          score: Math.min(score, 1),
-          matched: matched,
-          weight: weight,
-        });
+      // Le spam ne l'emporte que sur des termes sans ambiguïté
+      if (config.category === 'spam' && matched.length < 2 && !matched.some(kw => STRONG_SPAM.has(normalize(kw)))) {
+        continue;
       }
+
+      const openingHits = matched.filter(kw => keywordPattern(kw).test(opening)).length;
+      results.push({
+        category: config.category,
+        score: matched.length + openingHits * 0.25,
+        matched,
+        priority: config.priority,
+      });
     }
 
     // ✅ Si aucun résultat, catégorie 'general'
@@ -340,17 +364,24 @@ export class Dona implements IDona {
       };
     }
 
-    // ✅ Trier par score * poids
-    results.sort((a, b) => (b.score * b.weight) - (a.score * a.weight));
+    // ✅ Meilleur score ; à égalité, la priorité la plus forte (1 avant 3).
+    // Les salutations ('general') ne passent qu'à défaut d'autre chose.
+    results.sort((a, b) =>
+      (Number(a.category === 'general') - Number(b.category === 'general')) ||
+      (b.score - a.score) ||
+      (a.priority - b.priority)
+    );
     const best = results[0];
-    const confidence = Math.min(Math.round(best.score * 100 + 10), 100);
+    const runnerUp = results[1];
+    const tied = !!runnerUp && runnerUp.score === best.score;
+    const confidence = Math.min(95, 45 + Math.round(best.score * 15) - (tied ? 15 : 0));
 
     // ✅ Log de débogage
     if (this.config.debug) {
       console.log(`🔍 DONA Debug:`, {
         category: best.category,
         score: best.score,
-        weight: best.weight,
+        priority: best.priority,
         confidence,
         matched: best.matched.length,
         total_results: results.length,
@@ -376,6 +407,7 @@ export class Dona implements IDona {
       support: 'high',
       commercial: 'high',
       project: 'high',
+      formation: 'high',
       founder: 'high',
       newsletter: 'medium',
       information: 'medium',
@@ -391,6 +423,7 @@ export class Dona implements IDona {
       support: 'SUPPORT',
       commercial: 'COMMERCIAL',
       project: 'PROJET',
+      formation: 'HARVEY',
       founder: 'HUMAN',
       newsletter: 'NEWSLETTER',
       information: 'HARVEY',

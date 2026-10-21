@@ -63,70 +63,49 @@ interface LeadInfo {
 // RÉCUPÉRATION DES DONNÉES DE L'ENTREPRISE
 // ============================================================
 
+// Les données changent rarement : une lecture toutes les 5 minutes suffit
+const COMPANY_CACHE_MS = 5 * 60 * 1000;
+let companyCache: { at: number; data: CompanyData } | null = null;
+
 async function getCompanyData(): Promise<CompanyData> {
+  if (companyCache && Date.now() - companyCache.at < COMPANY_CACHE_MS) {
+    return companyCache.data;
+  }
+  const data = await loadCompanyData();
+  companyCache = { at: Date.now(), data };
+  return data;
+}
+
+async function loadCompanyData(): Promise<CompanyData> {
   try {
     console.log('📊 Récupération des données entreprise...');
 
-    const { data: services, error: servicesError } = await supabase
-      .from('services')
-      .select('*')
-      .eq('is_active', true)
-      .order('order_index', { ascending: true });
+    // Lectures en parallèle (auparavant 7 requêtes l'une après l'autre)
+    const [servicesRes, formationsRes, projectsRes, solutionsRes, collaborationsRes, companyRes, faqRes] =
+      await Promise.all([
+        supabase.from('services').select('*').eq('is_active', true).order('order_index', { ascending: true }),
+        supabase.from('trainings').select('*').order('created_at', { ascending: true }),
+        supabase.from('projects').select('*').order('created_at', { ascending: false }),
+        supabase.from('solutions').select('*').eq('is_active', true).order('order_index', { ascending: true }),
+        supabase.from('collaborations').select('*').eq('status', 'active').order('created_at', { ascending: false }),
+        supabase.from('company_data').select('*').limit(1).maybeSingle(),
+        supabase.from('faq').select('*').eq('is_active', true).order('order_index', { ascending: true }),
+      ]);
 
-    if (servicesError) console.error('❌ Erreur services:', servicesError);
-
-    const { data: formations, error: formationsError } = await supabase
-      .from('trainings')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (formationsError) console.error('❌ Erreur formations:', formationsError);
-
-    const { data: projects, error: projectsError } = await supabase
-      .from('projects')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (projectsError) console.error('❌ Erreur projets:', projectsError);
-
-    const { data: solutions, error: solutionsError } = await supabase
-      .from('solutions')
-      .select('*')
-      .eq('is_active', true)
-      .order('order_index', { ascending: true });
-
-    if (solutionsError) console.error('❌ Erreur solutions:', solutionsError);
-
-    const { data: collaborations, error: collaborationsError } = await supabase
-      .from('collaborations')
-      .select('*')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
-
-    if (collaborationsError) console.error('❌ Erreur collaborations:', collaborationsError);
-
-    let companyData = null;
-    try {
-      const { data, error } = await supabase
-        .from('company_data')
-        .select('*')
-        .single();
-
-      if (error) {
-        console.warn('⚠️ Aucune donnée entreprise trouvée, utilisation des données par défaut');
-      } else {
-        companyData = data;
-      }
-    } catch (error) {
-      console.warn('⚠️ Erreur récupération company_data, utilisation des données par défaut');
+    for (const [label, res] of Object.entries({
+      services: servicesRes, formations: formationsRes, projets: projectsRes, solutions: solutionsRes,
+      collaborations: collaborationsRes, company_data: companyRes, faq: faqRes,
+    })) {
+      if (res.error) console.error(`❌ Erreur ${label}:`, res.error);
     }
 
-    const { data: faq, error: faqError } = await supabase
-      .from('faq')
-      .select('*')
-      .eq('is_active', true);
-
-    if (faqError) console.error('❌ Erreur faq:', faqError);
+    const services = servicesRes.data;
+    const formations = formationsRes.data;
+    const projects = projectsRes.data;
+    const solutions = solutionsRes.data;
+    const collaborations = collaborationsRes.data;
+    const companyData = companyRes.data;
+    const faq = faqRes.data;
 
     console.log('✅ Données récupérées:', {
       services: services?.length || 0,
@@ -189,6 +168,25 @@ function getDefaultCompanyData(): CompanyData {
 // ============================================================
 // ✅ NETTOYAGE DE L'HISTORIQUE (5 paires Q/R max)
 // ============================================================
+
+/**
+ * Historique prêt pour le LLM : commence par l'utilisateur (le message
+ * d'accueil est retiré) et alterne les rôles (messages consécutifs fusionnés),
+ * comme l'exigent certains fournisseurs.
+ */
+function toChatTurns(history: LLMHistoryItem[], message: string): LLMHistoryItem[] {
+  const turns: LLMHistoryItem[] = [];
+  for (const item of [...history, { role: 'user' as const, content: message }]) {
+    if (turns.length === 0 && item.role === 'assistant') continue;
+    const last = turns[turns.length - 1];
+    if (last && last.role === item.role) {
+      last.content = `${last.content}\n\n${item.content}`;
+    } else {
+      turns.push({ ...item });
+    }
+  }
+  return turns;
+}
 
 function sanitizeHistory(
   raw: any,
@@ -384,200 +382,202 @@ function hasConversationStarted(history: LLMHistoryItem[]): boolean {
 // CONSTRUCTION DU PROMPT
 // ============================================================
 
-function buildPromptWithContext(
+// Coordonnées officielles : les seules que HARVEY communique
+const CONTACT = {
+  email: 'doumbialayesoma@gmail.com',
+  phone: '+223 90692363',
+  site: 'https://unitech-qvgo.onrender.com',
+};
+
+const PROJECT_STATUS: Record<string, string> = {
+  completed: 'terminé',
+  'in-progress': 'en cours',
+  planned: 'prévu',
+  paused: 'en pause',
+};
+
+// Certaines réponses de la FAQ contiennent des « \n » littéraux
+function cleanText(value: unknown): string {
+  return String(value ?? '').replace(/\\n/g, '\n').trim();
+}
+
+function fcfa(value: unknown): string | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return `${Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FCFA`;
+}
+
+// Le prompt doit rester court : Groq (fournisseur principal) plafonne à
+// 8 000 tokens par minute. Tout le catalogue figure en une ligne par
+// élément ; le détail n'est ajouté que pour le sujet de la question.
+
+function firstSentence(value: unknown, max = 140): string {
+  const text = cleanText(value).replace(/\s+/g, ' ');
+  const end = text.search(/[.!?](\s|$)/);
+  const sentence = end > 0 ? text.slice(0, end + 1) : text;
+  return sentence.length > max ? `${sentence.slice(0, max - 1)}…` : sentence;
+}
+
+function formatFormations(list: any[], detailed: boolean): string {
+  return list
+    .map((f) => {
+      const facts = [f.duration, f.schedule, f.price || 'tarif sur demande'].filter(Boolean).join(' · ');
+      const lines = [`- **${cleanText(f.title || f.name)}** : ${facts}${f.slug ? ` — ${CONTACT.site}/training/${f.slug}` : ''}`];
+      if (detailed) {
+        if (f.level) lines.push(`  Niveau : ${f.level}`);
+        if (f.description) lines.push(`  ${firstSentence(f.description, 220)}`);
+        if (Array.isArray(f.modules) && f.modules.length) lines.push(`  Programme : ${f.modules.join(' ; ')}`);
+      }
+      return lines.join('\n');
+    })
+    .join('\n');
+}
+
+function formatServices(list: any[], detailed: boolean): string {
+  return list
+    .map((s) => {
+      const prices = [
+        fcfa(s.price_monthly) && `${fcfa(s.price_monthly)}/mois`,
+        fcfa(s.price_yearly) && `${fcfa(s.price_yearly)}/an`,
+        fcfa(s.price_project) && `${fcfa(s.price_project)} le projet`,
+      ].filter(Boolean);
+      const line = `- **${cleanText(s.name)}** (${prices.length ? prices.join(' ou ') : 'sur devis'})${s.slug ? ` — ${CONTACT.site}/services/${s.slug}` : ''}`;
+      if (!detailed) return line;
+      const features = Array.isArray(s.features) && s.features.length ? ` Inclut : ${s.features.slice(0, 5).join(', ')}.` : '';
+      return `${line}\n  ${firstSentence(s.description)}${features}`;
+    })
+    .join('\n');
+}
+
+function formatProjects(list: any[], detailed: boolean): string {
+  return list
+    .map((p) => {
+      const status = PROJECT_STATUS[p.status] || p.status || 'en cours';
+      const progress = p.status !== 'completed' && p.progress != null ? ` ${p.progress} %` : '';
+      const line = `- **${cleanText(p.name)}** (${status}${progress})${p.slug ? ` — ${CONTACT.site}/projects/${p.slug}` : ''}`;
+      if (!detailed) return line;
+      const milestone = p.next_milestone ? ` Prochaine étape : ${cleanText(p.next_milestone)}.` : '';
+      return `${line}\n  ${firstSentence(p.description)}${milestone}${p.site ? ` Site : ${p.site}` : ''}`;
+    })
+    .join('\n');
+}
+
+// Mots significatifs d'un texte (sans accents ni mots outils)
+const STOP_WORDS = new Set(['les', 'des', 'une', 'pour', 'vous', 'nous', 'est', 'que', 'qui', 'quel', 'quels', 'quelle', 'quelles', 'sur', 'avec', 'dans', 'votre', 'vos', 'mon', 'mes', 'comment', 'puis', 'unitech', 'proposez']);
+function significantWords(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 3 && !STOP_WORDS.has(w))
+  );
+}
+
+// Entrées de FAQ qui partagent au moins un mot significatif avec la question
+function relevantFaq(faq: any[], message: string, max = 3): any[] {
+  const words = significantWords(message);
+  return faq
+    .map((f) => {
+      const qWords = significantWords(`${f.question} ${(f.keywords || []).join(' ')}`);
+      let hits = 0;
+      for (const w of words) if (qWords.has(w)) hits++;
+      return { f, hits };
+    })
+    .filter((x) => x.hits > 0)
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, max)
+    .map((x) => x.f);
+}
+
+const CATEGORY_HINTS: Record<string, string> = {
+  commercial: "Demande commerciale : identifie le service adapté, donne son prix s'il est connu et propose un devis.",
+  project: 'Projet ou réalisation : explique ce qu’UNITECH peut construire, cite un projet comparable et propose un échange avec l’équipe.',
+  formation: 'Formations : donne programme, durée, horaires et tarif des formations pertinentes, puis propose le catalogue complet par e-mail ou l’inscription.',
+  support: 'Demande d’aide : sois rassurant, demande les détails utiles et oriente vers l’équipe si nécessaire.',
+  newsletter: 'Newsletter : explique comment s’inscrire depuis le site.',
+  founder: 'Question sur le fondateur : présente-le brièvement avec la vision d’UNITECH.',
+  information: 'Demande d’information : réponds clairement à partir des données ci-dessous.',
+  general: 'Message général : réponds utilement et oriente vers ce qu’UNITECH propose.',
+  spam: 'Message probablement indésirable : réponds poliment que tu ne peux pas traiter cette demande.',
+};
+
+/** Prompt système de HARVEY : règles, données de l'entreprise, contexte. */
+function buildSystemPrompt(
   message: string,
   history: LLMHistoryItem[],
   companyData: CompanyData,
   classification: any,
   leadInfo?: LeadInfo
 ): string {
-  const servicesText = companyData.services
-    .map((s: any) => `- **${s.name}**: ${s.description || ''}`)
-    .join('\n');
+  const conversationStarted = hasConversationStarted(history);
 
-  const formationsText = companyData.formations
-    .map(
-      (f: any) =>
-        `- **${f.name || f.title}**: ${f.duration || ''} ${f.slug || ''} ${f.description || ''} (${
-          f.level || 'Tous niveaux'
-        })`
-    )
-    .join('\n');
-
-  const projectsText = companyData.projects
-    .map(
-      (p: any) =>
-        `- **${p.name}**: ${p.status || 'En cours'} ${p.description || ''} ${p.slug || ''} (${
-          p.progress || 0
-        }%)`
-    )
-    .join('\n');
-
-  const solutionsText = companyData.solutions
-    .map((s: any) => `- **${s.title || s.name}**: ${s.description || ''}`)
-    .join('\n');
-const conversationStarted = hasConversationStarted(history);
-  const collaborationsText = companyData.collaborations
-    .map((c: any) => `- **${c.name}**: ${c.type || 'Partenariat'} - ${c.status || 'Actif'}`)
-    .join('\n');
-
-  const faqText = companyData.faq
-    .map((f: any) => `Q: ${f.question}\nR: ${f.answer}`)
-    .join('\n\n');
-
-  const teamText = companyData.team.map((t: any) => `- ${t.name}: ${t.role}`).join('\n');
-
-  // ✅ Historique déjà nettoyé (5 paires max)
-  const historyText =
-    history.length > 0
-      ? history
-          .map(
-            (h) =>
-              `${h.role === 'user' ? 'Utilisateur' : 'HARVEY'}: ${h.content}`
-          )
-          .join('\n')
-      : 'Aucun historique';
-
-  // Informations du lead
-  let leadInfoText = '';
-  if (leadInfo && Object.keys(leadInfo).length > 0) {
-    leadInfoText = `
-## INFORMATIONS COLLECTÉES
-${leadInfo.name ? `- Nom: ${leadInfo.name}` : ''}
-${leadInfo.email ? `- Email: ${leadInfo.email}` : ''}
-${leadInfo.phone ? `- Téléphone: ${leadInfo.phone}` : ''}
-${leadInfo.company ? `- Entreprise: ${leadInfo.company}` : ''}
-${leadInfo.budget ? `- Budget: ${leadInfo.budget}` : ''}
-${leadInfo.interest ? `- Intérêt: ${leadInfo.interest}` : ''}
-`;
-  }
-
-  const categoryInstructions: Record<string, string> = {
-    commercial: `L'utilisateur a une demande commerciale. Présente les services de manière attractive et propose un devis.`,
-    project: `L'utilisateur demande des informations sur les projets. Présente les projets avec leurs statuts et progression.`,
-    support: `L'utilisateur a une demande de support. Sois rassurant et propose une aide concrète.`,
-    newsletter: `L'utilisateur s'intéresse à la newsletter. Propose de s'inscrire.`,
-    founder: `L'utilisateur demande des informations sur le fondateur. Réponds avec le nom et la vision.`,
-    information: `L'utilisateur demande des informations générales. Donne une réponse claire et structurée.`,
-    general: `L'utilisateur pose une question générale. Réponds de manière utile et professionnelle.`,
-    spam: `L'utilisateur a envoyé un message indésirable. Réponds poliment que tu ne peux pas traiter ce type de demande.`,
+  // Sujet de la question (message courant + dernier échange) : on détaille
+  // seulement les sections concernées
+  const topicText = significantWords(`${message} ${history.slice(-2).map((h) => h.content).join(' ')}`);
+  const mentions = (...words: string[]) => words.some((w) => [...topicText].some((t) => t.startsWith(w)));
+  const category = classification.category;
+  const detail = {
+    formations: category === 'formation' || mentions('formation', 'cours', 'programme', 'module', 'inscri', 'certific', 'stage'),
+    services: category === 'commercial' || category === 'project' || mentions('service', 'prix', 'tarif', 'devis', 'abonnement', 'saas', 'offre', 'logiciel', 'application', 'site'),
+    projects: category === 'project' || mentions('projet', 'realisation', 'reference', 'client'),
   };
 
-  const instruction = categoryInstructions[classification.category] || categoryInstructions.general;
+  const solutionsText = companyData.solutions
+    .map((s: any) => `- **${cleanText(s.title || s.name)}** : ${firstSentence(s.description, 100)}`)
+    .join('\n');
+  const partnersText = companyData.collaborations.map((c: any) => cleanText(c.name)).join(', ');
+  const teamText = companyData.team
+    .filter((t: any) => t?.name)
+    .map((t: any) => `${t.name} (${t.role})`)
+    .join(', ');
+  const faqText = relevantFaq(companyData.faq, message)
+    .map((f: any) => `Q : ${cleanText(f.question)}\nR : ${cleanText(f.answer)}`)
+    .join('\n\n');
 
-  const isOffTopic = classification.category === 'general' && classification.confidence < 40;
+  const known = leadInfo
+    ? [
+        leadInfo.name && `nom ${leadInfo.name}`,
+        leadInfo.email && `e-mail ${leadInfo.email}`,
+        leadInfo.phone && `téléphone ${leadInfo.phone}`,
+        leadInfo.company && `entreprise ${leadInfo.company}`,
+        leadInfo.budget && `budget ${leadInfo.budget}`,
+        leadInfo.interest && `intérêt ${leadInfo.interest}`,
+      ].filter(Boolean).join(', ')
+    : '';
 
-  let offTopicInstruction = '';
-  if (isOffTopic) {
-    offTopicInstruction = `
-## ⚠️ QUESTION HORS SUJET
-Cette question ne semble pas liée à UNITECH.
-- Si c'est le cas, dis-le poliment à l'utilisateur
-- Propose de l'aider sur les sujets liés à UNITECH
-- Ne donne pas de conseils sur des sujets hors de ton domaine
-`;
-  }
+  const hint = CATEGORY_HINTS[category] || CATEGORY_HINTS.general;
 
-  return `Tu es HARVEY, le conseiller IA et agent commercial de UNITECH.
-  ## RÈGLES CONVERSATIONNELLES (TRÈS IMPORTANT)
+  return `Tu es HARVEY, conseiller commercial et assistant virtuel d'UNITECH : ${cleanText(companyData.description)}${companyData.founder ? ` Fondateur : ${companyData.founder}.` : ''}
 
-${
-  conversationStarted
-    ? `⚠️ La conversation est DÉJÀ EN COURS (${history.length} messages d'historique).
-- ❌ NE COMMENCE PAS par "Bonjour", "Salut", "Bonsoir", "Hello" ou 👋
-- ❌ NE REDEMANDE PAS les informations déjà fournies dans l'historique
-- ❌ PAS de formule de politesse creuse en début ("Je suis ravi de...", "Merci pour votre message...")
-- ✅ Enchaîne DIRECTEMENT sur le fond de la question
-- ✅ Réponds comme dans une discussion continue entre deux personnes
+## RÈGLES
+- Réponds dans la langue du visiteur, chaleureux et professionnel. ${conversationStarted
+    ? 'Conversation en cours : ni salutation ni formule creuse, enchaîne sur le fond, ne redemande pas ce qui est déjà donné.'
+    : 'Premier message : une phrase de salutation au plus.'}
+- 60 à 150 mots sauf demande de détail ; listes « - » pour énumérer, **gras** pour les noms ; ne répète pas la question.
+- Termine par UNE seule proposition d'action (devis, inscription, rendez-vous, catalogue, mise en relation).
+- Exactitude : n'utilise que les données ci-dessous. Prix (en FCFA), horaires, durées, programmes et noms se recopient tels quels. Si une information manque, dis-le et propose la mise en relation. N'invente jamais prix, date, remise, délai ou coordonnée. Le catalogue prime sur la FAQ.
+- Rôle commercial : comprends le besoin (une question à la fois), recommande l'offre adaptée avec prix et lien, et dès qu'un intérêt réel apparaît, propose de laisser nom et e-mail ou téléphone pour être recontacté.
+- Formations : propose d'envoyer le catalogue complet par e-mail et demande l'adresse, par exemple « Parfait, je prépare le catalogue complet de nos formations (programmes détaillés, tarifs, dates). Pour vous l'envoyer, indiquez simplement l'adresse email à laquelle vous souhaitez le recevoir. » Le système l'envoie dès que l'adresse est donnée ; ne dis jamais qu'il est envoyé avant.
+- Hors sujet (sans rapport avec UNITECH, le numérique, l'IA, l'énergie ou la formation) : dis poliment que tu es là pour UNITECH. Aucun conseil médical, juridique ou financier.
 
-Exemple INTERDIT :
-"Bonjour ! 👋 Je suis ravi que vous souhaitiez..."
+## INTENTION PROBABLE (indice de DONA, à vérifier)
+${hint}
 
-Exemple CORRECT :
-"Pour planifier ce rendez-vous, il me faut..."
-"Très bien, dans ce cas je vous suggère..."`
-    : `C'est le PREMIER message de la conversation. Tu peux saluer brièvement (une seule fois).
-Ensuite, va droit au but.`
-}
+## CONTACT (seules coordonnées à donner)
+E-mail ${CONTACT.email} · Téléphone ${CONTACT.phone} · Contact et devis ${CONTACT.site}/contact
+${known ? `\n## DÉJÀ DONNÉ PAR LE VISITEUR\n${known}\n` : ''}
+## FORMATIONS
+${formatFormations(companyData.formations, detail.formations) || 'Aucune.'}
 
-## IDENTITÉ
-- Tu es HARVEY, un consultant expert et agent commercial de UNITECH
-- Tu es professionnel, courtois, précis et utile
-- Tu réponds dans la même langue que l'utilisateur
-- Tu peux faire des blagues et sympathiser
+## SERVICES
+${formatServices(companyData.services, detail.services) || 'Aucun.'}
 
-## RÔLE D'AGENT COMMERCIAL
-1. **Qualifier le lead** : Identifie le besoin, le budget, le délai
-2. **Proposer des solutions** : Recommande les services adaptés
-3. **Créer un lien** : Sois chaleureux et professionnel
-4. **Collecter les infos** : Nom, email, téléphone, entreprise
-5. **Proposer des actions** : Devis, rendez-vous, démo
-6. **Catalogue des formations** : si le visiteur s'intéresse aux formations (programmes, tarifs, dates), propose-lui de recevoir le catalogue complet par e-mail et demande son adresse, par exemple : "Parfait, je prépare le catalogue complet de nos formations (programmes détaillés, tarifs, dates). Pour vous l'envoyer, indiquez simplement l'adresse email à laquelle vous souhaitez le recevoir." Dès qu'il donne son adresse, le système envoie le catalogue automatiquement. Ne dis jamais que le catalogue est déjà envoyé tant que le visiteur n'a pas donné son adresse.
+## SOLUTIONS
+${solutionsText || 'Aucune.'}
 
-## RÈGLES IMPORTANTES
-1. Utilise les informations de l'entreprise ci-dessous
-2. Si la question est hors sujet, dis-le poliment
-3. Propose une action concrète en fin de réponse (une seule, pas trois)
-4. Sois professionnel mais accessible
-5. **Ne répète JAMAIS les salutations** si l'historique est non vide
-6. **Ne paraphrase pas** ce que l'utilisateur vient de dire
-7. Réponses concises : 100–200 mots max sauf si demande explicite de détail
-8. Pour les liens:
-   - Projets: https://unitech-qvgo.onrender.com/projects/<slug>
-   - Formations: https://unitech-qvgo.onrender.com/training/<slug>
-   - Services: https://unitech-qvgo.onrender.com/services/<slug>
-   - Contact: https://unitech-qvgo.onrender.com/contact
-   - Email: doumbialayesoma@gmail.com
-   - Tel: +223 90692363
+## PROJETS ET RÉALISATIONS
+${formatProjects(companyData.projects, detail.projects) || 'Aucun.'}
 
-## CLASSIFICATION DONA
-- Catégorie: ${classification.category}
-- Confiance: ${classification.confidence}%
-- Mots-clés: ${classification.matched_keywords.join(', ')}
-
-${leadInfoText}
-
-## DONNÉES ENTREPRISE
-
-### Présentation
-🏢 **${companyData.name}**
-${companyData.description}
-
-👤 **Fondateur**: ${companyData.founder}
-
-### Services
-${servicesText || 'Aucun service disponible'}
-
-### Formations
-${formationsText || 'Aucune formation disponible'}
-
-### Projets
-${projectsText || 'Aucun projet disponible'}
-
-### Solutions
-${solutionsText || 'Aucune solution disponible'}
-
-### Collaborations
-${collaborationsText || 'Aucune collaboration disponible'}
-
-### Équipe
-${teamText || 'Équipe non renseignée'}
-
-### FAQ
-${faqText || 'Aucune FAQ disponible'}
-
-## HISTORIQUE (${history.length} messages, 5 dernières paires Q/R)
-${historyText}
-
-## QUESTION ACTUELLE
-${message}
-
-## INSTRUCTION SPÉCIFIQUE
-${instruction}
-
-${offTopicInstruction}
-
-RÉPONSE:`;
+Partenaires : ${partnersText || 'non renseignés'}. Équipe : ${teamText || 'non renseignée'}.${faqText ? `\n\n## FAQ PERTINENTE\n${faqText}` : ''}`;
 }
 
 // ============================================================
@@ -665,14 +665,10 @@ export async function POST(request: NextRequest) {
       if (!leadInfo.interest) leadInfo.interest = 'Catalogue des formations';
     }
 
-    // ✅ 6. Construire le prompt
-    const prompt = buildPromptWithContext(
-      safeMessage,
-      cleanHistory,
-      companyData,
-      classification,
-      leadInfo
-    );
+    // ✅ 6. Construire le prompt : règles et données en système, puis la
+    // conversation sous forme de vrais échanges
+    const systemPrompt = buildSystemPrompt(safeMessage, cleanHistory, companyData, classification, leadInfo);
+    console.log(`📏 HARVEY: prompt système de ${systemPrompt.length} caractères`);
 
     // ✅ 7. Essayer d'utiliser le LLM
     let llmResponse: string | null = null;
@@ -688,14 +684,8 @@ export async function POST(request: NextRequest) {
 
         const result = await generateWithFallback({
           messages: [
-            {
-              role: 'system',
-              content: `Tu es HARVEY, le conseiller IA et agent commercial de UNITECH. Réponds de manière précise et utile. Utilise l'historique fourni pour rester cohérent. Si la question est hors sujet, dis-le poliment.`,
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
+            { role: 'system', content: systemPrompt },
+            ...toChatTurns(cleanHistory, safeMessage),
           ],
           temperature,
           max_tokens: maxTokens,
