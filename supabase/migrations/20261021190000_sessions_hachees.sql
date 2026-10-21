@@ -3,8 +3,8 @@
 -- contiennent le jeton en clair : elles ne correspondent plus à rien et sont
 -- supprimées. Les personnes connectées se reconnectent une fois.
 --
--- À appliquer juste après le déploiement du code, en remplaçant la date par
--- l'heure de mise en ligne (les sessions ouvertes ensuite sont déjà hachées).
+-- Appliquée le 2026-10-21, juste après la mise en ligne du code (08:47:44 UTC) ;
+-- les sessions ouvertes ensuite sont déjà hachées.
 
-delete from public.sessions        where created_at < '2026-10-21T00:00:00Z';
-delete from public.client_sessions where created_at < '2026-10-21T00:00:00Z';
+delete from public.sessions        where created_at < '2026-10-21T08:47:44Z';
+delete from public.client_sessions where created_at < '2026-10-21T08:47:44Z';
