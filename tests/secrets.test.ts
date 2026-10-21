@@ -27,6 +27,35 @@ describe('clés des fournisseurs IA', () => {
   });
 });
 
+describe('rotation de la clé de chiffrement', () => {
+  const OLD = 'ab'.repeat(32);
+
+  it('relit avec l’ancienne clé et signale qu’il faut re-chiffrer', async () => {
+    const { decryptSecretDetailed, encryptPassword, needsReencryption } = await import('@/lib/encryption');
+    const current = process.env.EMAIL_ENCRYPTION_KEY;
+
+    process.env.EMAIL_ENCRYPTION_KEY = OLD;
+    const oldValue = encryptPassword('mot-de-passe-imap');
+    process.env.EMAIL_ENCRYPTION_KEY = current;
+
+    // Sans ancienne clé déclarée : illisible
+    delete process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS;
+    expect(decryptSecretDetailed(oldValue)).toBeNull();
+
+    // Pendant la rotation : lisible, marqué « previous »
+    process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS = OLD;
+    expect(decryptSecretDetailed(oldValue)).toEqual({ plain: 'mot-de-passe-imap', key: 'previous' });
+    expect(needsReencryption(oldValue)).toBe(true);
+
+    // Une valeur chiffrée avec la nouvelle clé reste « current »
+    const newValue = encryptPassword('mot-de-passe-imap');
+    expect(decryptSecretDetailed(newValue)?.key).toBe('current');
+    expect(needsReencryption(newValue)).toBe(false);
+
+    delete process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS;
+  });
+});
+
 describe('jetons de session', () => {
   it('stocke une empreinte stable et différente du jeton', () => {
     const token = newSessionToken();

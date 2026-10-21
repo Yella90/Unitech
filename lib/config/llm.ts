@@ -1,6 +1,6 @@
 // lib/config/llm.ts
 import { aiManagement } from '@/lib/services/AIManagementService';
-import { revealSecret, sealPlaintextApiKeys } from '@/lib/secrets';
+import { revealSecret, rotateStoredSecrets } from '@/lib/secrets';
 import type { ContextType, AIProviderName } from '@/lib/types/ai-management';
 
 // ============================================================
@@ -420,7 +420,7 @@ export async function generateWithFallback(
   model: string;
 }> {
   // Chiffre en arrière-plan les clés encore stockées en clair (une fois)
-  void sealPlaintextApiKeys();
+  void rotateStoredSecrets();
 
   const {
     messages,

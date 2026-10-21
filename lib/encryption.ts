@@ -18,7 +18,67 @@ function getEncryptionKey(): Buffer {
   if (!key || !/^[0-9a-fA-F]{64}$/.test(key)) {
     throw new Error('EMAIL_ENCRYPTION_KEY manquante ou invalide (64 caractères hexadécimaux attendus)');
   }
+  if (/^(0123456789abcdef){4}$/i.test(key)) {
+    console.warn('⚠️ EMAIL_ENCRYPTION_KEY est la valeur publique « 0123… » : faites tourner la clé');
+  }
   return Buffer.from(key, 'hex');
+}
+
+/**
+ * Ancienne clé, pendant une rotation (EMAIL_ENCRYPTION_KEY_PREVIOUS) : elle
+ * sert seulement à relire les valeurs pas encore re-chiffrées.
+ */
+function getPreviousKey(): Buffer | null {
+  const key = process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS;
+  return key && /^[0-9a-fA-F]{64}$/.test(key) ? Buffer.from(key, 'hex') : null;
+}
+
+// Une mauvaise clé échoue presque toujours au déchiffrement ; dans les rares
+// cas où elle « réussit », le résultat n'est pas du texte lisible
+function looksLikeText(value: string): boolean {
+  return value.length > 0 && !/[�\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value);
+}
+
+function decryptWithKey(key: Buffer, ivHex: string, encryptedText: string): string | null {
+  try {
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, Buffer.from(ivHex, 'hex'));
+    const plain = decipher.update(encryptedText, 'hex', 'utf8') + decipher.final('utf8');
+    return looksLikeText(plain) ? plain : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Déchiffre avec la clé actuelle, sinon avec l'ancienne. Indique laquelle a
+ * servi : une valeur lue avec l'ancienne clé doit être re-chiffrée.
+ */
+export function decryptSecretDetailed(encryptedData: string): { plain: string; key: 'current' | 'previous' } | null {
+  if (!encryptedData || typeof encryptedData !== 'string' || !encryptedData.includes(':')) return null;
+  const [ivHex, encryptedText] = encryptedData.split(':');
+  if (!ivHex || !encryptedText || ivHex.length !== IV_LENGTH * 2) return null;
+
+  let current: Buffer | null = null;
+  try {
+    current = getEncryptionKey();
+  } catch {
+    current = null;
+  }
+  if (current) {
+    const plain = decryptWithKey(current, ivHex, encryptedText);
+    if (plain !== null) return { plain, key: 'current' };
+  }
+  const previous = getPreviousKey();
+  if (previous) {
+    const plain = decryptWithKey(previous, ivHex, encryptedText);
+    if (plain !== null) return { plain, key: 'previous' };
+  }
+  return null;
+}
+
+/** true si la valeur n'est lisible qu'avec l'ancienne clé. */
+export function needsReencryption(encryptedData: string): boolean {
+  return decryptSecretDetailed(encryptedData)?.key === 'previous';
 }
 
 /**
@@ -77,58 +137,12 @@ export function encryptPassword(password: string): string {
  * // Résultat: "monMotDePasse"
  */
 export function decryptPassword(encryptedData: string): string {
-  try {
-    // Vérifier le format
-    if (!encryptedData || typeof encryptedData !== 'string') {
-      console.error('❌ Données invalides');
-      return '';
-    }
-
-    // Vérifier la présence du séparateur
-    if (!encryptedData.includes(':')) {
-      console.error('❌ Format invalide: séparateur ":" manquant');
-      return '';
-    }
-
-    // Extraire l'IV et le texte chiffré
-    const [ivHex, encryptedText] = encryptedData.split(':');
-    
-    if (!ivHex || !encryptedText) {
-      console.error('❌ IV ou texte chiffré manquant');
-      return '';
-    }
-
-    // Vérifier la longueur de l'IV (32 caractères hex = 16 bytes)
-    if (ivHex.length !== IV_LENGTH * 2) {
-      console.error(`❌ IV invalide: ${ivHex.length} caractères (attendu: ${IV_LENGTH * 2})`);
-      return '';
-    }
-
-    // Vérifier que la clé est valide
-    try {
-      getEncryptionKey();
-    } catch (error) {
-      console.error('❌ Clé de chiffrement invalide');
-      return '';
-    }
-
-    // Créer le déchiffreur
-    const iv = Buffer.from(ivHex, 'hex');
-    const decipher = crypto.createDecipheriv(
-      ALGORITHM,
-      getEncryptionKey(),
-      iv
-    );
-    
-    // Déchiffrer le texte
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    
-    return decrypted;
-  } catch (error: any) {
-    console.error('❌ Erreur déchiffrement:', error.message || error);
+  const result = decryptSecretDetailed(encryptedData);
+  if (!result) {
+    console.error('❌ Déchiffrement impossible (format invalide ou clé différente)');
     return '';
   }
+  return result.plain;
 }
 
 /**
