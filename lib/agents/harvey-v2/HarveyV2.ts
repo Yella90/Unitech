@@ -912,14 +912,17 @@ Solutions technologiques, agents IA (DONA, HARVEY), projets, formations, automat
           }
         ],
         temperature: this.config.temperature,
-        max_tokens: this.config.maxTokens
+        max_tokens: this.config.maxTokens,
+        // Pas de message de secours : l'e-mail reste en attente et sera retraité
+        allowFallback: false
       });
 
       return result.content;
 
-    } catch (error) {
-      console.error('❌ Erreur generateClientResponse:', error);
-      return this.getClientFallbackResponse(emailData, clientConfig);
+    } catch (error: any) {
+      // Chaîne vide : rien n'est enregistré, l'e-mail sera repris au prochain passage
+      console.error('❌ Harvey V2: IA indisponible, e-mail laissé en attente:', error?.message || error);
+      return '';
     }
   }
 
@@ -1032,27 +1035,6 @@ La réponse doit être directe, professionnelle et utile.
 Signature : ${promptConfig.signature || `L'équipe ${companyName}`}`;
 
     return prompt;
-  }
-
-  // ============================================================
-  // RÉPONSE DE SECOURS CLIENT
-  // ============================================================
-
-  private getClientFallbackResponse(emailData: any, clientConfig: any): string {
-    const name = emailData.from_name || emailData.from_email.split('@')[0] || 'Client';
-    const signature = clientConfig.prompt_config?.signature || `L'équipe ${clientConfig.company_name || 'UNITECH'}`;
-
-    return `
-Bonjour ${name},
-
-Merci pour votre message. Nous avons bien reçu votre demande concernant "${emailData.subject || 'votre demande'}".
-
-Notre équipe examine actuellement votre demande afin de vous apporter une réponse précise et adaptée à vos besoins.
-
-Nous reviendrons vers vous dans les plus brefs délais.
-
-${signature}
-`.trim();
   }
 
   // ============================================================

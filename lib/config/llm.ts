@@ -23,6 +23,35 @@ export interface ChatCompletionParams {
   contextType?: ContextType;
   provider?: string;  // ✅ Ajouté
   sessionId?: string; // ✅ Ajouté
+  /**
+   * true (défaut) : si aucun fournisseur ne répond, renvoie un message de
+   * secours (chat public). false : lève une erreur, pour que l'appelant
+   * réessaie plus tard au lieu d'enregistrer ce message comme une réponse
+   * (réponses aux e-mails).
+   */
+  allowFallback?: boolean;
+}
+
+// Limite de débit (HTTP 429) : délai d'attente annoncé par le fournisseur,
+// par exemple Groq « Please try again in 24.13s »
+function rateLimitDelaySeconds(message: string): number | null {
+  if (!/HTTP 429/.test(message)) return null;
+  const hinted = message.match(/try again in ([\d.]+)\s*s/i) || message.match(/retry[-_ ]after["':\s]+([\d.]+)/i);
+  return hinted ? Number(hinted[1]) : 5;
+}
+
+const MAX_RATE_LIMIT_WAIT_S = 30;
+
+async function withRateLimitRetry<T>(label: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error: any) {
+    const wait = rateLimitDelaySeconds(error?.message || '');
+    if (wait === null || wait > MAX_RATE_LIMIT_WAIT_S) throw error;
+    console.warn(`⏳ ${label}: limite de débit, nouvel essai dans ${Math.ceil(wait)} s`);
+    await new Promise((resolve) => setTimeout(resolve, Math.ceil(wait * 1000) + 500));
+    return call();
+  }
 }
 
 export interface ChatCompletionResponse {
@@ -399,8 +428,16 @@ export async function generateWithFallback(
     max_tokens = 800,
     contextType = 'general',
     model: preferredModel,
-    provider: preferredProvider
+    provider: preferredProvider,
+    allowFallback = true
   } = params;
+
+  // Plus aucun fournisseur : message de secours, ou erreur si l'appelant
+  // préfère réessayer plus tard
+  const fallbackOrThrow = (reason: string) => {
+    if (!allowFallback) throw new Error(`IA indisponible : ${reason}`);
+    return { content: getFallbackResponse(), provider: 'fallback', model: 'fallback' };
+  };
 
   // 1. Obtenir la liste des providers actifs
   let providers = await aiManagement.getProviders(true);
@@ -415,11 +452,7 @@ export async function generateWithFallback(
 
   if (providers.length === 0) {
     console.warn('⚠️ Aucun provider configuré, utilisation du fallback');
-    return {
-      content: getFallbackResponse(),
-      provider: 'fallback',
-      model: 'fallback'
-    };
+    return fallbackOrThrow('aucun fournisseur configuré');
   }
 
   // 3. Obtenir les règles de contexte
@@ -462,11 +495,7 @@ export async function generateWithFallback(
 
   if (validProviders.length === 0) {
     console.warn('⚠️ Aucun provider valide, utilisation du fallback');
-    return {
-      content: getFallbackResponse(),
-      provider: 'fallback',
-      model: 'fallback'
-    };
+    return fallbackOrThrow('aucune clé API active');
   }
 
   // 5. Essayer chaque provider dans l'ordre de score
@@ -483,14 +512,14 @@ export async function generateWithFallback(
     try {
       const startTime = Date.now();
       
-      const result = await callProviderAPI(
+      const result = await withRateLimitRetry(provider.display_name, () => callProviderAPI(
         provider.name,
         revealSecret(key.key_value),
         model,
         messages,
         temperature,
         max_tokens
-      );
+      ));
 
       const duration = Date.now() - startTime;
 
@@ -569,11 +598,7 @@ export async function generateWithFallback(
   console.error('❌ Tous les providers ont échoué:', errors);
 
   // ✅ Fallback ultime
-  return {
-    content: getFallbackResponse(),
-    provider: 'fallback',
-    model: 'fallback'
-  };
+  return fallbackOrThrow(errors.join(' | ').slice(0, 500));
 }
 
 // ============================================================

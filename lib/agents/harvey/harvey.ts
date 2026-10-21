@@ -866,42 +866,18 @@ Signature : L'équipe UNITECH`,
         ],
         temperature: this.config.temperature,
         max_tokens: this.config.maxTokens,
+        // Pas de message de secours : l'e-mail reste en attente et sera retraité
+        allowFallback: false,
       });
 
       return result.content;
     } catch (error: any) {
-      console.error('❌ HARVEY: Erreur LLM:', error.message);
-      
-      // Marquer l'erreur si une clé a été utilisée
-      const apiKey = await keyManagement.getBestApiKey('openai');
-      if (apiKey) {
-        await keyManagement.markError(apiKey.id, error.message);
-      }
-
-      return this.getFallbackResponse();
+      // Chaîne vide : l'appelant n'enregistre rien et l'e-mail garde son statut,
+      // il sera repris au prochain passage (les erreurs par clé sont déjà
+      // journalisées par generateWithFallback)
+      console.error('❌ HARVEY: IA indisponible, e-mail laissé en attente:', error.message);
+      return '';
     }
-  }
-
-  // ============================================================
-  // RÉPONSE DE SECOURS
-  // ============================================================
-
-  private getFallbackResponse(): string {
-    return `
-Bonjour,
-
-Merci pour votre message. Nous avons bien reçu votre demande.
-
-Notre équipe examine actuellement votre demande afin de vous apporter une réponse précise et adaptée.
-
-Nous reviendrons vers vous dans les plus brefs délais.
-
-Pour plus d'informations, vous pouvez consulter notre site web : https://unitech-qvgo.onrender.com/
-
-Nous vous remercions pour votre confiance.
-
-L'équipe UNITECH
-`.trim();
   }
 
   // ============================================================
