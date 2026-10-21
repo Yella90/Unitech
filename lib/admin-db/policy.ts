@@ -4,15 +4,19 @@
 import { hasPermission, type Permission } from '@/lib/auth/rbac';
 import type { AuthenticatedUser } from '@/lib/auth/session';
 import { FILTER_OPS, type DbAction, type DbQuerySpec } from './types';
+import type { Database } from '@/types/database';
 
 // Mêmes rôles que ceux qui ouvrent /admin dans proxy.ts
 export const ADMIN_PANEL_ROLES = ['admin', 'super_admin', 'developer'];
 
 type TablePermissions = Partial<Record<'view' | 'insert' | 'update' | 'delete', Permission | false>>;
 
+type TableName = keyof Database['public']['Tables'];
+
 // Tables utilisées par le back-office. Une permission précise s'ajoute au
-// rôle admin quand elle existe ; `false` interdit l'opération.
-const TABLES: Record<string, TablePermissions> = {
+// rôle admin quand elle existe ; `false` interdit l'opération. Le type
+// garantit que chaque nom correspond à une table réelle (types/database.ts).
+const TABLES: Partial<Record<TableName, TablePermissions>> = {
   users: { view: 'users.view', insert: false, update: 'users.edit', delete: 'users.delete' },
   api_keys: { view: 'api_keys.view', insert: 'api_keys.create', update: 'api_keys.create', delete: 'api_keys.delete' },
   ai_providers: { view: 'api_keys.view', insert: 'api_keys.create', update: 'api_keys.create', delete: 'api_keys.delete' },
@@ -37,6 +41,11 @@ const TABLES: Record<string, TablePermissions> = {
   quotes: {},
   appointments: {},
 };
+
+// Recherche stricte : « constructor » ou « __proto__ » ne sont pas des tables
+function tablePermissions(name: string): TablePermissions | undefined {
+  return Object.hasOwn(TABLES, name) ? TABLES[name as TableName] : undefined;
+}
 
 // Colonnes jamais renvoyées ni utilisables (filtre, tri, écriture)
 const SENSITIVE_COLUMNS = [
@@ -91,7 +100,7 @@ export function checkQuery(spec: DbQuerySpec, user: AuthenticatedUser): string |
     return 'Requête invalide';
   }
 
-  const table = TABLES[spec.table];
+  const table = tablePermissions(spec.table);
   if (!table) return `Table non autorisée : ${spec.table}`;
 
   const permissionKey = ACTION_TO_PERMISSION_KEY[spec.action];
@@ -107,7 +116,7 @@ export function checkQuery(spec: DbQuerySpec, user: AuthenticatedUser): string |
   }
 
   if (spec.columns) {
-    const forbidden = embeddedTables(spec.columns).find((name) => !TABLES[name]);
+    const forbidden = embeddedTables(spec.columns).find((name) => !tablePermissions(name));
     if (forbidden) return `Relation non autorisée : ${forbidden}`;
   }
 

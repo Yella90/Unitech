@@ -1,4 +1,5 @@
 // app/api/auth/client/session/route.ts
+import { hashSessionToken } from '@/lib/auth/session-token';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
     const { data: session, error: sessionError } = await supabase
       .from('client_sessions')
       .select('*, clients(*)')
-      .eq('token', sessionToken)
+      .eq('token', hashSessionToken(sessionToken))
       .eq('is_active', true)
       .gt('expires_at', new Date().toISOString())
       .single();

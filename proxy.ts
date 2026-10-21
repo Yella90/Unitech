@@ -1,8 +1,9 @@
-﻿// proxy.ts (ex-middleware.ts, renommé pour Next 16)
+// proxy.ts (ex-middleware.ts, renommé pour Next 16)
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-admin';
 import { ADMIN_PANEL_ROLES as ADMIN_ROLES } from '@/lib/admin-db/policy';
+import { hashSessionToken } from '@/lib/auth/session-token';
 
 // Les tables de sessions ne sont lisibles qu'avec la clé service (RLS)
 function getClient() {
@@ -43,7 +44,7 @@ export async function proxy(req: NextRequest) {
     const { data: session } = await client
       .from('sessions')
       .select('expires_at, users(role, is_active)')
-      .eq('token', sessionToken)
+      .eq('token', hashSessionToken(sessionToken))
       .gte('expires_at', new Date().toISOString())
       .single();
 
@@ -80,7 +81,7 @@ export async function proxy(req: NextRequest) {
     const { data: session } = await client
       .from('client_sessions')
       .select('id')
-      .eq('token', sessionToken)
+      .eq('token', hashSessionToken(sessionToken))
       .gte('expires_at', new Date().toISOString())
       .single();
 

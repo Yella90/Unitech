@@ -586,9 +586,8 @@ export default function AdminApiKeysPage() {
                         <td className="px-2 sm:px-4 py-2 sm:py-3">
                           <div className="flex items-center gap-2">
                             <code className="bg-slate-100 px-2 py-1 rounded text-xs font-mono">
-                              {showKeyValues[key.id]
-                                ? key.key_value
-                                : `${key.key_value.slice(0, 8)}...${key.key_value.slice(-4)}`}
+                              {/* Le serveur ne renvoie qu'un aperçu : la clé reste chiffrée en base */}
+                              {key.key_value}
                             </code>
                             <button
                               onClick={() => toggleKeyVisibility(key.id)}

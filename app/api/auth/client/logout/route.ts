@@ -1,4 +1,5 @@
 // app/api/auth/client/logout/route.ts
+import { hashSessionToken } from '@/lib/auth/session-token';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
           is_active: false,
           updated_at: new Date().toISOString()
         })
-        .eq('token', sessionToken);
+        .eq('token', hashSessionToken(sessionToken));
     }
 
     const response = NextResponse.json({

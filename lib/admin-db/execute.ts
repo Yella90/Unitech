@@ -2,9 +2,39 @@
 // Traduit une DbQuerySpec (déjà validée par checkQuery) en requête Supabase.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { stripSensitive } from './policy';
+import { isMaskedSecret, maskSecret, sealSecret } from '@/lib/secrets';
 import type { DbQuerySpec, DbResult } from './types';
 
+// Clés des fournisseurs IA : chiffrées à l'écriture ; une valeur masquée
+// renvoyée par le formulaire d'édition signifie « inchangée »
+function prepareValues(spec: DbQuerySpec): unknown {
+  if (spec.table !== 'api_keys' || spec.values === undefined) return spec.values;
+  const seal = (row: any) => {
+    if (!row || typeof row !== 'object' || typeof row.key_value !== 'string') return row;
+    const { key_value, ...rest } = row;
+    const trimmed = key_value.trim();
+    if (!trimmed || isMaskedSecret(trimmed)) return rest;
+    return { ...rest, key_value: sealSecret(trimmed) };
+  };
+  return Array.isArray(spec.values) ? spec.values.map(seal) : seal(spec.values);
+}
+
+// Toute clé renvoyée au navigateur est masquée (début et fin seulement)
+function maskKeys<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(maskKeys) as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, inner] of Object.entries(value)) {
+      out[key] = key === 'key_value' && typeof inner === 'string' ? maskSecret(inner) : maskKeys(inner);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export async function executeQuery(db: SupabaseClient, spec: DbQuerySpec): Promise<Omit<DbResult, 'statusText'>> {
+  spec = { ...spec, values: prepareValues(spec) };
+
   // Le builder Supabase change de type à chaque étape ; on le manipule
   // dynamiquement.
   const base = db.from(spec.table);
@@ -50,7 +80,7 @@ export async function executeQuery(db: SupabaseClient, spec: DbQuerySpec): Promi
   const { data, error, count, status } = await query;
 
   return {
-    data: stripSensitive(data ?? null),
+    data: maskKeys(stripSensitive(data ?? null)),
     count: count ?? null,
     status,
     error: error ? { message: error.message, code: error.code, details: error.details, hint: error.hint } : null,

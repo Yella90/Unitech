@@ -1,4 +1,5 @@
 // app/api/auth/logout/route.ts
+import { hashSessionToken } from '@/lib/auth/session-token';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -15,7 +16,7 @@ export async function POST() {
       await adminClient
         .from('sessions')
         .delete()
-        .eq('token', sessionToken);
+        .eq('token', hashSessionToken(sessionToken));
     }
 
     // Supprimer le cookie

@@ -1,3 +1,4 @@
+import { hashSessionToken } from '@/lib/auth/session-token';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -29,7 +30,7 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
     .select('expires_at, users(id, email, role, first_name, last_name, is_active)')
-    .eq('token', token)
+    .eq('token', hashSessionToken(token))
     .maybeSingle();
 
   const user = session?.users as unknown as (AuthenticatedUser & { is_active?: boolean }) | null;

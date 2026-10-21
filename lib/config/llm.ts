@@ -1,5 +1,6 @@
 // lib/config/llm.ts
 import { aiManagement } from '@/lib/services/AIManagementService';
+import { revealSecret, sealPlaintextApiKeys } from '@/lib/secrets';
 import type { ContextType, AIProviderName } from '@/lib/types/ai-management';
 
 // ============================================================
@@ -389,6 +390,9 @@ export async function generateWithFallback(
   provider: string;
   model: string;
 }> {
+  // Chiffre en arrière-plan les clés encore stockées en clair (une fois)
+  void sealPlaintextApiKeys();
+
   const {
     messages,
     temperature = 0.7,
@@ -481,7 +485,7 @@ export async function generateWithFallback(
       
       const result = await callProviderAPI(
         provider.name,
-        key.key_value,
+        revealSecret(key.key_value),
         model,
         messages,
         temperature,

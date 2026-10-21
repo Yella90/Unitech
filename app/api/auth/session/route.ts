@@ -1,4 +1,5 @@
 // app/api/auth/session/route.ts
+import { hashSessionToken } from '@/lib/auth/session-token';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -18,7 +19,7 @@ export async function GET() {
     const { data: session, error } = await adminClient
       .from('sessions')
       .select('*, users(*)')
-      .eq('token', sessionToken)
+      .eq('token', hashSessionToken(sessionToken))
       .single();
 
     if (error || !session) {

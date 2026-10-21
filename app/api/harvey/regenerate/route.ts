@@ -1,4 +1,5 @@
 // app/api/harvey/regenerate/route.ts
+import { hashSessionToken } from '@/lib/auth/session-token';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { cookies } from 'next/headers';
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
       .select('*, users(*)')
-      .eq('token', sessionToken)
+      .eq('token', hashSessionToken(sessionToken))
       .single();
 
     if (sessionError || !session) {

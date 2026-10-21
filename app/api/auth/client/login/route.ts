@@ -1,8 +1,8 @@
 // app/api/auth/client/login/route.ts
+import { hashSessionToken, newSessionToken } from '@/lib/auth/session-token';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
 
 export async function POST(req: NextRequest) {
   try {
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Créer une session
-    const sessionToken = randomBytes(32).toString('hex');
+    const sessionToken = newSessionToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     // Récupérer l'IP correctement
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       .from('client_sessions')
       .insert({
         client_id: client.id,
-        token: sessionToken,
+        token: hashSessionToken(sessionToken),
         expires_at: expiresAt.toISOString(),
         ip_address: ipAddress,
         user_agent: req.headers.get('user-agent') || 'unknown',

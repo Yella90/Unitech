@@ -275,7 +275,9 @@ export default function ApiKeyModal({
               </button>
             </div>
             <p className="mt-1 text-xs text-slate-400">
-              {editingKey ? 'La clé existante sera remplacée par la nouvelle valeur' : 'Entrez la clé API du fournisseur sélectionné'}
+              {editingKey
+                ? "Laissez l'aperçu tel quel pour garder la clé actuelle, ou collez une nouvelle clé pour la remplacer. Elle est chiffrée avant d'être enregistrée."
+                : "Entrez la clé API du fournisseur sélectionné. Elle est chiffrée avant d'être enregistrée."}
             </p>
           </div>
 

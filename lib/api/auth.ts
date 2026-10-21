@@ -1,4 +1,6 @@
 // lib/api/auth.ts
+import { hashSessionToken } from '@/lib/auth/session-token';
+import { ADMIN_PANEL_ROLES } from '@/lib/admin-db/policy';
 import { NextRequest } from 'next/server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 
@@ -95,48 +97,11 @@ export async function authenticateAPIRequest(req: NextRequest): Promise<AuthResu
       };
     }
 
-    // 1. Vérifier si c'est un token de service (API key)
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('service_tokens')
-      .select('*, clients(*)')
-      .eq('token', token)
-      .eq('is_active', true)
-      .gt('expires_at', new Date().toISOString())
-      .single();
-
-    if (!tokenError && tokenData) {
-      const client = tokenData.clients;
-
-      if (!client || !client.is_active) {
-        return {
-          success: false,
-          error: 'Client inactif ou non trouvé',
-          status: 401
-        };
-      }
-
-      // Mettre à jour le dernier usage
-      await supabase
-        .from('service_tokens')
-        .update({
-          last_used_at: new Date().toISOString(),
-          usage_count: tokenData.usage_count + 1
-        })
-        .eq('id', tokenData.id);
-
-      return {
-        success: true,
-        client,
-        user: client,
-        token: tokenData
-      };
-    }
-
-    // 2. Vérifier si c'est une session client
+    // Session client (cookie, ou jeton passé en Bearer / x-api-key)
     const { data: session, error: sessionError } = await supabase
       .from('client_sessions')
       .select('*, clients(*)')
-      .eq('token', token)
+      .eq('token', hashSessionToken(token))
       .eq('is_active', true)
       .gt('expires_at', new Date().toISOString())
       .single();
@@ -167,26 +132,6 @@ export async function authenticateAPIRequest(req: NextRequest): Promise<AuthResu
         session,
         token: session
       };
-    }
-
-    // 3. Vérifier si c'est un token Supabase Auth
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    
-    if (!userError && user) {
-      const { data: client, error: clientError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('email', user.email)
-        .maybeSingle();
-
-      if (!clientError && client && client.is_active) {
-        return {
-          success: true,
-          user,
-          client,
-          token: { type: 'supabase_auth', user_id: user.id }
-        };
-      }
     }
 
     return {
@@ -230,7 +175,7 @@ export async function authenticateClient(req: NextRequest): Promise<ClientAuthRe
     const { data: session, error: sessionError } = await supabase
       .from('client_sessions')
       .select('*, clients(*)')
-      .eq('token', sessionToken)
+      .eq('token', hashSessionToken(sessionToken))
       .eq('is_active', true)
       .gt('expires_at', new Date().toISOString())
       .single();
@@ -295,8 +240,9 @@ export async function authenticateClient(req: NextRequest): Promise<ClientAuthRe
  */
 export async function authenticateAdmin(req: NextRequest): Promise<AdminAuthResult> {
   try {
-    // Récupérer le token depuis les cookies
-    const sessionToken = req.cookies.get('admin_session_token')?.value;
+    // Même session que l'espace d'administration (cookie session_token,
+    // table sessions) ; l'ancienne table admin_sessions n'existe pas
+    const sessionToken = req.cookies.get('session_token')?.value;
 
     if (!sessionToken) {
       return {
@@ -306,14 +252,12 @@ export async function authenticateAdmin(req: NextRequest): Promise<AdminAuthResu
       };
     }
 
-    // Vérifier la session admin
     const { data: session, error: sessionError } = await supabase
-      .from('admin_sessions')
-      .select('*, admins(*)')
-      .eq('token', sessionToken)
-      .eq('is_active', true)
+      .from('sessions')
+      .select('id, expires_at, users(id, email, first_name, last_name, role, is_active)')
+      .eq('token', hashSessionToken(sessionToken))
       .gt('expires_at', new Date().toISOString())
-      .single();
+      .maybeSingle();
 
     if (sessionError || !session) {
       return {
@@ -323,9 +267,9 @@ export async function authenticateAdmin(req: NextRequest): Promise<AdminAuthResu
       };
     }
 
-    const admin = session.admins;
+    const admin = session.users as unknown as { role: string; is_active: boolean } | null;
 
-    if (!admin) {
+    if (!admin || admin.is_active === false) {
       return {
         success: false,
         error: 'Admin non trouvé',
@@ -333,21 +277,13 @@ export async function authenticateAdmin(req: NextRequest): Promise<AdminAuthResu
       };
     }
 
-    // Vérifier les rôles admin
-    const adminRoles = ['admin', 'super_admin', 'developer'];
-    if (!adminRoles.includes(admin.role)) {
+    if (!ADMIN_PANEL_ROLES.includes(admin.role)) {
       return {
         success: false,
         error: 'Accès non autorisé',
         status: 403
       };
     }
-
-    // Mettre à jour la dernière activité
-    await supabase
-      .from('admin_sessions')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('id', session.id);
 
     return {
       success: true,
@@ -557,7 +493,7 @@ export function getClientSessionToken(req: NextRequest): string | null {
  * Récupère le token de session admin depuis les cookies
  */
 export function getAdminSessionToken(req: NextRequest): string | null {
-  return req.cookies.get('admin_session_token')?.value || null;
+  return req.cookies.get('session_token')?.value || null;
 }
 
 /**

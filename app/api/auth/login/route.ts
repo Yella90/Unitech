@@ -1,4 +1,5 @@
 // app/api/auth/login/route.ts
+import { hashSessionToken, newSessionToken } from '@/lib/auth/session-token';
 import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
@@ -80,13 +81,13 @@ export async function POST(request: Request) {
     console.log('✅ User authenticated:', user.email, '/', user.role);
 
     // ✅ 5. Créer la session
-    const sessionToken = crypto.randomUUID();
+    const sessionToken = newSessionToken();
     const expiresAt = new Date(Date.now() + 60 * 60 * 24 * 7 * 1000).toISOString();
 
     const { error: sessionError } = await supabaseAdmin
       .from('sessions')
       .insert({
-        token: sessionToken,
+        token: hashSessionToken(sessionToken),
         user_id: user.id,
         expires_at: expiresAt,
       });
