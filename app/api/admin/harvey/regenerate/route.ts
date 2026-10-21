@@ -24,25 +24,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Entre 1 et ${MAX_IDS} e-mails à régénérer` }, { status: 400 });
     }
 
-    const { data, error } = await supabaseServer
+    const reset = {
+      status: 'pending',
+      harvey_response: null,
+      harvey_response_html: null,
+      harvey_response_json: null,
+      harvey_confidence: null,
+      harvey_tone: null,
+      harvey_actions: null,
+      harvey_suggested_agent: null,
+      harvey_requires_review: null,
+      error_message: null,
+      processed_at: null,
+      updated_at: new Date().toISOString(),
+    };
+
+    // E-mails archivés comme automatiques : l'admin demande une réponse malgré
+    // tout, HARVEY ne doit donc plus les écarter
+    const forced = await supabaseServer
       .from('emails')
-      .update({
-        status: 'pending',
-        harvey_response: null,
-        harvey_response_html: null,
-        harvey_response_json: null,
-        harvey_confidence: null,
-        harvey_tone: null,
-        harvey_actions: null,
-        harvey_suggested_agent: null,
-        harvey_requires_review: null,
-        error_message: null,
-        processed_at: null,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ ...reset, ai_analysis: { harvey_force_reply: true } })
       .in('id', ids)
-      .in('status', REGENERABLE)
+      .eq('status', 'archived')
+      .not('ai_analysis->>harvey_skipped', 'is', null)
       .select('id');
+
+    const { data, error } = forced.error
+      ? forced
+      : await supabaseServer.from('emails').update(reset).in('id', ids).in('status', REGENERABLE).select('id');
 
     if (error) {
       console.error('❌ Régénération (admin):', error);

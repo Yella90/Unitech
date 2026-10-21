@@ -7,6 +7,7 @@ import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import Imap from 'imap';
 import { simpleParser } from 'mailparser';
 import { decryptPassword as decryptStoredPassword } from '@/lib/encryption';
+import { headersForStorage } from '@/lib/agents/harvey-v2/email-filters';
 
 // ============================================================
 // CONFIGURATION
@@ -217,7 +218,7 @@ async function saveEmails(
           contentType: a.contentType,
           size: a.size
         })) || [],
-        headers: email.headers || {},
+        headers: headersForStorage(email.headers),
         received_at: email.date || new Date().toISOString(),
         sent_at: null,                    // NULL car c'est un email REÇU
         status: 'pending',

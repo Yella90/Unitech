@@ -9,6 +9,7 @@ import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { authenticateAPIRequest } from '@/lib/api/auth';
 import { simpleParser } from 'mailparser';
 import { decryptPassword as decryptStoredPassword } from '@/lib/encryption';
+import { headersForStorage } from '@/lib/agents/harvey-v2/email-filters';
 
 // ============================================================
 // CONFIGURATION
@@ -255,7 +256,7 @@ async function saveEmailsToDatabase(
             contentType: a.contentType,
             size: a.size
           })) || [],
-          headers: email.headers || {},
+          headers: headersForStorage(email.headers),
 
           // Dates
           received_at: email.date || new Date().toISOString(),

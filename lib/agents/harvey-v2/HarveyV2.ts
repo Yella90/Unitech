@@ -8,6 +8,7 @@ import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { keyManagement } from '@/lib/services/KeyManagementService';
 import { generateWithFallback } from '@/lib/config/llm';
 import { generateEmailHtml } from './templates';
+import { automatedSenderReason, cleanGeneratedReply } from './email-filters';
 import {
   EmailRequest,
   EmailResponse,
@@ -160,6 +161,16 @@ export class HarveyV2 {
           // Vérifier si l'email a déjà été traité
           if (this.processedEmails.has(email.id)) {
             console.log(`⚠️ Email ${email.id} déjà traité, ignoré`);
+            continue;
+          }
+
+          // Notifications, newsletters, alertes : archivées sans réponse
+          // (sauf si l'admin a demandé une réponse malgré tout)
+          const automated = email.ai_analysis?.harvey_force_reply
+            ? null
+            : automatedSenderReason(email, clientConfig.email);
+          if (automated) {
+            await this.archiveWithoutReply(email, automated);
             continue;
           }
 
@@ -917,7 +928,7 @@ Solutions technologiques, agents IA (DONA, HARVEY), projets, formations, automat
         allowFallback: false
       });
 
-      return result.content;
+      return cleanGeneratedReply(result.content || '');
 
     } catch (error: any) {
       // Chaîne vide : rien n'est enregistré, l'e-mail sera repris au prochain passage
@@ -1028,6 +1039,7 @@ La réponse doit être directe, professionnelle et utile.
 - "Réponse proposée"
 - "Voici une réponse"
 - "En tant qu'IA"
+- une ligne "Objet :" ou "Subject:" (l'objet est ajouté à l'envoi)
 - une explication de ton raisonnement
 
 **Donne directement le texte de l'email.**
@@ -1174,6 +1186,21 @@ Signature : ${promptConfig.signature || `L'équipe ${companyName}`}`;
     } catch (error) {
       console.error('❌ Erreur updateEmailStatus:', error);
     }
+  }
+
+  // ============================================================
+  // ARCHIVAGE SANS RÉPONSE (expéditeurs automatiques)
+  // ============================================================
+
+  private async archiveWithoutReply(email: any, reason: string): Promise<void> {
+    const analysis = email.ai_analysis && typeof email.ai_analysis === 'object' ? email.ai_analysis : {};
+    await this.updateEmailStatus(email.id, {
+      status: 'archived',
+      ai_analysis: { ...analysis, harvey_skipped: reason },
+      processed_at: new Date().toISOString()
+    });
+    this.processedEmails.add(email.id);
+    console.log(`📭 Email ${email.id} archivé sans réponse (${reason})`);
   }
 
   // ============================================================

@@ -41,6 +41,7 @@ type EmailRow = {
   error_message: string | null;
   received_at: string | null;
   sent_at: string | null;
+  harvey_skipped: string | null;
   clients: { company_name: string | null; email: string | null } | null;
 };
 
@@ -114,7 +115,8 @@ function formatDate(value: string | null): string {
 
 const EMAIL_COLUMNS =
   'id, client_id, from_email, from_name, to_email, subject, body, body_text, category, priority, status, ' +
-  'harvey_response, harvey_confidence, harvey_tone, error_message, received_at, sent_at, clients(company_name, email)';
+  'harvey_response, harvey_confidence, harvey_tone, error_message, received_at, sent_at, ' +
+  'harvey_skipped:ai_analysis->>harvey_skipped, clients(company_name, email)';
 
 // ============================================================
 // PAGE
@@ -455,12 +457,15 @@ export default function AdminHarveyPage() {
                                   <FaExclamationTriangle className="mr-1 h-3 w-3" /> Réponse de secours
                                 </Badge>
                               )}
+                              {email.status === 'archived' && email.harvey_skipped && (
+                                <Badge className="bg-slate-100 text-slate-600">Sans réponse : {email.harvey_skipped}</Badge>
+                              )}
                               {typeof email.harvey_confidence === 'number' && !fallback && (
                                 <span className="text-xs text-slate-400">confiance {email.harvey_confidence} %</span>
                               )}
                             </div>
                             <p className="mt-0.5 truncate text-sm text-slate-700">{email.subject || '(sans objet)'}</p>
-                            <p className="mt-0.5 text-xs text-slate-400">
+                            <p className="mt-0.5 break-all text-xs text-slate-400">
                               {formatDate(email.received_at)} · {email.from_email} → {normalizeAddress(email.to_email)}
                               {email.clients?.company_name ? ` · ${email.clients.company_name}` : ''}
                             </p>
@@ -473,10 +478,10 @@ export default function AdminHarveyPage() {
                         )}
 
                         {open && (
-                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div>
                               <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Message reçu</p>
-                              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
                                 {original || '(vide)'}
                               </div>
                             </div>
@@ -487,10 +492,10 @@ export default function AdminHarveyPage() {
                                   value={editing.text}
                                   onChange={(e) => setEditing({ id: email.id, text: e.target.value })}
                                   rows={12}
-                                  className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
+                                  className="w-full break-words rounded-lg border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
                                 />
                               ) : (
-                                <div className={`max-h-72 overflow-y-auto whitespace-pre-wrap rounded-lg p-3 text-sm ${fallback ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-slate-800'}`}>
+                                <div className={`max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-lg p-3 text-sm ${fallback ? 'bg-amber-50 text-amber-900' : 'bg-blue-50 text-slate-800'}`}>
                                   {email.harvey_response || (['pending', 'analyzed', 'generating'].includes(email.status) ? 'Génération en attente : HARVEY la produit au prochain passage (2 minutes).' : '(aucune réponse)')}
                                 </div>
                               )}
@@ -536,7 +541,8 @@ export default function AdminHarveyPage() {
                               )}
                               {canRegenerate && (actionable || email.status === 'archived') && (
                                 <Button size="sm" variant="outline" disabled={busy === email.id} onClick={() => regenerate([email.id], 'Régénération')}>
-                                  <FaRedo className="mr-2 h-3 w-3" /> Régénérer
+                                  <FaRedo className="mr-2 h-3 w-3" />
+                                  {email.status === 'archived' && email.harvey_skipped ? 'Répondre quand même' : 'Régénérer'}
                                 </Button>
                               )}
                               {canSend && actionable && (
@@ -605,11 +611,11 @@ function LegacyList({ rows, expanded, toggle }: { rows: LegacyRow[] | null; expa
                     {open ? <FaChevronUp className="mt-1 h-3 w-3 text-slate-400" /> : <FaChevronDown className="mt-1 h-3 w-3 text-slate-400" />}
                   </button>
                   {open && (
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
                         {row.message || row.body || '(vide)'}
                       </div>
-                      <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg bg-blue-50 p-3 text-sm text-slate-800">
+                      <div className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-blue-50 p-3 text-sm text-slate-800">
                         {row.agent_response || '(aucune réponse)'}
                       </div>
                     </div>
