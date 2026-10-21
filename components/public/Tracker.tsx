@@ -1,11 +1,12 @@
 // components/public/Tracker.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { CONSENT_CHANGED, statisticsAllowed } from '@/lib/consent';
 
 // Les visites passent par /api/track : la table page_visits n'est plus
-// accessible avec la clé anon.
+// accessible avec la clé anon. Rien n'est mesuré sans l'accord du visiteur.
 function send(payload: Record<string, unknown>, keepalive = false) {
   return fetch('/api/track', {
     method: 'POST',
@@ -17,8 +18,18 @@ function send(payload: Record<string, unknown>, keepalive = false) {
 
 export default function Tracker() {
   const pathname = usePathname();
+  const [allowed, setAllowed] = useState(false);
+
+  // Suit le choix du bandeau cookies (et ses changements)
+  useEffect(() => {
+    setAllowed(statisticsAllowed());
+    const update = () => setAllowed(statisticsAllowed());
+    window.addEventListener(CONSENT_CHANGED, update);
+    return () => window.removeEventListener(CONSENT_CHANGED, update);
+  }, []);
 
   useEffect(() => {
+    if (!allowed) return;
     const page = pathname || '/';
     let visitorId: string | null = null;
 
@@ -75,7 +86,7 @@ export default function Tracker() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [pathname]);
+  }, [pathname, allowed]);
 
   return null; // Ce composant ne rend rien
 }

@@ -158,7 +158,7 @@ export default function ClientLoginPage() {
             </div>
 
             <div className="flex items-center justify-end">
-              <Link href="/clients/forgot-password" className="text-sm text-[#F97316] hover:underline">
+              <Link href="/mot-de-passe-oublie?espace=client" className="text-sm text-[#F97316] hover:underline">
                 Mot de passe oublié ?
               </Link>
             </div>

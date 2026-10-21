@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { deposerEmail, envoiDisponible } from '@/lib/email/mail-sortant';
 
 export async function POST(req: NextRequest) {
   try {
@@ -129,22 +130,30 @@ export async function POST(req: NextRequest) {
       console.error('❌ Erreur sauvegarde token de vérification:', verifyError);
     }
 
-    try {
-      const { data: queueResult, error: queueError } = await supabaseAdmin
-        .rpc('add_verification_email', {
-          p_client_id: client.id,
-          p_email: client.email,
-          p_first_name: client.first_name || 'Client',
-          p_token: verificationToken
+    // E-mail de vérification via la file d'envoi commune (la fonction
+    // add_verification_email appelée auparavant n'existe pas en base)
+    if (envoiDisponible()) {
+      try {
+        const appUrl = (process.env.APP_URL || 'https://unitech-qvgo.onrender.com').replace(/\/$/, '');
+        const link = `${appUrl}/api/auth/client/verify?token=${verificationToken}`;
+        await deposerEmail({
+          destinataire: client.email,
+          objet: 'Confirmez votre adresse e-mail UNITECH',
+          titre: 'Bienvenue chez UNITECH',
+          message: [
+            client.first_name ? `Bonjour ${client.first_name},` : 'Bonjour,',
+            '',
+            'Votre espace client UNITECH est créé. Confirmez votre adresse e-mail en cliquant sur ce lien :',
+            link,
+            '',
+            "Si vous n'êtes pas à l'origine de cette inscription, ignorez cet e-mail.",
+            '',
+            "L'équipe UNITECH",
+          ].join('\n'),
         });
-
-      if (queueError) {
-        console.error('❌ Erreur ajout à la queue email:', queueError);
-      } else {
-        console.log(`✅ Email de vérification ajouté à la queue (ID: ${queueResult})`);
+      } catch (queueError) {
+        console.error('❌ E-mail de vérification non déposé:', queueError);
       }
-    } catch (queueError) {
-      console.error('❌ Erreur lors de l\'ajout à la queue:', queueError);
     }
 
     const sessionToken = randomBytes(32).toString('hex');

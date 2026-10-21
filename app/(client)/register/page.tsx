@@ -288,7 +288,27 @@ export default function ClientRegisterPage() {
               )}
             </div>
 
-            <Button 
+            <label className="flex items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                name="acceptTerms"
+                required
+                className="mt-1 h-4 w-4 flex-shrink-0 rounded border-slate-300 accent-[#1E3A8A]"
+              />
+              <span>
+                J&apos;accepte les{' '}
+                <Link href="/conditions-utilisation" target="_blank" className="text-[#1E3A8A] underline">
+                  conditions d&apos;utilisation
+                </Link>{' '}
+                et la{' '}
+                <Link href="/confidentialite" target="_blank" className="text-[#1E3A8A] underline">
+                  politique de confidentialité
+                </Link>
+                .
+              </span>
+            </label>
+
+            <Button
               type="submit" 
               className="w-full bg-[#F97316] hover:bg-[#ea580c] text-white font-semibold"
               disabled={loading}

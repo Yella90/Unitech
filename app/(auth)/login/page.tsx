@@ -168,9 +168,14 @@ export default function AdminLoginPage() {
                   {showPassword ? <FaEyeSlash className="h-4 w-4" /> : <FaEye className="h-4 w-4" />}
                 </button>
               </div>
+              <div className="mt-1.5 text-right">
+                <Link href="/mot-de-passe-oublie?espace=admin" className="text-xs text-[#1E3A8A] hover:underline">
+                  Mot de passe oublié ?
+                </Link>
+              </div>
             </div>
 
-            <Button 
+            <Button
               type="submit" 
               className="w-full bg-[#1E3A8A] hover:bg-[#162f58] text-white font-semibold"
               disabled={loading}

@@ -7,6 +7,7 @@ import Footer from "@/components/layout/Footer";
 import Tracker from "@/components/public/Tracker";
 import { cn } from "@/lib/utils";
 import ChatButton from "@/components/public/ChatButton";
+import CookieConsent from "@/components/public/CookieConsent";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { headers } from 'next/headers';
 
@@ -119,12 +120,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // ✅ Récupérer le pathname pour le footer conditionnel
-  let isChatPage = false;
+  // ✅ Pied de page sur le site public ; pas dans le chat plein écran ni dans
+  // les espaces client et administrateur, qui ont leur propre mise en page
+  let showFooter = true;
   try {
     const headersList = await headers();
     const pathname = headersList.get('x-pathname') || '';
-    isChatPage = pathname === '';
+    showFooter = !/^\/(chat|admin|clients|dashboard)(\/|$)/.test(pathname);
   } catch (error) {
     console.error('❌ Erreur récupération headers:', error);
   }
@@ -171,9 +173,11 @@ export default async function RootLayout({
           
           <Tracker />
           
-          {isChatPage && <Footer />}
-          
+          {showFooter && <Footer />}
+
           <ChatButton />
+
+          <CookieConsent />
         </ChatProvider>
       </body>
     </html>
