@@ -51,6 +51,15 @@ describe('règles de /api/admin/db', () => {
     expect(checkQuery(promote, superAdmin)).toBeNull();
   });
 
+  it('laisse valider les réponses de HARVEY, sans suppression ni ajout', () => {
+    const approve = spec({ table: 'emails', action: 'update', values: { status: 'approved' }, filters: [{ op: 'eq', args: ['id', 'e1'] }] });
+    expect(checkQuery(spec({ table: 'emails', columns: '*, clients(company_name, email)' }), developer)).toBeNull();
+    expect(checkQuery(approve, superAdmin)).toBeNull();
+    expect(checkQuery(approve, developer)).toBe('Permission insuffisante');
+    expect(checkQuery(spec({ table: 'emails', action: 'delete', filters: [{ op: 'eq', args: ['id', 'e1'] }] }), superAdmin)).toBe('Opération non autorisée');
+    expect(checkQuery(spec({ table: 'emails', action: 'insert', values: { subject: 'x' } }), superAdmin)).toBe('Opération non autorisée');
+  });
+
   it('retire les colonnes sensibles des résultats, même imbriquées', () => {
     const cleaned = stripSensitive([{ id: 1, password_hash: 'h', nested: { verification_token: 't', ok: true } }]);
     expect(cleaned).toEqual([{ id: 1, nested: { ok: true } }]);

@@ -28,6 +28,9 @@ const TABLES: Partial<Record<TableName, TablePermissions>> = {
   trainings: { view: 'trainings.view', insert: 'trainings.create', update: 'trainings.edit', delete: 'trainings.delete' },
   training_registrations: { view: 'trainings.view', insert: 'trainings.edit', update: 'trainings.edit', delete: 'trainings.delete' },
   incoming_emails: { view: 'email.view' },
+  // E-mails reçus par les boîtes connectées et réponses de HARVEY : l'admin
+  // les relit, les modifie, les valide (envoi) ou les archive
+  emails: { view: 'email.view', insert: false, update: 'email.send', delete: false },
   email_conversations: { view: 'email.view', update: 'email.create_response' },
   clients: {},
   client_services: {},
