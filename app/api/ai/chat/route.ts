@@ -6,6 +6,7 @@ import { keyManagement } from '@/lib/services/KeyManagementService';
 import { leadManagement } from '@/lib/services/lead-management-server';
 import { supabaseServer as supabase } from '@/lib/supabase-admin';
 import { clientIp, takeToken } from '@/lib/api/rate-limit';
+import { catalogueRecipient, catalogueReply, envoyerCatalogue, recentlySent } from '@/lib/agents/harvey/catalogue';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -22,6 +23,8 @@ const MAX_RESPONSE_TOKENS = 800;      // plafond imposé quel que soit le client
 const CHAT_WINDOW_MS = 10 * 60 * 1000; // fenêtre de 10 minutes
 const CHAT_LIMIT_PER_IP = 30;         // messages par IP et par fenêtre
 const CHAT_LIMIT_GLOBAL = 600;        // messages tous visiteurs confondus
+const CATALOGUE_WINDOW_MS = 60 * 60 * 1000; // fenêtre d'une heure
+const CATALOGUE_PER_SESSION = 3;      // envois de catalogue par conversation et par heure
 
 // ============================================================
 // TYPES
@@ -509,6 +512,7 @@ Ensuite, va droit au but.`
 3. **Créer un lien** : Sois chaleureux et professionnel
 4. **Collecter les infos** : Nom, email, téléphone, entreprise
 5. **Proposer des actions** : Devis, rendez-vous, démo
+6. **Catalogue des formations** : si le visiteur s'intéresse aux formations (programmes, tarifs, dates), propose-lui de recevoir le catalogue complet par e-mail et demande son adresse, par exemple : "Parfait, je prépare le catalogue complet de nos formations (programmes détaillés, tarifs, dates). Pour vous l'envoyer, indiquez simplement l'adresse email à laquelle vous souhaitez le recevoir." Dès qu'il donne son adresse, le système envoie le catalogue automatiquement. Ne dis jamais que le catalogue est déjà envoyé tant que le visiteur n'a pas donné son adresse.
 
 ## RÈGLES IMPORTANTES
 1. Utilise les informations de l'entreprise ci-dessous
@@ -643,6 +647,24 @@ export async function POST(request: NextRequest) {
     // ✅ 5. Détection d'intention lead
     const leadIntent = detectLeadIntent(safeMessage);
 
+    // ✅ 5 bis. Catalogue des formations : demandé ou proposé, et le visiteur
+    // donne son adresse → dépôt dans la file d'envoi UNITECH, réponse fixe
+    let catalogueContent: string | null = null;
+    const catalogueEmail = catalogueRecipient(safeMessage, cleanHistory);
+    if (catalogueEmail) {
+      if (recentlySent(catalogueEmail)) {
+        catalogueContent = catalogueReply('deja_envoye', catalogueEmail);
+      } else if (!takeToken(`catalogue:${sessionId || ip}`, CATALOGUE_PER_SESSION, CATALOGUE_WINDOW_MS)) {
+        catalogueContent = catalogueReply('limite', catalogueEmail);
+      } else {
+        const result = await envoyerCatalogue(supabase, catalogueEmail);
+        console.log(`📚 HARVEY: catalogue des formations → ${result}`);
+        catalogueContent = catalogueReply(result, catalogueEmail);
+      }
+      // Le lead garde la trace de la demande
+      if (!leadInfo.interest) leadInfo.interest = 'Catalogue des formations';
+    }
+
     // ✅ 6. Construire le prompt
     const prompt = buildPromptWithContext(
       safeMessage,
@@ -654,8 +676,8 @@ export async function POST(request: NextRequest) {
 
     // ✅ 7. Essayer d'utiliser le LLM
     let llmResponse: string | null = null;
-    let providerName = 'fallback';
-    try {
+    let providerName = catalogueContent ? 'catalogue' : 'fallback';
+    if (!catalogueContent) try {
       const apiKey = await keyManagement.getBestApiKey();
 
       if (apiKey) {
@@ -693,7 +715,7 @@ export async function POST(request: NextRequest) {
 
     // ✅ 8. Fallback si nécessaire
     const finalContent =
-      llmResponse || generateFallbackWithDona(safeMessage, classification, companyData);
+      catalogueContent || llmResponse || generateFallbackWithDona(safeMessage, classification, companyData);
 
     // ✅ 9. Sauvegarder / mettre à jour le lead si infos collectées OU intention détectée
     const shouldCreateLead =
@@ -747,7 +769,7 @@ export async function POST(request: NextRequest) {
       success: true,
       content: finalContent,
       agent: 'harvey',
-      fallback: !llmResponse,
+      fallback: !llmResponse && !catalogueContent,
       provider: providerName,
       category: classification.category,
       confidence: classification.confidence,
