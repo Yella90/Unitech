@@ -13,8 +13,15 @@ import crypto from 'crypto';
  * plutôt que d'utiliser une clé aléatoire (perdue au redémarrage) ou une
  * clé écrite dans le code (lisible par quiconque voit le dépôt).
  */
+// Valeur d'environnement nettoyée : espaces, retours à la ligne et guillemets
+// éventuellement collés avec la clé dans l'interface d'hébergement
+function envKey(name: string): string | undefined {
+  const raw = process.env[name];
+  return raw ? raw.trim().replace(/^['"]|['"]$/g, '').trim() : undefined;
+}
+
 function getEncryptionKey(): Buffer {
-  const key = process.env.EMAIL_ENCRYPTION_KEY;
+  const key = envKey('EMAIL_ENCRYPTION_KEY');
   if (!key || !/^[0-9a-fA-F]{64}$/.test(key)) {
     throw new Error('EMAIL_ENCRYPTION_KEY manquante ou invalide (64 caractères hexadécimaux attendus)');
   }
@@ -29,7 +36,10 @@ function getEncryptionKey(): Buffer {
  * sert seulement à relire les valeurs pas encore re-chiffrées.
  */
 function getPreviousKey(): Buffer | null {
-  const key = process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS;
+  const key = envKey('EMAIL_ENCRYPTION_KEY_PREVIOUS');
+  if (key && !/^[0-9a-fA-F]{64}$/.test(key)) {
+    console.error('❌ EMAIL_ENCRYPTION_KEY_PREVIOUS invalide (64 caractères hexadécimaux attendus) : ignorée');
+  }
   return key && /^[0-9a-fA-F]{64}$/.test(key) ? Buffer.from(key, 'hex') : null;
 }
 

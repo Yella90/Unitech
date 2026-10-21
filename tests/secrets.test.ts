@@ -47,6 +47,11 @@ describe('rotation de la clé de chiffrement', () => {
     expect(decryptSecretDetailed(oldValue)).toEqual({ plain: 'mot-de-passe-imap', key: 'previous' });
     expect(needsReencryption(oldValue)).toBe(true);
 
+    // Clé collée avec guillemets et espaces dans l'interface d'hébergement
+    process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS = `  "${OLD}"\n`;
+    expect(decryptSecretDetailed(oldValue)?.key).toBe('previous');
+    process.env.EMAIL_ENCRYPTION_KEY_PREVIOUS = OLD;
+
     // Une valeur chiffrée avec la nouvelle clé reste « current »
     const newValue = encryptPassword('mot-de-passe-imap');
     expect(decryptSecretDetailed(newValue)?.key).toBe('current');
