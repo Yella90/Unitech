@@ -3,36 +3,38 @@
 
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { FaProjectDiagram, FaUsers, FaRocket, FaAward } from "react-icons/fa";
 
 const stats = [
   {
     icon: <FaProjectDiagram className="h-8 w-8 text-[#1E3A8A]" />,
     number: 3,
-    label: "Projets en développement",
+    key: "projects",
     suffix: "+"
   },
   {
     icon: <FaUsers className="h-8 w-8 text-[#F97316]" />,
-    number: 12,
-    label: "Membres dans l'équipe",
+    number: 2,
+    key: "team",
     suffix: ""
   },
   {
     icon: <FaRocket className="h-8 w-8 text-[#10B981]" />,
     number: 2,
-    label: "SaaS en production",
+    key: "saas",
     suffix: ""
   },
   {
     icon: <FaAward className="h-8 w-8 text-purple-600" />,
     number: 5,
-    label: "Solutions innovantes",
+    key: "solutions",
     suffix: "+"
   }
-];
+] as const;
 
 export default function Stats() {
+  const { t } = useLanguage();
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true });
 
@@ -56,7 +58,7 @@ export default function Stats() {
             >
               {stat.number}{stat.suffix}
             </motion.div>
-            <p className="mt-1 text-sm text-slate-500">{stat.label}</p>
+            <p className="mt-1 text-sm text-slate-500">{t.stats[stat.key]}</p>
           </motion.div>
         ))}
       </div>

@@ -17,8 +17,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useChat } from "@/contexts/ChatContext";
 import Link from "next/link";
-
-const TAGS = ['SaaS', 'IA', 'Domotique', 'Mécatronique', 'React', 'Node.js'];
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // Animation des lignes de code
 const codeLines = [
@@ -42,6 +41,7 @@ interface Particle {
 
 export default function Hero() {
   const { openChat } = useChat();
+  const { t } = useLanguage();
   const [isMounted, setIsMounted] = useState(false);
   const [particles, setParticles] = useState<Particle[]>([]);
 
@@ -135,7 +135,7 @@ export default function Hero() {
           className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 backdrop-blur-sm"
         >
           <FaStar className="h-3.5 w-3.5 text-[#F97316] animate-pulse" />
-          Innovation en cours
+          {t.hero.badge}
         </motion.div>
 
         <motion.h1
@@ -144,8 +144,8 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="mt-6 max-w-4xl mx-auto text-4xl font-black leading-tight text-white md:text-5xl lg:text-6xl"
         >
-          Bâtissons l'infrastructure
-          <span className="block text-[#F97316]">intelligente de demain</span>
+          {t.hero.titleLine1}
+          <span className="block text-[#F97316]">{t.hero.titleLine2}</span>
         </motion.h1>
 
         <motion.p
@@ -154,8 +154,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="mt-6 max-w-2xl mx-auto text-sm text-slate-200 md:text-base lg:text-lg"
         >
-          UNITECH développe des solutions SaaS innovantes pour l'éducation, le commerce local,
-          et la gestion énergétique intelligente. Rejoignez notre plateforme et accédez à nos services.
+          {t.hero.intro}
         </motion.p>
 
         <motion.div
@@ -164,7 +163,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.6 }}
           className="mt-6 flex flex-wrap justify-center gap-2"
         >
-          {TAGS.map((tag) => (
+          {t.hero.tags.map((tag) => (
             <Badge
               key={tag}
               variant="secondary"
@@ -182,12 +181,12 @@ export default function Hero() {
           className="mt-8 flex flex-wrap justify-center gap-4"
         >
           <Link href="register">
-  <Button>Espace Client</Button>
+  <Button>{t.hero.clientArea}</Button>
 </Link>
 
 
 <Link href="/connexion">
-  <Button variant="outline">Se connecter</Button>
+  <Button variant="outline">{t.hero.login}</Button>
 </Link>
 
           {/* ✅ Bouton CHAT avec Harvey */}
@@ -199,7 +198,7 @@ export default function Hero() {
   >
     <span className="flex items-center gap-2">
       <FaComments className="h-4 w-4" />
-      Chat avec Harvey
+      {t.hero.chat}
     </span>
   </Button>
 </Link>
@@ -213,17 +212,17 @@ export default function Hero() {
           className="mt-6 flex items-center justify-center gap-2 text-xs text-white/50"
         >
           <FaRocket className="h-3 w-3 text-[#F97316]" />
-          <span>Découvrez nos services :</span>
+          <span>{t.hero.discover}</span>
           <Link href="/services" className="text-white/70 hover:text-white hover:underline transition">
-            Automation Mail
+            {t.hero.mailAutomation}
           </Link>
           <span className="text-white/30">•</span>
           <Link href="/services#recruitment" className="text-white/70 hover:text-white hover:underline transition">
-            Recrutement
+            {t.hero.recruitment}
           </Link>
           <span className="text-white/30">•</span>
           <Link href="/services#api" className="text-white/70 hover:text-white hover:underline transition">
-            API
+            {t.hero.api}
           </Link>
         </motion.div>
 
@@ -235,7 +234,7 @@ export default function Hero() {
           className="mt-4 flex items-center justify-center gap-2 text-xs text-white/40"
         >
           <FaRobot className="h-3 w-3 text-[#F97316]" />
-          <span>Ou cliquez sur le bouton orange pour parler à notre assistant IA 24/7</span>
+          <span>{t.hero.assistant}</span>
         </motion.div>
       </div>
     </section>

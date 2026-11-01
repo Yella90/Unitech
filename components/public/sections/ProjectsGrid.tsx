@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { motion } from "framer-motion";
 import Link from 'next/link';
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -133,6 +134,7 @@ interface ProjectsGridProps {
 
 export default function ProjectsGrid({ limit = 3, initialProjects = [] }: ProjectsGridProps) {
   const [showAll, setShowAll] = useState(false);
+  const { t } = useLanguage();
 
   // ✅ Utiliser directement les projets passés en props
   const projects = initialProjects || [];
@@ -168,13 +170,13 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
         >
           <div className="inline-flex items-center gap-2 rounded-full bg-[#1E3A8A]/10 px-4 py-1.5 text-sm font-medium text-[#1E3A8A]">
             <FaProjectDiagram className="h-4 w-4" />
-            Projets
+            {t.projects.badge}
           </div>
           <h2 className="mt-4 text-3xl font-black text-[#1E3A8A] md:text-4xl">
-            Nos Projets
+            {t.projects.title}
           </h2>
           <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-            Découvrez les projets innovants que nous développons.
+            {t.projects.subtitle}
           </p>
         </motion.div>
 
@@ -230,7 +232,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
                         <Badge className={`${status.color} flex-shrink-0`}>
                           <span className="flex items-center gap-1">
                             {status.icon}
-                            {status.label}
+                            {t.projects.statuses[project.status] ?? status.label}
                           </span>
                         </Badge>
                       </div>
@@ -241,7 +243,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
 
                       <div className="mt-4">
                         <div className="flex justify-between text-xs">
-                          <span className="text-slate-500">Progression</span>
+                          <span className="text-slate-500">{t.projects.progress}</span>
                           <span className={`font-medium ${color.text}`}>{project.progress}%</span>
                         </div>
                         <Progress 
@@ -257,7 +259,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
                       )}
 
                       <div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition">
-                        En savoir plus
+                        {t.common.learnMore}
                         <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
                       </div>
                     </CardContent>
@@ -273,7 +275,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
             href="/projects"
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
           >
-            <span>Voir tous nos projets</span>
+            <span>{t.projects.seeAll}</span>
             <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
             <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalProjects})</span>
           </Link>
@@ -286,7 +288,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
               href="/projects"
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
             >
-              Voir tous nos projets ({totalProjects})
+              {t.projects.seeAll} ({totalProjects})
               <FaArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -299,7 +301,7 @@ export default function ProjectsGrid({ limit = 3, initialProjects = [] }: Projec
               onClick={() => setShowAll(false)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-300 transition"
             >
-              Réduire la liste
+              {t.common.showLess}
             </button>
           </div>
         )}

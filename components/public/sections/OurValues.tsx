@@ -3,6 +3,7 @@
 
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { 
     FaGraduationCap,
   FaLightbulb, 
@@ -62,6 +63,7 @@ const values = [
 ];
 
 export default function OurValues() {
+  const { t } = useLanguage();
   return (
     <section className="bg-[#F5F7FB] py-16">
       <div className="mx-auto max-w-7xl px-4">
@@ -73,10 +75,10 @@ export default function OurValues() {
           className="text-center"
         >
           <h2 className="text-3xl font-black text-[#1E3A8A] md:text-4xl">
-            Nos Valeurs
+            {t.values.title}
           </h2>
           <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-            Les principes qui guident notre travail et notre engagement envers nos clients.
+            {t.values.subtitle}
           </p>
         </motion.div>
 
@@ -97,8 +99,8 @@ export default function OurValues() {
                       {value.icon}
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-slate-800">{value.title}</h3>
-                      <p className="text-sm text-slate-600">{value.description}</p>
+                      <h3 className="text-lg font-bold text-slate-800">{t.values.items[index]?.title ?? value.title}</h3>
+                      <p className="text-sm text-slate-600">{t.values.items[index]?.description ?? value.description}</p>
                     </div>
                   </div>
                 </CardContent>

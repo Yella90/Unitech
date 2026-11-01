@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
@@ -10,12 +11,13 @@ export default function Newsletter() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
+  const { t } = useLanguage();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!email || !email.includes('@')) {
-      setMessage('Veuillez entrer un email valide');
+      setMessage(t.newsletter.invalidEmail);
       setStatus('error');
       return;
     }
@@ -30,7 +32,7 @@ export default function Newsletter() {
 
       if (error) {
         if (error.code === '23505') {
-          setMessage('Cet email est déjà abonné !');
+          setMessage(t.newsletter.alreadySubscribed);
           setStatus('error');
         } else {
           throw error;
@@ -38,7 +40,7 @@ export default function Newsletter() {
         return;
       }
 
-      setMessage('✅ Merci pour votre inscription !');
+      setMessage(t.newsletter.thanks);
       setStatus('success');
       setEmail('');
       
@@ -49,7 +51,7 @@ export default function Newsletter() {
 
     } catch (err) {
       console.error('Erreur:', err);
-      setMessage('Une erreur est survenue. Veuillez réessayer.');
+      setMessage(t.newsletter.error);
       setStatus('error');
     } finally {
       setStatus('idle');
@@ -59,11 +61,11 @@ export default function Newsletter() {
   return (
     <section id="newsletter" className="mx-auto max-w-7xl px-4 py-16">
       <div className="rounded-2xl bg-gradient-to-r from-[#1E3A8A] to-[#1E40AF] p-8 text-center text-white md:p-12">
-        <h2 className="text-2xl font-bold md:text-3xl">📬 Suivez notre aventure</h2>
+        <h2 className="text-2xl font-bold md:text-3xl">{t.newsletter.title}</h2>
         <p className="mt-2 text-white/80">
-          Soyez informé de l'avancement de nos projets.
+          {t.newsletter.text}
           <br />
-          <span className="text-sm">Pas encore de produits disponibles, mais bientôt !</span>
+          <span className="text-sm">{t.newsletter.soon}</span>
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
@@ -71,7 +73,7 @@ export default function Newsletter() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Entrez votre email"
+            placeholder={t.newsletter.placeholder}
             required
             className="w-full rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 sm:w-72"
             disabled={status === 'loading'}
@@ -81,7 +83,7 @@ export default function Newsletter() {
             disabled={status === 'loading'}
             className="rounded-xl bg-[#F97316] px-6 py-3 font-semibold text-white transition hover:bg-[#ea580c] disabled:opacity-50"
           >
-            {status === 'loading' ? '...' : "Je m'abonne"}
+            {status === 'loading' ? '...' : t.newsletter.subscribe}
           </button>
         </form>
 
@@ -92,7 +94,7 @@ export default function Newsletter() {
         )}
 
         <p className="mt-4 text-xs text-white/60">
-          🔒 Aucun spam, juste des mises à jour sur nos progrès.
+          {t.newsletter.noSpam}
         </p>
       </div>
     </section>

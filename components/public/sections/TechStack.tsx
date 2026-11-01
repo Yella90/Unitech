@@ -2,6 +2,7 @@
 'use client';
 
 import { motion } from "framer-motion";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { 
   FaReact, 
   FaNodeJs, 
@@ -60,21 +61,21 @@ const techCategories = [
       { icon: <SiArduino className="h-8 w-8 text-[#00979C]" />, name: "Arduino", color: "hover:border-[#00979C]" },
       { icon: <SiRaspberrypi className="h-8 w-8 text-[#A22846]" />, name: "Raspberry Pi", color: "hover:border-[#A22846]" },
       { icon: <SiEspressif className="h-8 w-8 text-[#E7352C]" />, name: "ESP32/8266", color: "hover:border-[#E7352C]" },
-      { icon: <GiCpu className="h-8 w-8 text-[#6C5CE7]" />, name: "Microcontrôleurs", color: "hover:border-[#6C5CE7]" },
+      { icon: <GiCpu className="h-8 w-8 text-[#6C5CE7]" />, name: "Microcontrôleurs", key: "microcontrollers", color: "hover:border-[#6C5CE7]" },
       { icon: <FaMicrochip className="h-8 w-8 text-[#0984E3]" />, name: "PCB Design", color: "hover:border-[#0984E3]" },
-      { icon: <FaRobot className="h-8 w-8 text-[#00B894]" />, name: "Robotique", color: "hover:border-[#00B894]" },
-      { icon: <FaCogs className="h-8 w-8 text-[#E17055]" />, name: "Mécatronique", color: "hover:border-[#E17055]" },
-      { icon: <GiGears className="h-8 w-8 text-[#FDCB6E]" />, name: "Automatisation", color: "hover:border-[#FDCB6E]" },
+      { icon: <FaRobot className="h-8 w-8 text-[#00B894]" />, name: "Robotique", key: "robotics", color: "hover:border-[#00B894]" },
+      { icon: <FaCogs className="h-8 w-8 text-[#E17055]" />, name: "Mécatronique", key: "mechatronics", color: "hover:border-[#E17055]" },
+      { icon: <GiGears className="h-8 w-8 text-[#FDCB6E]" />, name: "Automatisation", key: "automation", color: "hover:border-[#FDCB6E]" },
     ]
   },
   {
     name: "⚡ Électronique & Énergie",
     technologies: [
-      { icon: <FaBolt className="h-8 w-8 text-[#FDCB6E]" />, name: "Électronique", color: "hover:border-[#FDCB6E]" },
-      { icon: <GiCircuitry className="h-8 w-8 text-[#00CEC9]" />, name: "Circuitry", color: "hover:border-[#00CEC9]" },
-      { icon: <GiSolarPower className="h-8 w-8 text-[#F97F51]" />, name: "Solaire", color: "hover:border-[#F97F51]" },
-      { icon: <GiBoltShield className="h-8 w-8 text-[#EAB543]" />, name: "Systèmes électriques", color: "hover:border-[#EAB543]" },
-      { icon: <FaWifi className="h-8 w-8 text-[#0984E3]" />, name: "IoT & Capteurs", color: "hover:border-[#0984E3]" },
+      { icon: <FaBolt className="h-8 w-8 text-[#FDCB6E]" />, name: "Électronique", key: "electronics", color: "hover:border-[#FDCB6E]" },
+      { icon: <GiCircuitry className="h-8 w-8 text-[#00CEC9]" />, name: "Circuitry", key: "circuitry", color: "hover:border-[#00CEC9]" },
+      { icon: <GiSolarPower className="h-8 w-8 text-[#F97F51]" />, name: "Solaire", key: "solar", color: "hover:border-[#F97F51]" },
+      { icon: <GiBoltShield className="h-8 w-8 text-[#EAB543]" />, name: "Systèmes électriques", key: "electricalSystems", color: "hover:border-[#EAB543]" },
+      { icon: <FaWifi className="h-8 w-8 text-[#0984E3]" />, name: "IoT & Capteurs", key: "iot", color: "hover:border-[#0984E3]" },
       { icon: <SiMqtt className="h-8 w-8 text-[#660066]" />, name: "MQTT", color: "hover:border-[#660066]" },
       { icon: <SiInfluxdb className="h-8 w-8 text-[#22ADF6]" />, name: "InfluxDB", color: "hover:border-[#22ADF6]" },
       { icon: <FaArrowsAltH className="h-8 w-8 text-[#6C5CE7]" />, name: "SCADA", color: "hover:border-[#6C5CE7]" },
@@ -96,6 +97,7 @@ const techCategories = [
 ];
 
 export default function TechStack() {
+  const { t } = useLanguage();
   return (
     <section className="mx-auto max-w-7xl px-4 py-16 overflow-hidden">
       <motion.div
@@ -106,11 +108,10 @@ export default function TechStack() {
         className="text-center"
       >
         <h2 className="text-3xl font-black text-[#1E3A8A] md:text-4xl">
-          Notre Stack Technologique
+          {t.techStack.title}
         </h2>
         <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-          Des technologies modernes et robustes pour construire des solutions innovantes,
-          du capteur à l'interface utilisateur.
+          {t.techStack.subtitle}
         </p>
       </motion.div>
 
@@ -118,7 +119,7 @@ export default function TechStack() {
         {techCategories.map((category, catIndex) => (
           <div key={catIndex}>
             <h3 className="text-xl font-bold text-slate-700 mb-4">
-              {category.name}
+              {t.techStack.categories[catIndex] ?? category.name}
             </h3>
             <div className="relative overflow-hidden">
               <motion.div
@@ -141,7 +142,7 @@ export default function TechStack() {
                   >
                     <div className="text-4xl">{tech.icon}</div>
                     <span className="text-xs font-medium text-slate-600 group-hover:text-slate-900 text-center">
-                      {tech.name}
+                      {tech.key ? t.techStack.names[tech.key as keyof typeof t.techStack.names] : tech.name}
                     </span>
                   </motion.div>
                 ))}

@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
 import ChatButton from "@/components/public/ChatButton";
 import CookieConsent from "@/components/public/CookieConsent";
 import { ChatProvider } from "@/contexts/ChatContext";
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, messages, type Locale } from "@/lib/i18n";
 
 // ✅ Imports des agents existants
 import { initDonaService } from '@/lib/agents/dona/auto-start';
@@ -131,9 +133,18 @@ export default async function RootLayout({
     console.error('❌ Erreur récupération headers:', error);
   }
 
+  // ✅ Langue choisie par le visiteur (cookie posé par le sélecteur FR/EN)
+  let locale: Locale = DEFAULT_LOCALE;
+  try {
+    const cookieLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
+    if (isLocale(cookieLocale)) locale = cookieLocale;
+  } catch (error) {
+    console.error('❌ Erreur récupération cookies:', error);
+  }
+
   return (
     <html 
-      lang="fr" 
+      lang={locale} 
       className={cn(
         "font-sans antialiased", 
         geist.variable,
@@ -157,12 +168,13 @@ export default async function RootLayout({
         )}
         suppressHydrationWarning
       >
+        <LanguageProvider initialLocale={locale}>
         <ChatProvider>
           <a 
             href="#main-content" 
             className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-white focus:p-4 focus:rounded-lg focus:shadow-lg"
           >
-            Passer au contenu principal
+            {messages[locale].skipLink}
           </a>
           
           <Header />
@@ -179,6 +191,7 @@ export default async function RootLayout({
 
           <CookieConsent />
         </ChatProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

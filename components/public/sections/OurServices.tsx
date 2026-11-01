@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent } from "@/components/ui/card";
 import Link from 'next/link';
+import { useLanguage } from "@/contexts/LanguageContext";
 import { 
   FaUniversity, 
   FaStore, 
@@ -151,6 +152,7 @@ export default function OurServices({ limit = 4, initialServices = [] }: OurServ
   const [services, setServices] = useState<Service[]>(initialServices || []);
   const [loading, setLoading] = useState(!initialServices || initialServices.length === 0);
   const [showAll, setShowAll] = useState(false);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!initialServices || initialServices.length === 0) {
@@ -228,10 +230,10 @@ export default function OurServices({ limit = 4, initialServices = [] }: OurServ
           className="text-center"
         >
           <h2 className="text-3xl font-black text-[#1E3A8A] md:text-4xl">
-            Nos Services
+            {t.services.title}
           </h2>
           <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-            Des solutions technologiques sur mesure pour répondre à vos besoins.
+            {t.services.subtitle}
           </p>
         </motion.div>
 
@@ -269,14 +271,14 @@ export default function OurServices({ limit = 4, initialServices = [] }: OurServ
                         ))}
                         {service.features.length > 3 && (
                           <li className="text-xs text-slate-400">
-                            +{service.features.length - 3} autres
+                            +{service.features.length - 3} {t.common.others}
                           </li>
                         )}
                       </ul>
                     )}
 
                     <div className="mt-4 flex items-center gap-2 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition">
-                      En savoir plus
+                      {t.common.learnMore}
                       <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
                     </div>
                   </CardContent>
@@ -292,7 +294,7 @@ export default function OurServices({ limit = 4, initialServices = [] }: OurServ
             href="/services"
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
           >
-            <span>Voir tous nos services</span>
+            <span>{t.services.seeAll}</span>
             <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
             <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalServices})</span>
           </Link>
@@ -303,7 +305,7 @@ export default function OurServices({ limit = 4, initialServices = [] }: OurServ
               onClick={() => setShowAll(true)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
             >
-              Voir tous nos services ({services.length})
+              {t.services.seeAll} ({services.length})
               <FaArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -315,7 +317,7 @@ export default function OurServices({ limit = 4, initialServices = [] }: OurServ
               onClick={() => setShowAll(false)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-300 transition"
             >
-              Réduire la liste
+              {t.common.showLess}
             </button>
           </div>
         )}

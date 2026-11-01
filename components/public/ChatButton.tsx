@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FaComments, FaTimes, FaBrain, FaRobot, FaBell } from 'react-icons/fa';
 import ChatBot from './ChatBot';
 import { useChat } from '@/contexts/ChatContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // ✅ Exporter l'interface pour les autres composants
 export interface ChatButtonHandle {
@@ -19,6 +20,7 @@ export default function ChatButton() {
   const { isOpen, toggleChat, closeChat, openChat: contextOpenChat } = useChat();
   const [showNotification, setShowNotification] = useState(true);
   const pathname = usePathname();
+  const { t } = useLanguage();
 
   // ✅ Ne pas afficher le chat sur les pages admin
   const isAdminPage = pathname?.startsWith('/admin') || false;
@@ -76,7 +78,7 @@ export default function ChatButton() {
         className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex flex-col items-center group"
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
-        aria-label={isOpen ? 'Fermer le chat' : 'Ouvrir le chat'}
+        aria-label={isOpen ? t.chatButton.close : t.chatButton.open}
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, type: 'spring', damping: 20 }}
@@ -92,7 +94,7 @@ export default function ChatButton() {
               className="absolute -top-14 sm:-top-20 right-0 bg-gradient-to-r from-[#F97316] to-orange-500 text-white text-xs sm:text-sm font-bold px-3 py-2 sm:px-5 sm:py-3 rounded-2xl shadow-2xl whitespace-nowrap flex items-center gap-2 sm:gap-3 border-2 border-white/20"
             >
               <FaBell className="h-3 w-3 sm:h-4 sm:w-4 animate-bounce" />
-              <span className="text-[10px] sm:text-sm">💬 Une question ?</span>
+              <span className="text-[10px] sm:text-sm">💬 {t.chatButton.question}</span>
               <div className="absolute bottom-[-6px] sm:bottom-[-8px] right-4 sm:right-8 w-3 h-3 sm:w-4 sm:h-4 bg-[#F97316] rotate-45 border-r-2 border-b-2 border-white/20" />
             </motion.div>
           )}

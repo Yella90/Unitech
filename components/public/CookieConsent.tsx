@@ -5,9 +5,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FaCookieBite } from 'react-icons/fa';
 import { OPEN_CONSENT, readConsent, saveConsent } from '@/lib/consent';
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function CookieConsent() {
   const [open, setOpen] = useState(false);
+  const { t } = useLanguage();
 
   useEffect(() => {
     // Affiché tant que le visiteur n'a pas fait de choix
@@ -28,7 +30,7 @@ export default function CookieConsent() {
     <div
       role="dialog"
       aria-live="polite"
-      aria-label="Cookies et mesure d'audience"
+      aria-label={t.cookies.label}
       className="fixed inset-x-3 bottom-3 z-[70] mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:inset-x-6 sm:p-5"
       style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
     >
@@ -36,10 +38,9 @@ export default function CookieConsent() {
         <div className="flex gap-3">
           <FaCookieBite className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#F97316]" aria-hidden />
           <p className="text-sm leading-relaxed text-slate-700">
-            Nous utilisons des cookies nécessaires à la connexion et au chatbot. Avec votre accord, nous
-            mesurons aussi l&apos;audience du site (pages vues, sans publicité ni partage avec des tiers).{' '}
+            {t.cookies.text}{' '}
             <Link href="/cookies" className="font-medium text-[#1E3A8A] underline">
-              En savoir plus
+              {t.cookies.learnMore}
             </Link>
           </p>
         </div>
@@ -48,13 +49,13 @@ export default function CookieConsent() {
             onClick={() => choose(false)}
             className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 sm:flex-none"
           >
-            Refuser
+            {t.cookies.refuse}
           </button>
           <button
             onClick={() => choose(true)}
             className="flex-1 rounded-xl bg-[#1E3A8A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#162f58] sm:flex-none"
           >
-            Accepter
+            {t.cookies.accept}
           </button>
         </div>
       </div>

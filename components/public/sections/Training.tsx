@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { motion } from "framer-motion";
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -109,6 +110,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
   const [trainings, setTrainings] = useState<Training[]>(initialTrainings || []);
   const [loading, setLoading] = useState(!initialTrainings || initialTrainings.length === 0);
   const [showAll, setShowAll] = useState(false);
+  const { t } = useLanguage();
   
   // ✅ État pour le modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -198,13 +200,13 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
           >
             <div className="inline-flex items-center gap-2 rounded-full bg-[#1E3A8A]/10 px-4 py-1.5 text-sm font-medium text-[#1E3A8A]">
               <FaGraduationCap className="h-4 w-4" />
-              Formations
+              {t.training.badge}
             </div>
             <h2 className="mt-4 text-3xl font-black text-[#1E3A8A] md:text-4xl">
-              Formations Technologiques
+              {t.training.title}
             </h2>
             <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-              Des programmes de formation pour développer vos compétences techniques.
+              {t.training.subtitle}
             </p>
           </motion.div>
 
@@ -287,7 +289,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                               href={`/training/${training.slug}`}
                               className="inline-flex items-center gap-1 text-sm font-medium text-[#1E3A8A] group-hover:text-[#F97316] transition"
                             >
-                              En savoir plus
+                              {t.common.learnMore}
                               <FaArrowRight className="h-3 w-3 group-hover:translate-x-1 transition" />
                             </Link>
                             
@@ -299,7 +301,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                               className="inline-flex items-center gap-1 text-sm font-medium text-[#F97316] hover:text-[#ea580c] transition"
                             >
                               <FaUserPlus className="h-3 w-3" />
-                              S'inscrire
+                              {t.training.register}
                             </Link>
                           </div>
                         </div>
@@ -316,7 +318,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
               href="/training"
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A]/10 text-[#1E3A8A] font-medium rounded-full hover:bg-[#1E3A8A]/20 transition group"
             >
-              <span>Voir toutes nos formations</span>
+              <span>{t.training.seeAll}</span>
               <FaExternalLinkAlt className="h-3.5 w-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition" />
               <span className="text-sm text-[#1E3A8A]/60 ml-1">({totalTrainings})</span>
             </Link>
@@ -330,7 +332,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                 href="/training"
                 className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E3A8A] text-white font-medium rounded-xl hover:bg-[#1A2F6A] transition hover:scale-105"
               >
-                Voir toutes nos formations ({totalTrainings})
+                {t.training.seeAll} ({totalTrainings})
                 <FaArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -343,7 +345,7 @@ export default function Training({ limit = 4, initialTrainings = [] }: TrainingP
                 onClick={() => setShowAll(false)}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-300 transition"
               >
-                Réduire la liste
+                {t.common.showLess}
               </button>
             </div>
           )}

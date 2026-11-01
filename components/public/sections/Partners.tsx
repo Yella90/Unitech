@@ -13,6 +13,7 @@ import {
   FaLightbulb
 } from "react-icons/fa";
 import { Target } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ✅ Mapping des types
 const typeConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
@@ -77,6 +78,7 @@ interface PartnersProps {
 export default function Partners({ initialCollaborations = [], limit = 3 }: PartnersProps) {
   // ✅ Utiliser les données passées en props
   const collaborations = initialCollaborations || [];
+  const { t } = useLanguage();
 
   // ✅ Ajouter un log pour déboguer
   //console.log('🔍 Partners - collaborations reçues:', collaborations.length);
@@ -87,13 +89,13 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
         <div className="text-center">
           <div className="inline-flex items-center gap-2 rounded-full bg-[#1E3A8A]/10 px-4 py-1.5 text-sm font-medium text-[#1E3A8A]">
             <FaHandshake className="h-4 w-4" />
-            Nos Partenaires
+            {t.partners.badge}
           </div>
           <h2 className="mt-4 text-3xl font-black text-[#1E3A8A] md:text-4xl">
-            Collaborations & Partenariats
+            {t.partners.title}
           </h2>
           <p className="mt-4 text-slate-500">
-            Aucune collaboration active pour le moment. Revenez bientôt !
+            {t.partners.empty}
           </p>
         </div>
       </section>
@@ -189,13 +191,13 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-[#1E3A8A]/10 px-4 py-1.5 text-sm font-medium text-[#1E3A8A]">
           <FaHandshake className="h-4 w-4" />
-          Nos Partenaires
+          {t.partners.badge}
         </div>
         <h2 className="mt-4 text-3xl font-black text-[#1E3A8A] md:text-4xl">
-          Collaborations & Partenariats
+          {t.partners.title}
         </h2>
         <p className="mt-2 text-slate-600 max-w-2xl mx-auto">
-          Nous collaborons avec des entreprises et institutions de confiance pour offrir des solutions complètes et intégrées.
+          {t.partners.subtitle}
         </p>
       </motion.div>
 
@@ -209,19 +211,19 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
       >
         <div className="rounded-lg bg-white p-3 text-center shadow-sm border border-slate-100">
           <p className="text-2xl font-bold text-[#1E3A8A]">{collaborations.length}</p>
-          <p className="text-xs text-slate-500">Partenaires</p>
+          <p className="text-xs text-slate-500">{t.partners.statPartners}</p>
         </div>
         <div className="rounded-lg bg-white p-3 text-center shadow-sm border border-slate-100">
           <p className="text-2xl font-bold text-[#1E3A8A]">{totalActive}</p>
-          <p className="text-xs text-slate-500">Actifs</p>
+          <p className="text-xs text-slate-500">{t.partners.statActive}</p>
         </div>
         <div className="rounded-lg bg-white p-3 text-center shadow-sm border border-slate-100">
           <p className="text-2xl font-bold text-[#1E3A8A]">{typesCount}</p>
-          <p className="text-xs text-slate-500">Types</p>
+          <p className="text-xs text-slate-500">{t.partners.statTypes}</p>
         </div>
         <div className="rounded-lg bg-white p-3 text-center shadow-sm border border-slate-100">
           <p className="text-2xl font-bold text-[#1E3A8A]">{totalProjects}</p>
-          <p className="text-xs text-slate-500">Projets</p>
+          <p className="text-xs text-slate-500">{t.partners.statProjects}</p>
         </div>
       </motion.div>
 
@@ -252,11 +254,11 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
                           {collab.name}
                         </h3>
                         <span className={`text-[8px] sm:text-[10px] px-2 py-0.5 rounded-full border ${statusConfig.color} flex-shrink-0`}>
-                          {statusConfig.label}
+                          {t.partners.statuses[collab.status] ?? t.partners.statuses.default}
                         </span>
                       </div>
                       <p className="text-xs font-medium text-[#1E3A8A] mt-0.5">
-                        {typeConfig.label}
+                        {t.partners.types[collab.type] ?? t.partners.types.default}
                       </p>
                       {collab.notes && (
                         <p className="mt-2 text-xs sm:text-sm text-slate-600 line-clamp-2">
@@ -267,7 +269,7 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
                       {collab.projects && collab.projects.length > 0 && (
                         <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
                           <FaCode className="h-2.5 w-2.5" />
-                          <span>{collab.projects.length} projet(s) associé(s)</span>
+                          <span>{t.partners.linkedProjects(collab.projects.length)}</span>
                         </div>
                       )}
                       {renderContact(collab.contact)}
@@ -288,15 +290,15 @@ export default function Partners({ initialCollaborations = [], limit = 3 }: Part
         viewport={{ once: true }}
         className="mt-12 rounded-2xl bg-gradient-to-r from-[#1E3A8A] to-[#1E40AF] p-6 sm:p-8 text-center text-white"
       >
-        <h3 className="text-xl sm:text-2xl font-bold">Vous souhaitez collaborer avec nous ?</h3>
+        <h3 className="text-xl sm:text-2xl font-bold">{t.partners.ctaTitle}</h3>
         <p className="mt-2 text-white/80 text-sm sm:text-base">
-          Rejoignez notre réseau de partenaires pour construire ensemble les solutions de demain.
+          {t.partners.ctaText}
         </p>
         <a
           href="/contact"
           className="mt-4 inline-block rounded-xl bg-[#F97316] px-6 py-3 font-semibold text-white hover:bg-[#ea580c] transition hover:scale-105 text-sm sm:text-base"
         >
-          Devenir partenaire →
+          {t.partners.ctaButton}
         </a>
       </motion.div>
     </section>
