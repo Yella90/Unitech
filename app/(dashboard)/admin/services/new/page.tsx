@@ -111,8 +111,18 @@ export default function NewServicePage() {
     setSaving(true);
 
     try {
+      // Adresse de la page publique : « Développement Web » → « developpement-web »
+      const slug = formData.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/&/g, ' et ')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
       const insertData: any = {
         name: formData.name,
+        slug: slug || `service-${Date.now()}`,
         description: formData.description,
         category: formData.category,
         type: formData.type,

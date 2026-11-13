@@ -199,9 +199,13 @@ export async function generateStaticParams() {
 
   if (!services) return [];
 
-  return services.map((service: { slug: string }) => ({
-    slug: service.slug,
-  }));
+  // Un service sans slug n'a pas de page : on l'ignore au lieu de faire
+  // échouer le build.
+  return services
+    .filter((service: { slug: string | null }) => typeof service.slug === 'string' && service.slug.trim() !== '')
+    .map((service: { slug: string }) => ({
+      slug: service.slug,
+    }));
 }
 
 // ============================================================
